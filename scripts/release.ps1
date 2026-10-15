@@ -78,7 +78,7 @@ try {
     $pluginDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'BepInEx/plugins/ZhaoHuoSystem')
     Copy-Item -LiteralPath $dll -Destination $pluginDir
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
-    $name = "ZhaoHuoSystem-v$Version.zip"
+    $name = "LegendOfMortal-InGameTrainer-v$Version.zip"
     $zip = Join-Path $dist $name
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -95,20 +95,20 @@ try {
     if (git tag --list $tag) { throw "Tag $tag already exists." }
     Invoke-Checked git @('fetch', 'origin', 'main')
     if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) { throw 'HEAD is not origin/main; push main and release from it.' }
-    Invoke-Checked git @('tag', '-a', $tag, '-m', "ZhaoHuoSystem $tag")
+    Invoke-Checked git @('tag', '-a', $tag, '-m', "Legend of Mortal In-Game Trainer $tag")
     Invoke-Checked git @('push', 'origin', $tag)
     $body = @"
 $notes
 
 ---
-适配游戏：Steam build $build
-加载器：BepInEx $loader（Unity.Mono，Windows x64）
-安装：把 zip 解压到游戏目录（Mortal.exe 所在文件夹），插件位于 BepInEx/plugins/ZhaoHuoSystem/。详见 README。
-SHA256（$name）：``$hash``
+适配游戏 / Game: Steam build $build
+加载器 / Loader: BepInEx $loader (Unity.Mono, Windows x64)
+安装：把 zip 解压到游戏目录（Mortal.exe 所在文件夹）。Install: extract the zip into the game folder (where Mortal.exe is). README: [简体中文](README.md) · [English](README.en.md) · [한국어](README.ko.md)
+SHA256 ($name): ``$hash``
 "@
     $notesFile = Join-Path $dist "release-notes-$Version.md"
     Set-Content -LiteralPath $notesFile -Value $body -Encoding utf8
-    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", '--title', "赵活系统 $tag", '--notes-file', $notesFile, '--verify-tag')
+    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", '--title', "Legend of Mortal In-Game Trainer $tag", '--notes-file', $notesFile, '--verify-tag')
     Write-Host "Released $tag."
 }
 finally { Pop-Location }
