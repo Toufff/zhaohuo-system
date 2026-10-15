@@ -29,19 +29,29 @@
 
 ## 설치
 
-Steam 버전 build 25957922와 BepInEx 6.0.0-be.788(Unity.Mono, Windows x64) 기준으로 만들어졌습니다.
+Steam 버전 build 25957922 기준으로 만들어졌습니다.
 
-1. Steam 라이브러리에서 《활협전》을 우클릭 → 관리 → 로컬 파일 보기를 눌러, `Mortal.exe`가 있는 게임 폴더를 엽니다.
-2. [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)을 내려받아, 압축 파일 안의 내용을 모두 게임 폴더에 풉니다.
-3. 게임을 한 번 실행하고, 타이틀 화면이 나오면 종료합니다.
-4. [Releases](https://github.com/Toufff/zhaohuo-system/releases)에서 최신 `ZhaoHuoSystem-v*.zip`을 내려받아 마찬가지로 게임 폴더에 풉니다.
-5. 게임을 실행해 세이브를 불러온 뒤 F8을 누릅니다.
+1. [Releases](https://github.com/Toufff/zhaohuo-system/releases)에서 최신 `ZhaoHuoSystem-v*.zip`을 내려받아 아무 폴더에나 압축을 풉니다.
+2. 게임을 종료하고 `install.bat`을 더블클릭합니다.
+   - Steam 라이브러리에서 《활협전》을 자동으로 찾습니다. 찾지 못하면 창이 열리니 게임 폴더(`Mortal.exe`가 있는 폴더)를 선택하세요.
+   - 게임에 아직 BepInEx가 없으면, 압축 파일에 함께 들어 있는 공식 BepInEx 6.0.0-be.788(Unity.Mono, Windows x64)도 같이 설치합니다.
+3. 게임을 실행해 세이브를 불러온 뒤 F8을 누릅니다.
 
 수정한 수치와 지정한 이벤트는 세이브에 반영됩니다. 처음 사용하기 전에 세이브를 백업해 두세요.
 
-- **Steam Deck / Linux**: 게임 속성의 시작 옵션에 `WINEDLLOVERRIDES="winhttp=n,b" %command%`를 입력합니다.
-- **업데이트**: 게임을 종료한 뒤 새 zip을 덮어써서 풉니다.
-- **삭제**: `BepInEx/plugins/ZhaoHuoSystem` 폴더를 지웁니다. BepInEx까지 지우려면 게임 폴더의 `BepInEx`, `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`, `changelog.txt`도 함께 지웁니다.
+- **업데이트**: 새 버전을 내려받아 `install.bat`을 다시 더블클릭합니다.
+- **삭제**: `uninstall.bat`을 더블클릭합니다. 플러그인과 설정을 지운 뒤 BepInEx도 함께 지울지 묻습니다. 다른 BepInEx 모드도 BepInEx가 필요하므로, Enter만 누르면 유지됩니다. 세이브 파일에는 영향이 없습니다.
+- Windows 보안 경고가 나타나면 실행을 선택하세요.
+
+### 수동 설치
+
+1. Steam 라이브러리에서 《활협전》을 우클릭 → 관리 → 로컬 파일 보기를 눌러, `Mortal.exe`가 있는 게임 폴더를 엽니다.
+2. [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)을 내려받아, 압축 파일 안의 내용을 모두 게임 폴더에 풉니다.
+3. `ZhaoHuoSystem-v*.zip`도 게임 폴더에 풉니다. 플러그인은 `BepInEx/plugins/ZhaoHuoSystem/`에 들어갑니다.
+4. 게임을 실행해 세이브를 불러온 뒤 F8을 누릅니다.
+
+- **Steam Deck / Linux**: 수동으로 설치하고, 게임 속성의 시작 옵션에 `WINEDLLOVERRIDES="winhttp=n,b" %command%`를 입력합니다.
+- **수동 삭제**: `BepInEx/plugins/ZhaoHuoSystem` 폴더를 지웁니다. BepInEx까지 지우려면 게임 폴더의 `BepInEx`, `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`, `changelog.txt`도 함께 지웁니다.
 
 ## 사용법
 

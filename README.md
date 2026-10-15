@@ -26,19 +26,29 @@
 
 ## 安装
 
-适配 Steam 版 build 25957922，加载器为 BepInEx 6.0.0-be.788（Unity.Mono，Windows x64）。
+适配 Steam 版 build 25957922。
 
-1. 在 Steam 库里右键《活侠传》→ 管理 → 浏览本地文件，打开游戏目录（有 `Mortal.exe` 的文件夹）。
-2. 下载 [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)，把压缩包里的全部内容解压到游戏目录。
-3. 启动一次游戏，到标题画面后退出。
-4. 从 [Releases](https://github.com/Toufff/zhaohuo-system/releases) 下载最新的 `ZhaoHuoSystem-v*.zip`，也解压到游戏目录。
-5. 进入游戏并读档，按 F8 打开面板。
+1. 从 [Releases](https://github.com/Toufff/zhaohuo-system/releases) 下载最新的 `ZhaoHuoSystem-v*.zip`，解压到任意文件夹。
+2. 关闭游戏，双击 `install.bat`。
+   - 它会自动找到 Steam 里的《活侠传》；找不到时会弹出窗口，让你选择游戏文件夹（有 `Mortal.exe` 的那个）。
+   - 游戏还没有 BepInEx 时，会一并装上压缩包里附带的官方 BepInEx 6.0.0-be.788（Unity.Mono，Windows x64）。
+3. 启动游戏，读档后按 F8 打开面板。
 
 修改数值和指定事件都会写进存档，第一次使用前请先备份存档。
 
-- **Steam Deck / Linux**：在游戏的启动选项里填 `WINEDLLOVERRIDES="winhttp=n,b" %command%`。
-- **更新**：关掉游戏，用新的 zip 覆盖解压即可。
-- **卸载**：删除 `BepInEx/plugins/ZhaoHuoSystem` 文件夹。如果要把 BepInEx 也删掉，再删除游戏目录里的 `BepInEx`、`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version` 和 `changelog.txt`。
+- **更新**：下载新版本，再双击一次 `install.bat`。
+- **卸载**：双击 `uninstall.bat`。它会删除插件和设置，然后询问是否连 BepInEx 一起删除；其他 BepInEx 模组也依赖它，直接回车就会保留。存档不受影响。
+- 如果 Windows 弹出安全提示，确认运行即可。
+
+### 手动安装
+
+1. 在 Steam 库里右键《活侠传》→ 管理 → 浏览本地文件，打开游戏目录（有 `Mortal.exe` 的文件夹）。
+2. 下载 [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)，把压缩包里的全部内容解压到游戏目录。
+3. 把 `ZhaoHuoSystem-v*.zip` 也解压到游戏目录，插件会位于 `BepInEx/plugins/ZhaoHuoSystem/`。
+4. 进入游戏并读档，按 F8 打开面板。
+
+- **Steam Deck / Linux**：只能手动安装，并在游戏的启动选项里填 `WINEDLLOVERRIDES="winhttp=n,b" %command%`。
+- **手动卸载**：删除 `BepInEx/plugins/ZhaoHuoSystem` 文件夹。如果要把 BepInEx 也删掉，再删除游戏目录里的 `BepInEx`、`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version` 和 `changelog.txt`。
 
 ## 使用
 

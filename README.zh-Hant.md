@@ -26,19 +26,29 @@
 
 ## 安裝
 
-適用 Steam 版 build 25957922，載入器為 BepInEx 6.0.0-be.788（Unity.Mono，Windows x64）。
+適用 Steam 版 build 25957922。
 
-1. 在 Steam 收藏庫中對《活俠傳》按右鍵 → 管理 → 瀏覽本機檔案，開啟遊戲資料夾（有 `Mortal.exe` 的資料夾）。
-2. 下載 [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)，把壓縮檔裡的全部內容解壓縮到遊戲資料夾。
-3. 啟動一次遊戲，到標題畫面後退出。
-4. 從 [Releases](https://github.com/Toufff/zhaohuo-system/releases) 下載最新的 `ZhaoHuoSystem-v*.zip`，同樣解壓縮到遊戲資料夾。
-5. 進入遊戲並讀取存檔，按 F8 開啟面板。
+1. 從 [Releases](https://github.com/Toufff/zhaohuo-system/releases) 下載最新的 `ZhaoHuoSystem-v*.zip`，解壓縮到任意資料夾。
+2. 關閉遊戲，按兩下 `install.bat`。
+   - 它會自動找到 Steam 裡的《活俠傳》；找不到時會跳出視窗，讓你選擇遊戲資料夾（有 `Mortal.exe` 的那個）。
+   - 遊戲還沒有 BepInEx 時，會一併安裝壓縮檔裡附帶的官方 BepInEx 6.0.0-be.788（Unity.Mono，Windows x64）。
+3. 啟動遊戲，讀取存檔後按 F8 開啟面板。
 
 修改數值和指定事件都會寫入存檔，第一次使用前請先備份存檔。
 
-- **Steam Deck / Linux**：在遊戲內容的啟動選項中填入 `WINEDLLOVERRIDES="winhttp=n,b" %command%`。
-- **更新**：關閉遊戲，用新的 zip 覆蓋解壓縮即可。
-- **解除安裝**：刪除 `BepInEx/plugins/ZhaoHuoSystem` 資料夾。如果要連 BepInEx 一起移除，再刪除遊戲資料夾裡的 `BepInEx`、`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version` 和 `changelog.txt`。
+- **更新**：下載新版本，再按兩下一次 `install.bat`。
+- **解除安裝**：按兩下 `uninstall.bat`。它會刪除外掛和設定，然後詢問是否一併刪除 BepInEx；其他 BepInEx 模組也依賴它，直接按 Enter 就會保留。存檔不受影響。
+- 如果 Windows 跳出安全性提示，確認執行即可。
+
+### 手動安裝
+
+1. 在 Steam 收藏庫中對《活俠傳》按右鍵 → 管理 → 瀏覽本機檔案，開啟遊戲資料夾（有 `Mortal.exe` 的資料夾）。
+2. 下載 [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)，把壓縮檔裡的全部內容解壓縮到遊戲資料夾。
+3. 把 `ZhaoHuoSystem-v*.zip` 也解壓縮到遊戲資料夾，外掛會位於 `BepInEx/plugins/ZhaoHuoSystem/`。
+4. 進入遊戲並讀取存檔，按 F8 開啟面板。
+
+- **Steam Deck / Linux**：只能手動安裝，並在遊戲內容的啟動選項中填入 `WINEDLLOVERRIDES="winhttp=n,b" %command%`。
+- **手動解除安裝**：刪除 `BepInEx/plugins/ZhaoHuoSystem` 資料夾。如果要連 BepInEx 一起移除，再刪除遊戲資料夾裡的 `BepInEx`、`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version` 和 `changelog.txt`。
 
 ## 使用
 

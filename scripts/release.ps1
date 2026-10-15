@@ -10,7 +10,8 @@
     - the version in ZhaoHuoSystem.csproj, Plugin.cs or CHANGELOG.md differs from -Version;
     - the game's assemblies do not match the fingerprints the plugin checks at startup;
     - the build or any test fails.
-  Without -Publish it only writes dist/ZhaoHuoSystem-v<Version>.zip and its .sha256 file.
+  Without -Publish it only writes dist/ZhaoHuoSystem-v<Version>.zip (built by package.ps1: plugin, one-click
+  installer and the bundled official BepInEx) and its .sha256 file.
   With -Publish it also tags HEAD (which must equal origin/main), pushes the tag and creates the
   GitHub release with the CHANGELOG section as notes (requires an authenticated gh CLI).
 
@@ -73,19 +74,8 @@ try {
 
     Step 'Packaging'
     $dist = Join-Path $repo 'dist'
-    $stage = Join-Path $dist 'stage'
-    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-    $pluginDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'BepInEx/plugins/ZhaoHuoSystem')
-    Copy-Item -LiteralPath $dll -Destination $pluginDir
-    Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
-    $name = "ZhaoHuoSystem-v$Version.zip"
-    $zip = Join-Path $dist $name
-    if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip)
-    Remove-Item -LiteralPath $stage -Recurse -Force
-    $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-    Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $name" -Encoding ascii
+    $package = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll -OutDir $dist
+    $name = $package.Name; $zip = $package.Zip; $hash = $package.Sha256
     Write-Host "$name  SHA256 $hash  (game build $build, BepInEx $loader)"
 
     if (-not $Publish) { Write-Host 'Packaged only. Re-run with -Publish to tag and create the GitHub release.'; return }
@@ -104,7 +94,7 @@ $notes
 ---
 适配游戏 / Game: Steam build $build
 加载器 / Loader: BepInEx $loader (Unity.Mono, Windows x64)
-安装：把 zip 解压到游戏目录（Mortal.exe 所在文件夹）。Install: extract the zip into the game folder (where Mortal.exe is). README（简体中文 · 繁體中文 · English · 한국어）: $readme
+安装：解压后双击 install.bat，卸载双击 uninstall.bat。Install: extract the zip and double-click install.bat; uninstall.bat removes it. README（简体中文 · 繁體中文 · English · 한국어）: $readme
 SHA256 ($name): ``$hash``
 "@
     $notesFile = Join-Path $dist "release-notes-$Version.md"

@@ -28,19 +28,29 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 ## Install
 
-Supports the Steam release, build 25957922, with BepInEx 6.0.0-be.788 (Unity.Mono, Windows x64).
+Supports the Steam release, build 25957922.
 
-1. In your Steam library, right-click Legend of Mortal → Manage → Browse local files. This opens the game folder (the one with `Mortal.exe`).
-2. Download [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip) and extract everything into the game folder.
-3. Start the game once, wait for the title screen, then quit.
-4. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it into the game folder as well.
-5. Start the game, load a save and press F8.
+1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
+2. Close the game and double-click `install.bat`.
+   - It finds Legend of Mortal in your Steam library by itself. If it can't, a window opens so you can choose the game folder (the one with `Mortal.exe`).
+   - If the game doesn't have BepInEx yet, it also installs the official BepInEx 6.0.0-be.788 (Unity.Mono, Windows x64) that comes in the zip.
+3. Start the game, load a save and press F8.
 
 Edited values and chosen events end up in your save, so back up your saves before the first use.
 
-- **Steam Deck / Linux**: set the launch options to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
-- **Update**: close the game and extract the new zip over the old files.
-- **Uninstall**: delete `BepInEx/plugins/ZhaoHuoSystem`. To remove BepInEx as well, also delete `BepInEx`, `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version` and `changelog.txt` from the game folder.
+- **Update**: download the new version and double-click `install.bat` again.
+- **Uninstall**: double-click `uninstall.bat`. It removes the plugin and its settings, then asks whether to remove BepInEx too. Other BepInEx mods need it, so pressing Enter keeps it. Your saves are not affected.
+- If Windows shows a security prompt, confirm that you want to run it.
+
+### Manual install
+
+1. In your Steam library, right-click Legend of Mortal → Manage → Browse local files. This opens the game folder (the one with `Mortal.exe`).
+2. Download [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip) and extract everything into the game folder.
+3. Extract `ZhaoHuoSystem-v*.zip` into the game folder as well. The plugin ends up in `BepInEx/plugins/ZhaoHuoSystem/`.
+4. Start the game, load a save and press F8.
+
+- **Steam Deck / Linux**: install by hand, and set the game's launch options to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
+- **Manual uninstall**: delete `BepInEx/plugins/ZhaoHuoSystem`. To remove BepInEx as well, also delete `BepInEx`, `winhttp.dll`, `doorstop_config.ini`, `.doorstop_version` and `changelog.txt` from the game folder.
 
 ## Usage
 
