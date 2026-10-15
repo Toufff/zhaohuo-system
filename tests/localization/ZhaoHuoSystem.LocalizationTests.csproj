@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/ZhaoHuoSystem/Localization.cs" Link="Localization.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/LocalizationCatalog.cs" Link="LocalizationCatalog.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/NativeEnumSemantics.cs" Link="NativeEnumSemantics.cs" />
+  </ItemGroup>
+</Project>

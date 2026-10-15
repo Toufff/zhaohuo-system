@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ZhaoHuoSystem</AssemblyName>
+    <Version>0.3.7</Version>
+    <GameDir Condition="'$(GameDir)' == ''">F:\SteamLibrary\steamapps\common\LegendOfMortal</GameDir>
+    <!-- BepInEx is referenced from the game's own installation; nothing is copied to the output. -->
+    <LoaderDir Condition="'$(LoaderDir)' == ''">$(GameDir)</LoaderDir>
+    <ManagedDir>$(GameDir)\Mortal_Data\Managed</ManagedDir>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(LoaderDir)\BepInEx\core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(LoaderDir)\BepInEx\core\BepInEx.Unity.Mono.dll" Private="false" />
+    <Reference Include="$(LoaderDir)\BepInEx\core\0Harmony.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\Mortal.Core.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\Mortal.Story.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\Mortal.Free.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\Fungus.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\OBB.Framework.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\Unity.InputSystem.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.InputLegacyModule.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.UI.dll" Private="false" />
+  </ItemGroup>
+</Project>

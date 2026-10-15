@@ -1,0 +1,159 @@
+using ZhaoHuoSystem;
+
+internal static partial class Program
+{
+    // Synthetic scripts in the generated story shape; no game text is included.
+    private const string Menu = """
+        local talk = {}
+        talk[1] = "exit+O_A_001+0+0"
+        local Has_Item = checkpointmanager.Condition("Has_Item")
+        talk[2] = Has_Item and "default+O_A_002+0+0" or "~x"
+        talk[3] = "event+O_A_003+0+0"
+        talk[4] = "default+O_A_004+0+0"
+        local choice_talk = choose(talk)
+        if choice_talk == 1 then
+            --index:O_A_001
+            statmodifymanager.Player("mental", 40, "", 1)
+            statmodifymanager.Character("sister1", -2, 1)
+            statmodifymanager.AddFlag("Talk_01", 1)
+            say(luamanager.GetStoryText("N_A_001")) -- end if then else inside a comment
+        elseif choice_talk == 2 then
+            --index:O_A_002
+            local switch1_result = checkpointmanager.Switch("Lover_001")
+            if switch1_result == 1 then
+                statmodifymanager.Player("mental", 70, "", 1)
+            elseif switch1_result == 2 then
+                statmodifymanager.Player("change-heart", 2, "center", 1)
+            end
+            statmodifymanager.RemoveMisc("7002")
+        elseif choice_talk == 3 then
+            --index:O_A_003
+            var1 = checkpointmanager.Position("Room_Work_001")
+            luamanager.SetNextScript(var1)
+        elseif choice_talk == 4 then
+            --index:O_A_004
+            local dice1 = {}
+            local Work_result = checkpointmanager.Dice("Work_02", random_dice1)
+            dice1[1] = "O_A_005|>=50"
+            dice1[2] = "O_A_006|<50"
+            runwait(dicemenudialog.ExecuteRoll(dice1, 1, "Work_02"))
+            local choice_dice1 = dicemenudialog.ResultSelection
+            if choice_dice1 == 1 then
+                --index:O_A_005
+                luamanager.SetNextScript("work_301")
+            elseif choice_dice1 == 2 then
+                --index:O_A_006
+                statmodifymanager.Player("money", -500, "", 1)
+            end
+        end
+        statmodifymanager.Player("team", 1, "", 1)
+        """;
+
+    private static void OptionTests()
+    {
+        var map = LuaOptions.Analyze(Menu);
+        Test("option branch keeps only its own literal effects", () =>
+        {
+            var a = map["O_A_001"];
+            Require(a.Effects.Count == 3 && a.Effects[0].Kind == "stat" && a.Effects[0].Key == "mental" && a.Effects[0].Value == 40, "stat effect");
+            Require(a.Effects[1].Kind == "relation" && a.Effects[1].Value == -2, "negative relation literal");
+            Require(a.Effects[2].Kind == "flag" && a.Cases.Count == 0 && !a.Unknown, "flag effect, nothing conditional");
+        });
+        Test("shared effects after the menu are never credited to one option", () =>
+        {
+            Require(!map["O_A_004"].Effects.Exists(e => e.Key == "team") && map[LuaOptions.ScriptLevel].Effects.Exists(e => e.Key == "team"), "post-menu effect at script level");
+        });
+        Test("switch arms stay conditional and keep their requirement", () =>
+        {
+            var b = map["O_A_002"];
+            Require(b.Requirement == "Has_Item", "availability condition linked through the option table");
+            Require(b.Cases.Count == 2 && b.Cases[0].When[0].Key == "Lover_001" && b.Cases[0].When[0].Value == 1 && b.Cases[1].When[0].Value == 2, "two switch arms");
+            Require(b.Cases[1].Effects[0].Approximate, "center mode depends on the current value");
+            Require(b.Effects.Count == 1 && b.Effects[0].Kind == "item-remove" && b.Effects[0].ItemType == "misc", "unconditional item use after the switch");
+        });
+        Test("random pool, dice and follow-up script are markers, not invented effects", () =>
+        {
+            Require(map["O_A_003"].Pool == "Room_Work_001" && map["O_A_003"].NextScript.Length == 0, "pool; variable next script is not followed");
+            Require(map["O_A_004"].Dice == "Work_02" && map["O_A_004"].Effects.Count == 0, "dice option");
+            Require(map["O_A_005"].NextScript == "work_301" && map["O_A_006"].Effects[0].Value == -500, "dice result rows map by table, not marker");
+        });
+        Test("option keys parse from every native row format", () =>
+        {
+            Require(LuaOptions.OptionKey("exit+O_X+0+0") == "O_X" && LuaOptions.OptionKey("O_X|>=50") == "O_X" && LuaOptions.OptionKey("~O_X") == "O_X" && LuaOptions.OptionKey("~x") == "", "row formats");
+        });
+        Test("duplicate option keys are reported unknown, not merged silently", () =>
+        {
+            var dup = LuaOptions.Analyze("local t = {}\nt[1] = \"O_D\"\nlocal c = choose(t)\nif c == 1 then\nstatmodifymanager.Player(\"mental\", 1, \"\", 1)\nend\nlocal t2 = {}\nt2[1] = \"O_D\"\nlocal c2 = choose(t2)\nif c2 == 1 then\nstatmodifymanager.Player(\"mental\", 9, \"\", 1)\nend");
+            Require(dup["O_D"].Unknown, "second branch with the same key");
+        });
+        Test("variable amounts are unknown rather than guessed", () =>
+        {
+            var v = LuaOptions.Analyze("local t = {}\nt[1] = \"O_V\"\nlocal c = choose(t)\nif c == 1 then\nstatmodifymanager.Player(\"money\", var1, \"\", 1)\nend");
+            Require(v["O_V"].Unknown && v["O_V"].Effects.Count == 0, "variable argument");
+        });
+        Test("describe keeps condition state, else arm and unnamed flags explicit", () =>
+        {
+            var segments = LuaOptions.Describe(LuaOptions.Merge(map["O_A_002"], null), e => e.Kind == "flag" ? "" : e.Key + e.Value.ToString("+0;-0;0"),
+                (name, arm) => arm == 1 ? new KeyValuePair<string, int>("A 3>=5", -1) : new KeyValuePair<string, int>("", 1),
+                name => new KeyValuePair<string, int>("C 1=1", 1), (template, args) => string.Format(template.Replace("{0}", "{0}").Replace("{1}", "{1}"), args));
+            Require(segments[0].Full == "7002+1", "a met requirement adds no words");
+            Require(segments[1].Full == "若 A 3>=5：mental+70" && segments[1].State == -1, "unmet conditional arm");
+            Require(segments[2].Full == "否则：change-heart+2" && segments[2].State == 1, "else arm");
+            var failing = LuaOptions.Describe(map["O_A_002"], e => e.Key, (n, a) => new KeyValuePair<string, int>("", 0), name => new KeyValuePair<string, int>("C 0=1", -1), (t, a) => string.Format(t, a));
+            Require(failing[0].Full == "需 C 0=1" && failing[0].State == -1, "an unmet requirement leads in red");
+            var flags = LuaOptions.Describe(map["O_A_001"], e => e.Kind == "flag" ? "" : e.Key, (n, a) => default, n => default, (t, a) => string.Format(t, a));
+            Require(flags[0].Full.EndsWith("标记×1", StringComparison.Ordinal), "unnamed flag counted, never dropped");
+        });
+        Test("an else arm never appears without its if", () =>
+        {
+            KeyValuePair<string, int> Arm(string name, int arm) => new(arm == 1 ? "A 3>=5" : "", arm == 1 ? -1 : 1);
+            string Format(string template, object[] args) => string.Format(template, args);
+            // Arm 1 shows nothing here, so the default arm names the condition it stands for.
+            var lone = LuaOptions.Describe(map["O_A_002"], e => e.Key == "mental" ? "" : e.Key, Arm, n => default, Format, n => "未满足 A 3>=5");
+            Require(lone.Count == 2 && lone[1].Full == "若 未满足 A 3>=5：change-heart" && lone[1].State == 1, "orphan else names its condition");
+            var paired = LuaOptions.Describe(map["O_A_002"], e => e.Key, Arm, n => default, Format, n => "未满足 A 3>=5");
+            Require(paired[1].Full == "若 A 3>=5：mental" && paired[2].Full == "否则：change-heart", "else right after its own if");
+            Require(paired[1].Summary == "若…：mental" && paired[1].Head == "若 A 3>=5" && paired[1].Body == "→ mental", "inline leaves the condition to the hover, which splits it from its effects");
+            Require(paired[2].Summary == "否则：change-heart" && paired[2].Head == "否则" && paired[2].Body == "→ change-heart", "else keeps its word inline and in the hover");
+        });
+        Test("named story flags follow stats so a cut line keeps what matters", () =>
+        {
+            var f = LuaOptions.Analyze("local t = {}\nt[1] = \"O_F\"\nlocal c = choose(t)\nif c == 1 then\nstatmodifymanager.SetFlag(\"F1\", 1)\nstatmodifymanager.Player(\"money\", 5, \"\", 1)\nend");
+            var segments = LuaOptions.Describe(f["O_F"], e => e.Kind == "set-flag" ? e.Key + "=" + e.Value : e.Key, (n, a) => default, n => default, (t, a) => string.Format(t, a));
+            Require(segments.Count == 1 && segments[0].Full == "money F1=1", "flag after stat: " + segments[0].Full);
+            Require(segments[0].Summary == "money 标记×1" && segments[0].Head == "money、F1=1", "inline counts flags; the hover names them, separated by 、");
+        });
+        Test("a literal next script contributes its own top level once", () =>
+        {
+            var next = LuaOptions.Analyze("statmodifymanager.Player(\"money\", 1000, \"\", 1)\nluamanager.SetNextScript(\"deeper\")")[LuaOptions.ScriptLevel];
+            next.NextScript = "";
+            var merged = LuaOptions.Merge(map["O_A_005"], next);
+            Require(merged.Effects.Count == 1 && merged.Effects[0].Value == 1000, "one level merged");
+        });
+
+        // Optional offline audit over a local, untracked dump of the game's scripts.
+        string? dump = Environment.GetEnvironmentVariable("ZHAOHUO_LUA_DUMP");
+        if (dump == null || !Directory.Exists(dump)) return;
+        int scripts = 0, options = 0, withEffects = 0, unknown = 0, failures = 0;
+        foreach (var file in Directory.EnumerateFiles(dump, "*.txt"))
+        {
+            try
+            {
+                var result = LuaOptions.Analyze(File.ReadAllText(file)); scripts++;
+                foreach (var pair in result)
+                {
+                    if (pair.Key.Length == 0) continue;
+                    options++; if (!pair.Value.Empty) withEffects++; if (pair.Value.Unknown) unknown++;
+                }
+            }
+            catch (Exception ex) { failures++; Console.WriteLine("AUDIT_FAIL " + Path.GetFileName(file) + " " + ex.Message); }
+        }
+        Console.WriteLine($"AUDIT scripts={scripts} options={options} withConsequence={withEffects} unknown={unknown} failures={failures}");
+        foreach (string name in (Environment.GetEnvironmentVariable("ZHAOHUO_LUA_SHOW") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var pair in LuaOptions.Analyze(File.ReadAllText(Path.Combine(dump, name + ".txt"))))
+            {
+                var p = pair.Value;
+                Console.WriteLine($"SHOW {name} [{pair.Key}] req={p.Requirement} pool={p.Pool} dice={p.Dice} next={p.NextScript} menu={p.Menu} unknown={p.Unknown} effects={string.Join(" ", p.Effects.ConvertAll(e => e.Kind + ":" + e.Key + ":" + e.Value))} cases={string.Join(" | ", p.Cases.ConvertAll(c => string.Join("&", c.When.ConvertAll(w => w.Key + "#" + w.Value)) + "=>" + string.Join(" ", c.Effects.ConvertAll(e => e.Key + ":" + e.Value))))}");
+            }
+    }
+}

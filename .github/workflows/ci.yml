@@ -1,0 +1,27 @@
+name: CI
+
+# The plugin itself compiles against the installed game's assemblies, which are never stored
+# in this repository, so CI runs the tests that need no game files. Releases are built and
+# published from a maintainer machine with scripts/release.ps1.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+      - name: UI state tests
+        run: dotnet run --project tests/ui-state -c Release
+      - name: Localization tests and catalogue coverage
+        run: dotnet run --project tests/localization -c Release -- .

@@ -1,0 +1,17 @@
+# Build output
+**/bin/
+**/obj/
+dist/
+
+# Never commit game files, saves or logs
+*.dll
+*.pdb
+*.exe
+*.sav
+*.save
+*.log
+
+# Local environment
+.env
+.env.*
+!.env.example
