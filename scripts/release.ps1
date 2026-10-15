@@ -78,7 +78,7 @@ try {
     $pluginDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'BepInEx/plugins/ZhaoHuoSystem')
     Copy-Item -LiteralPath $dll -Destination $pluginDir
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
-    $name = "LegendOfMortal-InGameTrainer-v$Version.zip"
+    $name = "ZhaoHuoSystem-v$Version.zip"
     $zip = Join-Path $dist $name
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -95,7 +95,7 @@ try {
     if (git tag --list $tag) { throw "Tag $tag already exists." }
     Invoke-Checked git @('fetch', 'origin', 'main')
     if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) { throw 'HEAD is not origin/main; push main and release from it.' }
-    Invoke-Checked git @('tag', '-a', $tag, '-m', "Legend of Mortal In-Game Trainer $tag")
+    Invoke-Checked git @('tag', '-a', $tag, '-m', "ZhaoHuoSystem $tag")
     Invoke-Checked git @('push', 'origin', $tag)
     $readme = (gh repo view --json url --jq .url) + '#readme'
     $body = @"
@@ -109,7 +109,7 @@ SHA256 ($name): ``$hash``
 "@
     $notesFile = Join-Path $dist "release-notes-$Version.md"
     Set-Content -LiteralPath $notesFile -Value $body -Encoding utf8
-    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", '--title', "Legend of Mortal In-Game Trainer $tag", '--notes-file', $notesFile, '--verify-tag')
+    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", '--title', "ZhaoHuoSystem $tag", '--notes-file', $notesFile, '--verify-tag')
     Write-Host "Released $tag."
 }
 finally { Pop-Location }
