@@ -1,0 +1,88 @@
+# 趙活系統：《活俠傳》遊戲內修改器
+
+[简体中文](README.md) | 繁體中文 | [English](README.en.md) | [한국어](README.ko.md)
+
+《活俠傳》（Legend of Mortal）的遊戲內修改器，以 BepInEx 外掛的形式執行。進入遊戲後按 F8 開啟面板，可以：
+- 查看這次行動會觸發哪些事件，並指定要觸發哪一個；
+- 直接修改屬性和好感；
+- 預先看到對話選項會帶來什麼結果；
+- 指定骰子擲出的結果；
+- 在戰鬥中開啟無敵、一擊必殺。
+
+## 功能
+
+- **事件**：每次行動前，面板會列出這次可能觸發的事件和觸發條件。條件會附上目前的數值（例如「行動次數 3>=1」），已滿足的條件顯示為綠色。
+  - 選好事件後按「指定本次行動」，這次行動就會觸發它。
+  - 條件還差一點時，可以按條件旁的「設為 N」，直接把數值改到滿足。
+- **地圖**：地點旁會標出有幾個事件，有可以觸發的事件時，標記顯示為綠色。滑鼠移上去可以看到事件清單。
+- **數值**：屬性、人物好感、門派關係、劇情標記都可以直接修改。
+- **對話選項**：選項後面會用括號寫出選了會怎樣，例如屬性增減、「若…」條件分支、劇情標記、隨機事件、擲骰。
+  - 綠色表示依你目前的數值會發生，紅色表示不會。
+  - 滑鼠移到選項上，可以看到完整的條件和具體標記。
+- **骰子**：每個結果旁都有「指定 N%」按鈕，按哪個就擲出哪個。不按的話，就是遊戲原本的隨機。
+- **商店**：道具說明下方會多一行實際效果。
+- **戰鬥**：無敵、一擊必殺、氣力不減、技能無冷卻，即時戰役和回合制決鬥都能用。這些開關只在戰鬥中生效，不會寫入存檔。
+- **截圖**：可以一鍵隱藏模組的全部介面，也可以為它設定快捷鍵。
+
+## 安裝
+
+適用 Steam 版 build 25957922，載入器為 BepInEx 6.0.0-be.788（Unity.Mono，Windows x64）。
+
+1. 在 Steam 收藏庫中對《活俠傳》按右鍵 → 管理 → 瀏覽本機檔案，開啟遊戲資料夾（有 `Mortal.exe` 的資料夾）。
+2. 下載 [BepInEx-Unity.Mono-win-x64-6.0.0-be.788](https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip)，把壓縮檔裡的全部內容解壓縮到遊戲資料夾。
+3. 啟動一次遊戲，到標題畫面後退出。
+4. 從 [Releases](../../releases) 下載最新的 `LegendOfMortal-InGameTrainer-v*.zip`，同樣解壓縮到遊戲資料夾。
+5. 進入遊戲並讀取存檔，按 F8 開啟面板。
+
+修改數值和指定事件都會寫入存檔，第一次使用前請先備份存檔。
+
+- **Steam Deck / Linux**：在遊戲內容的啟動選項中填入 `WINEDLLOVERRIDES="winhttp=n,b" %command%`。
+- **更新**：關閉遊戲，用新的 zip 覆蓋解壓縮即可。
+- **解除安裝**：刪除 `BepInEx/plugins/ZhaoHuoSystem` 資料夾。如果要連 BepInEx 一起移除，再刪除遊戲資料夾裡的 `BepInEx`、`winhttp.dll`、`doorstop_config.ini`、`.doorstop_version` 和 `changelog.txt`。
+
+## 使用
+
+- **開啟面板**：按 F8，或點擊畫面左側的「趙活系統」小按鈕。快捷鍵可以在「設定」頁修改，小按鈕可以拖曳。
+- **語言**：介面語言跟隨遊戲，支援繁體中文、簡體中文和韓文。
+- **設定檔**：設定儲存在 `BepInEx/config/local.zhaohuo.system.cfg`。
+
+## 遊戲更新之後
+
+外掛只在適配過的遊戲版本上運作。Steam 更新遊戲後，外掛會自動停用，不會改動遊戲；等這裡發布新版本後再更新即可。
+
+想確認是不是這個原因，可以開啟 `BepInEx/LogOutput.log`：如果裡面出現 `compatible=False`，表示目前的遊戲版本還沒有適配。
+
+## 回報問題
+
+請在 [Issues](../../issues) 中說明遊戲語言、在哪個場景出的問題，並附上 `BepInEx/LogOutput.log`。
+
+## 從原始碼建置
+
+需要準備：
+- Windows；
+- [.NET SDK 9](https://dotnet.microsoft.com/download)；
+- 一份已經安裝好 BepInEx 的遊戲。
+
+外掛在編譯時會直接參照遊戲資料夾裡的組件，不會複製這些檔案。
+
+```powershell
+# 遊戲不在預設路徑時，用 -p:GameDir 指定遊戲資料夾
+dotnet build src/ZhaoHuoSystem/ZhaoHuoSystem.csproj -c Release -p:GameDir="D:\SteamLibrary\steamapps\common\LegendOfMortal"
+
+# 不需要遊戲的測試，CI 也會執行這兩項
+dotnet run --project tests/ui-state -c Release
+dotnet run --project tests/localization -c Release -- .
+
+# 需要本機遊戲的測試
+dotnet run --project tests/native -c Release -p:GameDir="D:\...\LegendOfMortal" -- "D:\...\LegendOfMortal"
+```
+
+建置結果是 `src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll`，把它放進 `BepInEx/plugins/ZhaoHuoSystem/` 即可。
+
+正式版本由維護者在裝有遊戲的電腦上用 `scripts/release.ps1` 發布。指令碼會依序核對遊戲版本、建置、執行全部測試、打包並上傳到 Releases。
+
+## 授權
+
+[MIT](LICENSE) © Toufff。可以自由使用、修改、再散布，也可以商用，只需保留著作權聲明。
+
+這是玩家自製的模組，與《活俠傳》的開發商和發行商無關，不包含任何遊戲檔案。

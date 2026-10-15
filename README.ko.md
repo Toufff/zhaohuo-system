@@ -1,6 +1,6 @@
 # 조활 시스템: 《활협전》 게임 내 트레이너
 
-[简体中文](README.md) | [English](README.en.md) | 한국어
+[简体中文](README.md) | [繁體中文](README.zh-Hant.md) | [English](README.en.md) | 한국어
 
 《활협전》(Legend of Mortal, 活侠传)용 게임 내 트레이너(치트 패널)이며, BepInEx 플러그인으로 동작합니다. 게임에서 F8을 누르면 패널이 열리고 다음 기능을 쓸 수 있습니다.
 

@@ -1,6 +1,6 @@
 # 赵活系统：《活侠传》游戏内修改器
 
-简体中文 | [English](README.en.md) | [한국어](README.ko.md)
+简体中文 | [繁體中文](README.zh-Hant.md) | [English](README.en.md) | [한국어](README.ko.md)
 
 《活侠传》（Legend of Mortal）的游戏内修改器，以 BepInEx 插件的形式运行。进游戏后按 F8 打开面板，可以：
 - 查看这次行动会触发哪些事件，并指定触发哪一个；

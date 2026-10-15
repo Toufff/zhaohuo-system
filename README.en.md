@@ -1,6 +1,6 @@
 # ZhaoHuo System: in-game trainer for Legend of Mortal
 
-[简体中文](README.md) | English | [한국어](README.ko.md)
+[简体中文](README.md) | [繁體中文](README.zh-Hant.md) | English | [한국어](README.ko.md)
 
 An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped as a BepInEx plugin. Press F8 in game to:
 - see which events your next action can trigger, and pick the one you want;
