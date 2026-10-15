@@ -97,14 +97,14 @@ try {
     if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) { throw 'HEAD is not origin/main; push main and release from it.' }
     Invoke-Checked git @('tag', '-a', $tag, '-m', "Legend of Mortal In-Game Trainer $tag")
     Invoke-Checked git @('push', 'origin', $tag)
-    $readme = (gh repo view --json url --jq .url) + '/blob/main'
+    $readme = (gh repo view --json url --jq .url) + '#readme'
     $body = @"
 $notes
 
 ---
 适配游戏 / Game: Steam build $build
 加载器 / Loader: BepInEx $loader (Unity.Mono, Windows x64)
-安装：把 zip 解压到游戏目录（Mortal.exe 所在文件夹）。Install: extract the zip into the game folder (where Mortal.exe is). README: [简体中文]($readme/README.md) · [繁體中文]($readme/README.zh-Hant.md) · [English]($readme/README.en.md) · [한국어]($readme/README.ko.md)
+安装：把 zip 解压到游戏目录（Mortal.exe 所在文件夹）。Install: extract the zip into the game folder (where Mortal.exe is). README（简体中文 · 繁體中文 · English · 한국어）: $readme
 SHA256 ($name): ``$hash``
 "@
     $notesFile = Join-Path $dist "release-notes-$Version.md"
