@@ -20,6 +20,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 - **Events**: before each action, the panel lists the events it can trigger and their conditions. Conditions show current values (for example, `Actions 3>=1`), and the ones you already meet are green. Each event also shows what it changes when it triggers (stats, affection and more), gains in green and losses in red.
   - Pick an event and press 指定本次行动 (choose for this action); this action will trigger it.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
+  - When an action stops for you to choose, press 重复上次选择 (repeat last choice) to pick the same event as last time for that action.
 - **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list.
 
   <img src="media/map-hover.webp" width="420" alt="Event count badges on the map and the hover list">
