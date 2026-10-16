@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.12")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.13")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -55,6 +55,7 @@ public sealed class Plugin : BaseUnityPlugin
         return foregroundId == (uint)processId;
     }
     private string diagnostics = "", fingerprints = "";
+    private readonly List<string> skippedPatches = new();
     private Diagnostics? sessionLog;
     private void Awake()
     {
@@ -70,14 +71,17 @@ public sealed class Plugin : BaseUnityPlugin
             ["Mortal.Free.dll"] = "F82558A87E1A735E5DCA71A106B27128BE9FC376A0120CCFC8DD0D50158F54C9"
             ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
         };
-        Adapter.Compatible = expected.All(entry => Hash(Path.Combine(managed, entry.Key)) == entry.Value);
+        // Diagnostics only. Game updates are mostly small fixes that leave the mod working, so nothing is switched off here;
+        // a patch that no longer fits is skipped on its own (PatchEach) and the rest keep working.
+        Adapter.TestedBuild = expected.All(entry => Hash(Path.Combine(managed, entry.Key)) == entry.Value);
         // The mod's own session log starts before anything else is logged, so BOOT and fingerprints are in it.
         diagnostics = Path.Combine(Paths.BepInExRootPath, "ZhaoHuoSystem"); Directory.CreateDirectory(diagnostics);
         Diagnostics.Scene = SceneManager.GetActiveScene().name;
-        sessionLog = new Diagnostics(diagnostics, Logger.SourceName, $"ZhaoHuoSystem {typeof(Plugin).Assembly.GetName().Version} | game {Adapter.RuntimeVersion} | Unity {Application.unityVersion} | compatible={Adapter.Compatible} | started {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sessionLog = new Diagnostics(diagnostics, Logger.SourceName, $"ZhaoHuoSystem {typeof(Plugin).Assembly.GetName().Version} | game {Adapter.RuntimeVersion} | Unity {Application.unityVersion} | testedBuild={Adapter.TestedBuild} | started {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         BepInEx.Logging.Logger.Listeners.Add(sessionLog);
-        Logger.LogInfo($"BOOT plugin=0.3.12 game={Adapter.RuntimeVersion} unity={Application.unityVersion} x64={IntPtr.Size == 8} compatible={Adapter.Compatible}");
+        Logger.LogInfo($"BOOT plugin={typeof(Plugin).Assembly.GetName().Version} game={Adapter.RuntimeVersion} unity={Application.unityVersion} x64={IntPtr.Size == 8} testedBuild={Adapter.TestedBuild}");
         foreach (var entry in expected) Logger.LogInfo("FINGERPRINT " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)));
+        if (!Adapter.TestedBuild) Logger.LogWarning("BUILD_CHANGED game assemblies differ from the build this version was developed on; all features stay on, any patch that no longer fits is skipped and logged");
         fingerprints = string.Join("\n", expected.Select(entry => "fingerprint " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)) + (Hash(Path.Combine(managed, entry.Key)) == entry.Value ? "" : " (expected " + entry.Value + ")")));
         L.RefreshLanguage();
         window = new ToolWindow(Adapter);
@@ -117,12 +121,24 @@ public sealed class Plugin : BaseUnityPlugin
         LocalizationManager.OnLanguageChanged += LanguageChanged;
         window.ExportDiagnostics = ExportDiagnostics;
         harmony = new Harmony("local.zhaohuo.system");
-        if (Adapter.Compatible) { harmony.PatchAll(typeof(Plugin).Assembly); CombatCheats.Install(harmony, Logger); }
+        PatchEach();
+        try { CombatCheats.Install(harmony, Logger); }
+        catch (Exception ex) { Logger.LogError("PATCH_SKIPPED CombatCheats " + ex.GetBaseException().Message); }
         SceneManager.activeSceneChanged += SceneChanged;
         MenuSignals.OnMenuEnd += MenuEnded;
         MenuSignals.OnMenuStart += MenuStarted;
         Logger.LogInfo($"READY panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden}; diagnostics=" + diagnostics);
         Logger.LogInfo($"INPUT keyboard={(Keyboard.current == null ? "none" : Keyboard.current.name)} focused={Application.isFocused}");
+    }
+    /// <summary>Each patch class on its own: one that no longer fits the game is skipped and logged, the others still apply.</summary>
+    private void PatchEach()
+    {
+        foreach (var type in AccessTools.GetTypesFromAssembly(typeof(Plugin).Assembly))
+        {
+            try { harmony.CreateClassProcessor(type).Patch(); }
+            catch (Exception ex) { skippedPatches.Add(type.Name); Logger.LogError("PATCH_SKIPPED " + type.Name + " " + ex.GetBaseException().Message); }
+        }
+        Logger.LogInfo("PATCHES skipped=" + skippedPatches.Count + (skippedPatches.Count > 0 ? " " + string.Join(",", skippedPatches) : ""));
     }
     private static string Hash(string path)
     {
@@ -136,9 +152,9 @@ public sealed class Plugin : BaseUnityPlugin
             var steamapps = Directory.GetParent(Paths.GameRootPath)?.Parent?.FullName;
             var manifest = steamapps == null ? "" : Path.Combine(steamapps, "appmanifest_1859910.acf");
             var build = File.Exists(manifest) ? Regex.Match(File.ReadAllText(manifest), "\"buildid\"\\s+\"(\\d+)\"").Groups[1].Value : "";
-            return build.Length > 0 ? "build " + build : (string.IsNullOrWhiteSpace(Application.version) ? "本机游戏（指纹校验）" : Application.version);
+            return build.Length > 0 ? "build " + build : (string.IsNullOrWhiteSpace(Application.version) ? "本机游戏" : Application.version);
         }
-        catch { return "本机游戏（指纹校验）"; }
+        catch { return "本机游戏"; }
     }
     private void SceneChanged(Scene before, Scene after)
     {
@@ -365,7 +381,8 @@ public sealed class Plugin : BaseUnityPlugin
     private string EnvironmentText() => string.Join("\n", new[]
     {
         "plugin=" + typeof(Plugin).Assembly.GetName().Version, "pluginSha256=" + Hash(typeof(Plugin).Assembly.Location), "game=" + Adapter.RuntimeVersion,
-        "compatible=" + Adapter.Compatible, fingerprints, "unity=" + Application.unityVersion, "bepinex=" + typeof(Paths).Assembly.GetName().Version,
+        "testedBuild=" + Adapter.TestedBuild, fingerprints,
+        "skippedPatches=" + string.Join(",", skippedPatches), "combatMissing=" + string.Join(",", CombatCheats.Missing), "unity=" + Application.unityVersion, "bepinex=" + typeof(Paths).Assembly.GetName().Version,
         "language=" + L.LanguageId, "screen=" + Screen.width + "x" + Screen.height + " " + Screen.fullScreenMode, "os=" + SystemInfo.operatingSystem,
         "gpu=" + SystemInfo.graphicsDeviceName, "scene=" + SceneManager.GetActiveScene().name, "panelKey=" + window.PanelKey + " hideKey=" + window.HideKey + " hidden=" + window.Hidden,
         "combat invincible=" + CombatCheats.Invincible + " oneHit=" + CombatCheats.OneHit + " keepStamina=" + CombatCheats.KeepStamina + " noCooldown=" + CombatCheats.NoCooldown,

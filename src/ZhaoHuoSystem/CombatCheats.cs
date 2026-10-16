@@ -67,7 +67,11 @@ internal static class CombatCheats
         var scriptAction = AccessTools.Method(AccessTools.TypeByName("Mortal.Combat.CombatEventActionModifyStat"), "Action");
         var moveNext = scriptAction == null ? null : AccessTools.EnumeratorMoveNext(scriptAction);
         if (moveNext == null) Missing.Add("Mortal.Combat.CombatEventActionModifyStat:Action");
-        else harmony.Patch(moveNext, prefix: new HarmonyMethod(typeof(CombatCheats), nameof(ScriptBegin)), finalizer: new HarmonyMethod(typeof(CombatCheats), nameof(ScriptEnd)));
+        else
+        {
+            try { harmony.Patch(moveNext, prefix: new HarmonyMethod(typeof(CombatCheats), nameof(ScriptBegin)), finalizer: new HarmonyMethod(typeof(CombatCheats), nameof(ScriptEnd))); }
+            catch (Exception ex) { Missing.Add("Mortal.Combat.CombatEventActionModifyStat:Action " + ex.GetBaseException().Message); }
+        }
         foreach (var missing in Missing) logger.LogWarning("COMBAT missing " + missing);
         Installed = true;
         logger.LogInfo($"COMBAT ready missing={Missing.Count} invincible={Invincible} oneHit={OneHit} keepStamina={KeepStamina} noCooldown={NoCooldown}");
@@ -75,11 +79,16 @@ internal static class CombatCheats
 
     private static void Patch(Harmony harmony, string target, string? prefix = null, string? postfix = null)
     {
-        int colon = target.IndexOf(':');
-        var method = AccessTools.Method(AccessTools.TypeByName(target.Substring(0, colon)), target.Substring(colon + 1));
-        if (method == null) { Missing.Add(target); return; }
-        harmony.Patch(method, prefix: prefix == null ? null : new HarmonyMethod(typeof(CombatCheats), prefix),
-            postfix: postfix == null ? null : new HarmonyMethod(typeof(CombatCheats), postfix));
+        // A game update may change a target; only that effect is lost.
+        try
+        {
+            int colon = target.IndexOf(':');
+            var method = AccessTools.Method(AccessTools.TypeByName(target.Substring(0, colon)), target.Substring(colon + 1));
+            if (method == null) { Missing.Add(target); return; }
+            harmony.Patch(method, prefix: prefix == null ? null : new HarmonyMethod(typeof(CombatCheats), prefix),
+                postfix: postfix == null ? null : new HarmonyMethod(typeof(CombatCheats), postfix));
+        }
+        catch (Exception ex) { Missing.Add(target + " " + ex.GetBaseException().Message); }
     }
 
     private static int Side(object? character)

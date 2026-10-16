@@ -50,7 +50,8 @@ public sealed class GameAdapter : IGameAdapter
     private readonly Dictionary<string, string> effectSummaries = new();
     private long presentationRevision = -1;
     public ToolSnapshot Snapshot { get; private set; } = new();
-    public bool Compatible { get; set; }
+    /// <summary>Diagnostics only: the game assemblies match the build this version was developed on. Nothing is gated on it.</summary>
+    public bool TestedBuild { get; set; }
     public string RuntimeVersion { get; set; } = "运行版本待核验";
     public GameAdapter(ManualLogSource log, bool selectBeforeAction = true, Action<bool>? selectionChanged = null)
     { this.log = log; selectionEnabled = selectBeforeAction; this.selectionChanged = selectionChanged; }
@@ -95,7 +96,7 @@ public sealed class GameAdapter : IGameAdapter
     {
         try
         {
-            if (!selectionEnabled || !Compatible || token != activeLuaToken) return false;
+            if (!selectionEnabled || token != activeLuaToken) return false;
             if (poolName == name && actionWaiting) return true;
             if (poolName == name && actionReleased) { actionReleased = false; return false; }
             revision++; poolName = name; pendingEvent = ""; actionReleased = false;
@@ -146,8 +147,8 @@ public sealed class GameAdapter : IGameAdapter
             if (contextIdentity != identity) Invalidate("场景已变化，旧指定已清除");
             var p = PlayerStatManagerData.Instance;
             var scene = SceneManager.GetActiveScene().name;
-            var ready = Compatible && p != null && p.Stats != null && (scene.IndexOf("story", StringComparison.OrdinalIgnoreCase) >= 0 || scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0);
-            var next = new ToolSnapshot { Ready = ready, Revision = revision, Version = RuntimeVersion, Location = ready ? (actualLocation.Length > 0 ? L.DisplayText(actualLocation) : L.Text(scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0 ? "当前地图" : "当前剧情")) : "", Action = poolName.Length > 0 ? L.Text("活动事件") : "", ContextDetail = identity + "\n" + L.Text("检查点") + " " + poolName, Status = Compatible ? StatusText() : L.Text("版本指纹不匹配，写入已停用"), PendingEventId = pendingEvent, ActionWaiting = actionWaiting, ActionSelectionEnabled = selectionEnabled };
+            var ready = p != null && p.Stats != null && (scene.IndexOf("story", StringComparison.OrdinalIgnoreCase) >= 0 || scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0);
+            var next = new ToolSnapshot { Ready = ready, Revision = revision, Version = RuntimeVersion, Location = ready ? (actualLocation.Length > 0 ? L.DisplayText(actualLocation) : L.Text(scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0 ? "当前地图" : "当前剧情")) : "", Action = poolName.Length > 0 ? L.Text("活动事件") : "", ContextDetail = identity + "\n" + L.Text("检查点") + " " + poolName, Status = StatusText(), PendingEventId = pendingEvent, ActionWaiting = actionWaiting, ActionSelectionEnabled = selectionEnabled };
             values.Clear(); ambiguousFields.Clear(); fieldIdentities.Clear(); eventObjects.Clear();
             if (ready && p != null)
             {
@@ -372,7 +373,7 @@ public sealed class GameAdapter : IGameAdapter
         var dice = ReadDice();
         var target = pendingDice; var branch = pendingBranch; pendingDice = null; pendingBranch = null;
         if (!target.HasValue && !branch.HasValue) return;
-        if (!Compatible || pendingDiceName != name || pendingAddition != dice.Addition) { status = "骰子条件变化，指定失效"; log.LogWarning("DICE_REJECTED " + name); return; }
+        if (pendingDiceName != name || pendingAddition != dice.Addition) { status = "骰子条件变化，指定失效"; log.LogWarning("DICE_REJECTED " + name); return; }
         if (target.HasValue)
         {
             // The game adds its own bonuses to this raw value and picks the branch itself; a raw value outside the
