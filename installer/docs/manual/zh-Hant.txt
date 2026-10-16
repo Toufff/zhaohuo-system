@@ -1,7 +1,7 @@
 趙活系統 v{VERSION} —— 《活俠傳》遊戲內修改器
 ================================================
 
-適用版本：Steam 版《活俠傳》build 25957922。遊戲更新後，模組會自動停用，等這裡發布新版本後再更新。
+基於 Steam 版《活俠傳》build 25957922 開發。遊戲小更新一般不影響使用；更新後如果出了問題，先解除安裝再回報。
 
 這是免安裝版：沒有安裝程式，檔案直接放進遊戲資料夾。包裡已附帶官方 BepInEx 6.0.0-be.788。
 
@@ -24,7 +24,7 @@
 附 install.bat 和 uninstall.bat 的一鍵安裝版：https://github.com/Toufff/zhaohuo-system/releases
 
 【遇到問題】
-- 進入遊戲後按 F8 沒有反應：開啟遊戲資料夾裡的 BepInEx/LogOutput.log，如果出現 compatible=False，表示目前的遊戲版本還沒有適配。
+- 進入遊戲後按 F8 沒有反應：看看遊戲資料夾裡有沒有 BepInEx/LogOutput.log。沒有的話表示 BepInEx 沒裝好，請依上面的步驟重新解壓縮一次；有的話請依下面的方式回報。
 - 回報問題：https://github.com/Toufff/zhaohuo-system/issues
   請寫明遊戲語言、出問題的場景，並附上設定頁「匯出診斷」產生的資料夾，或 BepInEx/LogOutput.log。
 

@@ -54,7 +54,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 ## Install
 
-Supports the Steam release, build 25957922.
+Built and tested on the Steam release, build 25957922.
 
 1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
 2. Close the game and double-click `install.bat`.
@@ -85,9 +85,7 @@ Edited values and chosen events end up in your save, so back up your saves befor
 
 ## After a game update
 
-The plugin only runs on game versions it has been checked against. When Steam updates the game, the plugin switches itself off and leaves the game alone until a new release supports that version.
-
-To confirm this is what happened, open `BepInEx/LogOutput.log`. If it contains `compatible=False`, the current game version is not supported yet.
+The plugin keeps working after Steam updates the game; small patches usually don't affect it. If something breaks after an update, run `uninstall.bat` to remove it and report the problem in [Issues](https://github.com/Toufff/zhaohuo-system/issues). A fixed release will follow.
 
 ## Reporting problems
 

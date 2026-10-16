@@ -54,7 +54,7 @@
 
 ## 安裝
 
-適用 Steam 版 build 25957922。
+基於 Steam 版 build 25957922 開發與測試。
 
 1. 從 [Releases](https://github.com/Toufff/zhaohuo-system/releases) 下載最新的 `ZhaoHuoSystem-v*.zip`，解壓縮到任意資料夾。
 2. 關閉遊戲，按兩下 `install.bat`。
@@ -85,9 +85,7 @@
 
 ## 遊戲更新之後
 
-外掛只在適配過的遊戲版本上運作。Steam 更新遊戲後，外掛會自動停用，不會改動遊戲；等這裡發布新版本後再更新即可。
-
-想確認是不是這個原因，可以開啟 `BepInEx/LogOutput.log`：如果裡面出現 `compatible=False`，表示目前的遊戲版本還沒有適配。
+遊戲更新後外掛照常運作，小更新一般不影響使用。如果更新後出了問題，可以先按兩下 `uninstall.bat` 解除安裝，再到 [Issues](https://github.com/Toufff/zhaohuo-system/issues) 回報，修好後會發布新版本。
 
 ## 回報問題
 

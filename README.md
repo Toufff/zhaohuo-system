@@ -54,7 +54,7 @@
 
 ## 安装
 
-适配 Steam 版 build 25957922。
+基于 Steam 版 build 25957922 开发和测试。
 
 1. 从 [Releases](https://github.com/Toufff/zhaohuo-system/releases) 下载最新的 `ZhaoHuoSystem-v*.zip`，解压到任意文件夹。
 2. 关闭游戏，双击 `install.bat`。
@@ -85,9 +85,7 @@
 
 ## 游戏更新以后
 
-插件只在适配过的游戏版本上工作。Steam 更新游戏后，插件会自动停用，不会改动游戏；等这里发布新版本后再更新即可。
-
-想确认是不是这个原因，可以打开 `BepInEx/LogOutput.log`：如果里面出现 `compatible=False`，说明当前游戏版本还没有适配。
+游戏更新后插件照常运行，小更新一般不影响使用。如果更新后出了问题，可以先双击 `uninstall.bat` 卸载，再到 [Issues](https://github.com/Toufff/zhaohuo-system/issues) 反馈，修好后会发布新版本。
 
 ## 反馈问题
 

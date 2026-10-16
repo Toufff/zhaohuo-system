@@ -55,7 +55,7 @@
 
 ## 설치
 
-Steam 버전 build 25957922 기준으로 만들어졌습니다.
+Steam 버전 build 25957922에서 개발하고 테스트했습니다.
 
 1. [Releases](https://github.com/Toufff/zhaohuo-system/releases)에서 최신 `ZhaoHuoSystem-v*.zip`을 내려받아 아무 폴더에나 압축을 풉니다.
 2. 게임을 종료하고 `install.bat`을 더블클릭합니다.
@@ -86,9 +86,7 @@ Steam 버전 build 25957922 기준으로 만들어졌습니다.
 
 ## 게임이 업데이트되면
 
-이 플러그인은 지원을 확인한 게임 버전에서만 동작합니다. Steam에서 게임이 업데이트되면 플러그인이 스스로 꺼지며, 게임에는 아무 영향도 주지 않습니다. 새 버전이 올라오면 그때 업데이트하세요.
-
-이 경우인지 확인하려면 `BepInEx/LogOutput.log`를 열어 보세요. `compatible=False`가 있으면 현재 게임 버전은 아직 지원되지 않는 것입니다.
+게임이 업데이트되어도 플러그인은 그대로 동작합니다. 작은 업데이트는 대부분 영향이 없습니다. 업데이트 후 문제가 생기면 `uninstall.bat`으로 삭제한 뒤 [Issues](https://github.com/Toufff/zhaohuo-system/issues)에 알려 주세요. 수정된 버전을 올리겠습니다.
 
 ## 문제 신고
 

@@ -8,8 +8,9 @@
   so releases are built here rather than on GitHub Actions. The script refuses to continue when:
     - the working tree has uncommitted changes;
     - the version in ZhaoHuoSystem.csproj, Plugin.cs or CHANGELOG.md differs from -Version;
-    - the game's assemblies do not match the fingerprints the plugin checks at startup;
     - the build or any test fails.
+  It only warns when the installed game's assemblies differ from the fingerprints recorded in Plugin.cs
+  (the build the plugin was developed on); the plugin itself keeps running on other builds.
   Without -Publish it only writes dist/ZhaoHuoSystem-v<Version>.zip (built by package.ps1: plugin, one-click
   installer and the bundled official BepInEx) and its .sha256 file, plus dist/ZhaoHuoSystem-v<Version>-manual.zip,
   the script-free package for Nexus Mods (uploaded there by hand, not attached to the GitHub release).
@@ -51,11 +52,10 @@ try {
     Step "Checking game assemblies in $GameDir"
     if (-not (Test-Path -LiteralPath (Join-Path $GameDir 'Mortal.exe'))) { throw "Mortal.exe not found in $GameDir; pass -GameDir or set ZHAOHUO_GAME_DIR." }
     $fingerprints = [regex]::Matches($plugin, '\["(?<file>[\w.]+\.dll)"\]\s*=\s*"(?<hash>[0-9A-F]{64})"')
-    if ($fingerprints.Count -eq 0) { throw 'No assembly fingerprints found in Plugin.cs.' }
     foreach ($fingerprint in $fingerprints) {
         $file = $fingerprint.Groups['file'].Value
         $actual = (Get-FileHash -LiteralPath (Join-Path $GameDir "Mortal_Data\Managed\$file") -Algorithm SHA256).Hash
-        if ($actual -ne $fingerprint.Groups['hash'].Value) { throw "$file does not match the fingerprint in Plugin.cs; this game build is not the supported one." }
+        if ($actual -ne $fingerprint.Groups['hash'].Value) { Write-Warning "$file differs from the build recorded in Plugin.cs; building against the installed game anyway." }
     }
     $manifest = Join-Path (Split-Path -Parent (Split-Path -Parent $GameDir)) 'appmanifest_1859910.acf'
     $build = if (Test-Path -LiteralPath $manifest) { [regex]::Match((Get-Content -LiteralPath $manifest -Raw), '"buildid"\s+"(\d+)"').Groups[1].Value } else { '' }
@@ -95,7 +95,7 @@ try {
 $notes
 
 ---
-适配游戏 / Game: Steam build $build
+开发测试 / Built on: Steam build $build
 加载器 / Loader: BepInEx $loader (Unity.Mono, Windows x64)
 安装：解压后双击 install.bat，卸载双击 uninstall.bat。Install: extract the zip and double-click install.bat; uninstall.bat removes it. README（简体中文 · 繁體中文 · English · 한국어）: $readme
 SHA256 ($name): ``$hash``

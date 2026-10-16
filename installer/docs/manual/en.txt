@@ -1,7 +1,7 @@
 ZhaoHuo System v{VERSION} - in-game trainer for Legend of Mortal
 ================================================================
 
-Supports the Steam release, build 25957922. When the game updates, the mod switches itself off until a new version is released.
+Built for the Steam release, build 25957922. Small game updates usually don't affect it; if something breaks after an update, uninstall it and report the problem.
 
 This is the manual package: there is no installer, the files go straight into the game folder. It already contains the official BepInEx 6.0.0-be.788.
 
@@ -24,7 +24,7 @@ To remove BepInEx as well (other BepInEx mods stop working too), also delete the
 The one-click package with install.bat and uninstall.bat is on https://github.com/Toufff/zhaohuo-system/releases
 
 TROUBLESHOOTING
-- F8 does nothing in game: open BepInEx/LogOutput.log in the game folder. If it contains compatible=False, the current game version is not supported yet.
+- F8 does nothing in game: check that BepInEx/LogOutput.log exists in the game folder. If it doesn't, BepInEx is not installed; extract the package again. If it does, report the problem as described below.
 - Report a problem: https://github.com/Toufff/zhaohuo-system/issues
   Include your game language, what you were doing, and the folder created by the 导出诊断 (Export diagnostics) button on the 设置 (Settings) tab, or BepInEx/LogOutput.log.
 
