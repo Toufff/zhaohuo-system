@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.11")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.12")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -76,7 +76,7 @@ public sealed class Plugin : BaseUnityPlugin
         Diagnostics.Scene = SceneManager.GetActiveScene().name;
         sessionLog = new Diagnostics(diagnostics, Logger.SourceName, $"ZhaoHuoSystem {typeof(Plugin).Assembly.GetName().Version} | game {Adapter.RuntimeVersion} | Unity {Application.unityVersion} | compatible={Adapter.Compatible} | started {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         BepInEx.Logging.Logger.Listeners.Add(sessionLog);
-        Logger.LogInfo($"BOOT plugin=0.3.11 game={Adapter.RuntimeVersion} unity={Application.unityVersion} x64={IntPtr.Size == 8} compatible={Adapter.Compatible}");
+        Logger.LogInfo($"BOOT plugin=0.3.12 game={Adapter.RuntimeVersion} unity={Application.unityVersion} x64={IntPtr.Size == 8} compatible={Adapter.Compatible}");
         foreach (var entry in expected) Logger.LogInfo("FINGERPRINT " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)));
         fingerprints = string.Join("\n", expected.Select(entry => "fingerprint " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)) + (Hash(Path.Combine(managed, entry.Key)) == entry.Value ? "" : " (expected " + entry.Value + ")")));
         L.RefreshLanguage();

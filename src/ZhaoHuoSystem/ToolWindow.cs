@@ -323,9 +323,7 @@ public sealed class ToolWindow : IDisposable
         string context = knownLocation ? _snapshot.Location : "尚未读取当前位置";
         if (knownLocation && !string.IsNullOrWhiteSpace(_snapshot.Action)) context += " · " + _snapshot.Action;
         if (knownLocation && previewing) context += " · " + L.Format("预览：{0}", _snapshot.PreviewTitle);
-        Label(new Rect(r.x, r.y, r.width - S(212), S(28)), context, _heading, _snapshot.ContextDetail);
-        if (Button(new Rect(r.xMax - S(202), r.y, S(202), S(28)), "行动前选择结果", "event.wait.toggle", _snapshot.ActionSelectionEnabled ? _tabSelected : _button))
-            Execute(() => _adapter.SetActionSelection(!_snapshot.ActionSelectionEnabled));
+        Label(new Rect(r.x, r.y, r.width, S(28)), context, _heading, _snapshot.ContextDetail);
         Rect bottom = new(r.x, r.yMax - S(43), r.width, S(36));
         DrawEventPending(bottom);
         if (!knownLocation)
@@ -482,6 +480,12 @@ public sealed class ToolWindow : IDisposable
     private void DrawSettings(Rect r)
     {
         float y = r.y, labelWidth = Mathf.Min(S(220), r.width * .36f), x = r.x + labelWidth + S(10);
+        // Pausing each action for a choice is the one gameplay switch here; on by default, saved like the rest.
+        Label(new Rect(r.x, y, labelWidth, S(32)), "行动前选择结果", _label);
+        if (Button(new Rect(x, y, S(110), S(30)), _snapshot.ActionSelectionEnabled ? "开启" : "关闭", "settings.selection", _snapshot.ActionSelectionEnabled ? _tabSelected : _button))
+            Execute(() => _adapter.SetActionSelection(!_snapshot.ActionSelectionEnabled));
+        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。", _muted);
+        y += S(52);
         KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
         Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
         if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
