@@ -9,7 +9,7 @@ An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped
 - choose dice results;
 - turn on god mode and one-hit kills in combat.
 
-The in-game panel follows the game's language and is available in Simplified Chinese, Traditional Chinese and Korean. Other game languages show Simplified Chinese.
+The in-game panel follows the game's language and is available in Simplified Chinese, Traditional Chinese and Korean.
 
 ![Seeing which events this action can trigger and choosing one in the panel](media/event-choose.webp)
 
