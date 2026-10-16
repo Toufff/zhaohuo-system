@@ -1,0 +1,32 @@
+赵活系统 v{VERSION} —— 《活侠传》游戏内修改器
+================================================
+
+适用版本：Steam 版《活侠传》build 25957922。游戏更新后，模组会自动停用，等这里发布新版本后再更新。
+
+这是免安装版：没有安装程序，文件直接放进游戏文件夹。包里已附带官方 BepInEx 6.0.0-be.788。
+
+【安装】
+1. 关闭游戏。
+2. 打开游戏文件夹：在 Steam 库里右键《活侠传》→ 管理 → 浏览本地文件（有 Mortal.exe 的那个文件夹）。
+3. 把压缩包里的全部内容解压到这个文件夹，提示重名时选择替换。
+   - 已经给其他模组装过 BepInEx 6（Unity.Mono）的，只复制 BepInEx/plugins/ZhaoHuoSystem 就行。
+   - 游戏里装的是 BepInEx 5 的，请先删掉，不要直接覆盖。
+4. Steam Deck / Linux：在游戏的启动选项里填 WINEDLLOVERRIDES="winhttp=n,b" %command%
+5. 启动游戏，读档后按 F8 打开面板，也可以点屏幕左侧的「赵活系统」小按钮。
+
+修改数值和指定事件都会写进存档，第一次使用前请先备份存档。
+
+【更新】把新版本按同样的方式解压到游戏文件夹，替换旧文件。
+
+【卸载】删除游戏文件夹里的 BepInEx/plugins/ZhaoHuoSystem、BepInEx/ZhaoHuoSystem 和 BepInEx/config/local.zhaohuo.system.cfg。
+如果连 BepInEx 也要删除（其他 BepInEx 模组也会一起失效），再删除 BepInEx 文件夹、winhttp.dll、doorstop_config.ini、.doorstop_version 和 changelog.txt。存档不受影响。
+
+带 install.bat 和 uninstall.bat 的一键安装版：https://github.com/Toufff/zhaohuo-system/releases
+
+【遇到问题】
+- 进游戏后按 F8 没反应：打开游戏文件夹里的 BepInEx/LogOutput.log，如果有 compatible=False，说明当前游戏版本还没有适配。
+- 反馈问题：https://github.com/Toufff/zhaohuo-system/issues
+  请写明游戏语言、出问题的场景，并附上设置页「导出诊断」生成的文件夹，或 BepInEx/LogOutput.log。
+
+项目主页：https://github.com/Toufff/zhaohuo-system
+MIT © Toufff。玩家自制模组，与《活侠传》的开发商和发行商无关，不包含任何游戏文件。

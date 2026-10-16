@@ -1,0 +1,32 @@
+ZhaoHuo System v{VERSION} - in-game trainer for Legend of Mortal
+================================================================
+
+Supports the Steam release, build 25957922. When the game updates, the mod switches itself off until a new version is released.
+
+This is the manual package: there is no installer, the files go straight into the game folder. It already contains the official BepInEx 6.0.0-be.788.
+
+INSTALL
+1. Close the game.
+2. Open the game folder: in your Steam library, right-click Legend of Mortal -> Manage -> Browse local files (the folder with Mortal.exe).
+3. Extract everything in the zip into that folder. If Windows asks, replace the files.
+   - Already using BepInEx 6 (Unity.Mono) for other mods? Copying BepInEx/plugins/ZhaoHuoSystem is enough.
+   - If the game has BepInEx 5, remove it first instead of extracting over it.
+4. Steam Deck / Linux: set the game's launch options to WINEDLLOVERRIDES="winhttp=n,b" %command%
+5. Start the game, load a save and press F8, or click the small 赵活系统 button on the left edge of the screen.
+
+Edited values and chosen events end up in your save, so back up your saves before the first use.
+
+UPDATE: extract the new version into the game folder the same way and replace the files.
+
+UNINSTALL: in the game folder, delete BepInEx/plugins/ZhaoHuoSystem, BepInEx/ZhaoHuoSystem and BepInEx/config/local.zhaohuo.system.cfg.
+To remove BepInEx as well (other BepInEx mods stop working too), also delete the BepInEx folder, winhttp.dll, doorstop_config.ini, .doorstop_version and changelog.txt. Your saves are not affected.
+
+The one-click package with install.bat and uninstall.bat is on https://github.com/Toufff/zhaohuo-system/releases
+
+TROUBLESHOOTING
+- F8 does nothing in game: open BepInEx/LogOutput.log in the game folder. If it contains compatible=False, the current game version is not supported yet.
+- Report a problem: https://github.com/Toufff/zhaohuo-system/issues
+  Include your game language, what you were doing, and the folder created by the 导出诊断 (Export diagnostics) button on the 设置 (Settings) tab, or BepInEx/LogOutput.log.
+
+Project page: https://github.com/Toufff/zhaohuo-system
+MIT (c) Toufff. A fan-made mod, not affiliated with the developer or publisher of Legend of Mortal. Contains no game files.

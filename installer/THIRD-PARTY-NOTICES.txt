@@ -1,13 +1,14 @@
 Third-party software bundled with ZhaoHuoSystem releases
 =========================================================
 
-installer/BepInEx-Unity.Mono-win-x64-6.0.0-be.788+5b766a3.zip is the official, unmodified
-BepInEx build #788 downloaded from
+Both packages include the official, unmodified BepInEx build #788, downloaded from
 https://builds.bepinex.dev/projects/bepinex_be/788/BepInEx-Unity.Mono-win-x64-6.0.0-be.788%2B5b766a3.zip
 SHA256 D7455185E8A0A01EB122947C59229F3FFCCEED853FEBD4707C08219743D8F477
 
-install.bat only extracts it into the game folder when BepInEx is not installed yet.
-It contains the following components, each under its own license:
+The one-click package keeps that zip as installer/BepInEx-Unity.Mono-win-x64-6.0.0-be.788+5b766a3.zip,
+and install.bat only extracts it into the game folder when BepInEx is not installed yet.
+The manual package (ZhaoHuoSystem-v*-manual.zip) contains the same files already extracted.
+They are the following components, each under its own license:
 
 - BepInEx 6.0.0-be.788 (BepInEx/core/BepInEx.*.dll)
   License: GNU Lesser General Public License v2.1 (see LGPL-2.1.txt)

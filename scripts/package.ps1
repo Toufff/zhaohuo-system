@@ -9,13 +9,19 @@
     BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE
     installer/ZhaoHuoSystem-Setup.ps1, BepInEx-*.zip, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt
 
+  -Manual builds ZhaoHuoSystem-v<Version>-manual.zip instead, for sites that quarantine scripts and nested
+  archives (Nexus Mods): the BepInEx files already extracted in game-folder layout, plus
+    BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE, guides (from installer/docs/manual), notices
+
 .EXAMPLE
   ./scripts/package.ps1 -Version 0.3.7 -Dll src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll
+  ./scripts/package.ps1 -Version 0.3.7 -Dll src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll -Manual
 #>
 param(
     [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [Parameter(Mandatory)][string]$Dll,
-    [string]$OutDir
+    [string]$OutDir,
+    [switch]$Manual
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -41,25 +47,34 @@ if ((Get-FileHash -LiteralPath $bepinex -Algorithm SHA256).Hash -ne $pinned) {
 
 $stage = Join-Path $OutDir "stage-$Version"
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+# The manual package carries BepInEx already extracted; it is unpacked before the plugin goes in.
+if ($Manual) { [IO.Compression.ZipFile]::ExtractToDirectory($bepinex, $stage) }
 $pluginDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'BepInEx/plugins/ZhaoHuoSystem')
-$installerDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'installer')
 Copy-Item -LiteralPath (Resolve-Path -LiteralPath $Dll).Path -Destination (Join-Path $pluginDir 'ZhaoHuoSystem.dll')
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
-foreach ($file in 'install.bat', 'uninstall.bat') { Copy-Item -LiteralPath (Join-Path $installer $file) -Destination $stage }
-# Install guides at the package root, UTF-8 with BOM and CRLF so Notepad opens them correctly.
+# Guides and notices sit next to install.bat, or inside the plugin folder so extracting the manual package
+# into the game folder adds nothing outside BepInEx's own files.
+if ($Manual) { $guideDir = $pluginDir; $guideSource = 'docs/manual'; $noticeDir = $pluginDir }
+else {
+    foreach ($file in 'install.bat', 'uninstall.bat') { Copy-Item -LiteralPath (Join-Path $installer $file) -Destination $stage }
+    $guideDir = $stage; $guideSource = 'docs'
+    $noticeDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'installer')
+    Copy-Item -LiteralPath $setup -Destination $noticeDir
+    Copy-Item -LiteralPath $bepinex -Destination $noticeDir
+}
+# Install guides, UTF-8 with BOM and CRLF so Notepad opens them correctly.
 $guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt' }
 foreach ($guide in $guides.GetEnumerator()) {
-    $text = (Get-Content -LiteralPath (Join-Path $installer "docs/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
+    $text = (Get-Content -LiteralPath (Join-Path $installer "$guideSource/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
     $text = ($text -replace "`r?`n", "`r`n")
-    [IO.File]::WriteAllText((Join-Path $stage $guide.Value), $text, (New-Object System.Text.UTF8Encoding $true))
+    [IO.File]::WriteAllText((Join-Path $guideDir $guide.Value), $text, (New-Object System.Text.UTF8Encoding $true))
 }
-foreach ($file in 'ZhaoHuoSystem-Setup.ps1', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { Copy-Item -LiteralPath (Join-Path $installer $file) -Destination $installerDir }
-Copy-Item -LiteralPath $bepinex -Destination $installerDir
+foreach ($file in 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { Copy-Item -LiteralPath (Join-Path $installer $file) -Destination $noticeDir }
 
-$name = "ZhaoHuoSystem-v$Version.zip"
+$name = if ($Manual) { "ZhaoHuoSystem-v$Version-manual.zip" } else { "ZhaoHuoSystem-v$Version.zip" }
 $zip = Join-Path $OutDir $name
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip)
 Remove-Item -LiteralPath $stage -Recurse -Force
 $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash

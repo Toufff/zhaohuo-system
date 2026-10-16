@@ -1,0 +1,32 @@
+조활 시스템 v{VERSION} - 《활협전》 게임 내 트레이너
+================================================
+
+Steam 버전 build 25957922 기준입니다. 게임이 업데이트되면 모드가 스스로 꺼지며, 새 버전이 나오면 업데이트하세요.
+
+수동 설치용 패키지입니다. 설치 프로그램 없이 파일을 게임 폴더에 바로 넣으면 됩니다. 공식 BepInEx 6.0.0-be.788이 포함되어 있습니다.
+
+[설치]
+1. 게임을 종료합니다.
+2. 게임 폴더를 엽니다: Steam 라이브러리에서 《활협전》을 우클릭 → 관리 → 로컬 파일 보기 (Mortal.exe가 있는 폴더).
+3. 압축 파일 안의 내용을 모두 그 폴더에 풉니다. 같은 이름의 파일이 있다고 하면 덮어쓰기를 선택하세요.
+   - 다른 모드 때문에 BepInEx 6(Unity.Mono)을 이미 쓰고 있다면 BepInEx/plugins/ZhaoHuoSystem만 복사하면 됩니다.
+   - 게임에 BepInEx 5가 있다면 덮어쓰지 말고 먼저 지우세요.
+4. Steam Deck / Linux: 게임 속성의 시작 옵션에 WINEDLLOVERRIDES="winhttp=n,b" %command% 를 입력합니다.
+5. 게임을 실행해 세이브를 불러온 뒤 F8을 누르거나, 화면 왼쪽의 작은 「조활 시스템」 버튼을 누릅니다.
+
+수정한 수치와 지정한 이벤트는 세이브에 반영됩니다. 처음 사용하기 전에 세이브를 백업해 두세요.
+
+[업데이트] 새 버전을 같은 방법으로 게임 폴더에 풀고 기존 파일을 덮어씁니다.
+
+[삭제] 게임 폴더에서 BepInEx/plugins/ZhaoHuoSystem, BepInEx/ZhaoHuoSystem, BepInEx/config/local.zhaohuo.system.cfg를 지웁니다.
+BepInEx도 지우려면(다른 BepInEx 모드도 함께 동작하지 않게 됩니다) BepInEx 폴더, winhttp.dll, doorstop_config.ini, .doorstop_version, changelog.txt도 지웁니다. 세이브 파일에는 영향이 없습니다.
+
+install.bat과 uninstall.bat이 들어 있는 원클릭 설치 패키지: https://github.com/Toufff/zhaohuo-system/releases
+
+[문제 해결]
+- 게임에서 F8을 눌러도 반응이 없을 때: 게임 폴더의 BepInEx/LogOutput.log를 열어 compatible=False가 있으면 현재 게임 버전은 아직 지원되지 않는 것입니다.
+- 문제 신고: https://github.com/Toufff/zhaohuo-system/issues
+  게임 언어와 문제가 생긴 상황을 적고, 설정 탭의 「진단 내보내기」로 만든 폴더나 BepInEx/LogOutput.log를 첨부해 주세요.
+
+프로젝트 페이지: https://github.com/Toufff/zhaohuo-system
+MIT © Toufff. 플레이어가 만든 비공식 모드이며, 《활협전》의 개발사 및 배급사와는 관계가 없습니다. 게임 파일은 포함되어 있지 않습니다.

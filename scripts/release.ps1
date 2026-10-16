@@ -11,7 +11,8 @@
     - the game's assemblies do not match the fingerprints the plugin checks at startup;
     - the build or any test fails.
   Without -Publish it only writes dist/ZhaoHuoSystem-v<Version>.zip (built by package.ps1: plugin, one-click
-  installer and the bundled official BepInEx) and its .sha256 file.
+  installer and the bundled official BepInEx) and its .sha256 file, plus dist/ZhaoHuoSystem-v<Version>-manual.zip,
+  the script-free package for Nexus Mods (uploaded there by hand, not attached to the GitHub release).
   With -Publish it also tags HEAD (which must equal origin/main), pushes the tag and creates the
   GitHub release with the CHANGELOG section as notes (requires an authenticated gh CLI).
 
@@ -77,6 +78,8 @@ try {
     $package = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll -OutDir $dist
     $name = $package.Name; $zip = $package.Zip; $hash = $package.Sha256
     Write-Host "$name  SHA256 $hash  (game build $build, BepInEx $loader)"
+    $manual = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll -OutDir $dist -Manual
+    Write-Host "$($manual.Name)  SHA256 $($manual.Sha256)  (for Nexus Mods)"
 
     if (-not $Publish) { Write-Host 'Packaged only. Re-run with -Publish to tag and create the GitHub release.'; return }
 
