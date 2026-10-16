@@ -59,6 +59,9 @@ public sealed class MapLocationSnapshot
     public float ScreenX { get; set; }
     public float ScreenY { get; set; }
     public List<MapEventSnapshot> Entries { get; set; } = new();
+    /// <summary>The location's own entry script, and whether one-shot events reachable from it are surfaced here.</summary>
+    public string EntryScript { get; set; } = "";
+    public bool SurfaceReachable { get; set; }
 }
 
 public sealed class MapEventSnapshot

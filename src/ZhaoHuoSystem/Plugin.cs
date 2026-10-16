@@ -26,12 +26,13 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.17")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.19")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
     internal GameAdapter Adapter = null!;
     internal OptionHints OptionHints = null!;
+    internal PracticeButtons Practice = null!;
     internal BranchNotice Branches = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
@@ -93,17 +94,22 @@ public sealed class Plugin : BaseUnityPlugin
         window.LauncherMoved = anchor => launcherAnchor.Value = NativeUiState.FormatAnchor(anchor.x, anchor.y);
         dicePresenter = new NativeDicePresenter(Adapter, Logger);
         OptionHints = new OptionHints(Logger);
+        Practice = new PracticeButtons(Logger);
         Adapter.EventConsequences = OptionHints.EventConsequences;
+        Adapter.ScriptText = OptionHints.ScriptText; Adapter.EventFlags = OptionHints.EventFlags;
         var panelKey = Config.Bind("界面", "面板快捷键", "F8", "打开/收起面板的按键（UnityEngine.KeyCode 名称，None 为不绑定）。");
         var hideKey = Config.Bind("界面", "隐藏快捷键", "None", "切换「隐藏全部悬浮窗」的按键；默认不绑定。");
         var hidden = Config.Bind("界面", "隐藏全部悬浮窗", false, "隐藏本模组在游戏内的全部悬浮显示，便于截图；用面板或隐藏快捷键恢复。");
+        var uiScale = Config.Bind("界面", "界面缩放", 1f, "在按屏幕高度自动缩放的基础上再乘的倍数（0.5–2.5）。");
+        UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
+            uiScale.Value = UiScale.User;
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -178,6 +184,7 @@ public sealed class Plugin : BaseUnityPlugin
             if (Pressed(window.HideKey) && !typing) ToggleHidden();
             if (wasVisible && !window.Visible) Adapter.ContinueAction();
             using (Perf.Time("dice-ui")) dicePresenter.Update(window.Hidden);
+            try { Practice.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PRACTICE_CAP " + ex.GetBaseException().Message); }
             wasVisible = window.Visible; inputGuard.Tick();
             if (Time.unscaledTime >= nextRefresh)
             {
@@ -279,7 +286,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose();
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();
@@ -553,6 +560,23 @@ internal static class DiceOptionHintPatch
 {
     private static void Postfix(DiceOption __instance)
     { using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_sourceText"), R.Field<TMP_Text>(__instance, "_normalText"), R.Field<TMP_Text>(__instance, "_highText")); }
+}
+// 「本次取消上限」 is offered whenever a martial (修炼) or upgrade (锻造 / 炼丹) panel opens.
+[HarmonyPatch(typeof(MartialPanel), nameof(MartialPanel.Open))]
+internal static class MartialOpenPatch { private static void Prefix(MartialPanel __instance) => Plugin.Instance?.Practice.Opened(__instance); }
+// The upgrade panel has no unlimited mode of its own: once lifted for this opening, its count is kept topped up and shown as ∞.
+[HarmonyPatch(typeof(UpgradePanel))]
+internal static class UpgradeUnlimitedPatch
+{
+    internal static void Fill(MonoBehaviour panel) { if (PracticeLimits.Lifted(panel) && R.Field(panel, "_currentCount") is int count && count < 100000) R.Set(panel, "_currentCount", 1000000); }
+    [HarmonyPrefix, HarmonyPatch(nameof(UpgradePanel.Open))] private static void Open(UpgradePanel __instance) => Plugin.Instance?.Practice.Opened(__instance);
+    [HarmonyPrefix, HarmonyPatch("UpdateButton")] private static void Button(UpgradePanel __instance) => Fill(__instance);
+    [HarmonyPrefix, HarmonyPatch("UpgradeButtonClick")] private static void Upgrade(UpgradePanel __instance) => Fill(__instance);
+    [HarmonyPrefix, HarmonyPatch("NextLevelButtonClick")] private static void Next(UpgradePanel __instance) => Fill(__instance);
+    [HarmonyPrefix, HarmonyPatch("UpdateStatus")] private static void Before(UpgradePanel __instance) => Fill(__instance);
+    [HarmonyPostfix, HarmonyPatch("UpdateStatus")]
+    private static void After(UpgradePanel __instance)
+    { if (PracticeLimits.Lifted(__instance) && R.Field<Text>(__instance, "_maxCountText") is Text text && text != null) text.text = L.GameText("System/Infinity", "∞"); }
 }
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Switch))]
 internal static class BranchPatch { private static void Postfix(string name, int __result) => Plugin.Instance?.BranchTaken(name, __result); }

@@ -137,6 +137,7 @@ internal sealed class OptionHints : IDisposable
     private Texture2D? tipBackground;
     private GUIStyle? tipStyle;
     private long tipRevision = -1;
+    private float tipScale = -1;
     private void Forget(Component row) => hints.RemoveAll(hint => hint.Row == null || hint.Row == row.transform);
     private void Remember(Component row, List<HintSegment> segments, bool cut)
     {
@@ -162,16 +163,18 @@ internal sealed class OptionHints : IDisposable
             if (RectTransformUtility.RectangleContainsScreenPoint(hint.Row, screen, camera)) { shown = hint; break; }
         }
         if (shown == null) return;
-        if (tipStyle == null || tipRevision != L.Revision)
+        float k = UiScale.Current;
+        if (tipStyle == null || tipRevision != L.Revision || Mathf.Abs(tipScale - k) > .01f)
         {
+            tipScale = k;
             if (tipFont != null) UnityEngine.Object.Destroy(tipFont);
             tipFont = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
             if (tipBackground == null) { tipBackground = new Texture2D(1, 1, TextureFormat.RGBA32, false); tipBackground.SetPixel(0, 0, new Color(0, 0, 0, .78f)); tipBackground.Apply(); }
-            tipStyle = new GUIStyle { font = tipFont, fontSize = 15, alignment = TextAnchor.UpperLeft, wordWrap = true, richText = true };
+            tipStyle = new GUIStyle { font = tipFont, fontSize = Mathf.RoundToInt(15 * k), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = true };
             tipRevision = L.Revision;
         }
-        const float indent = 18, gap = 7;
-        float width = Mathf.Min(440, Screen.width - 24), inner = width - 20, height = 16;
+        float indent = 18 * k, gap = 7 * k;
+        float width = Mathf.Min(440 * k, Screen.width - 24), inner = width - 20 * k, height = 16 * k;
         var lines = new List<(string Text, bool Effects, int State, bool Gap)>();
         for (int i = 0; i < shown.Segments.Count; i++)
         {
@@ -180,10 +183,10 @@ internal sealed class OptionHints : IDisposable
             lines.Add((Colorize(segment.Head, Color.white, true), false, segment.State, i > 0));
             if (segment.Body.Length > 0) lines.Add((Colorize(segment.Body, Color.white, true), true, 0, false));
         }
-        var heights = lines.ConvertAll(line => Mathf.Max(20, tipStyle.CalcHeight(new GUIContent(line.Text), line.Effects ? inner - indent : inner)));
+        var heights = lines.ConvertAll(line => Mathf.Max(20 * k, tipStyle.CalcHeight(new GUIContent(line.Text), line.Effects ? inner - indent : inner)));
         for (int i = 0; i < lines.Count; i++) height += heights[i] + (lines[i].Gap ? gap : 0);
         height = Mathf.Min(Screen.height - 24, height);
-        var box = new Rect(Mathf.Clamp(pointer.x + 14, 12, Screen.width - width - 12), Mathf.Clamp(pointer.y + 18, 12, Screen.height - height - 12), width, height);
+        var box = new Rect(Mathf.Clamp(pointer.x + 14 * k, 12, Screen.width - width - 12), Mathf.Clamp(pointer.y + 18 * k, 12, Screen.height - height - 12), width, height);
         var oldColor = GUI.color; int oldDepth = GUI.depth;
         try
         {
@@ -192,14 +195,14 @@ internal sealed class OptionHints : IDisposable
             GUI.BeginGroup(box);
             try
             {
-                float y = 8;
+                float y = 8 * k;
                 for (int i = 0; i < lines.Count; i++)
                 {
                     var line = lines[i];
                     if (line.Gap) y += gap;
                     tipStyle.normal.textColor = line.Effects ? Palette.Effects : Palette.Text;
-                    float x = line.Effects ? 10 + indent : 10;
-                    GUI.Label(new Rect(x, y, inner - (x - 10), heights[i]), line.Text, tipStyle); y += heights[i];
+                    float x = line.Effects ? 10 * k + indent : 10 * k;
+                    GUI.Label(new Rect(x, y, inner - (x - 10 * k), heights[i]), line.Text, tipStyle); y += heights[i];
                 }
             }
             finally { GUI.EndGroup(); }
@@ -230,7 +233,37 @@ internal sealed class OptionHints : IDisposable
 
     private static string Format(string template, object[] args) => args.Length == 0 ? L.Text(template) : L.Format(template, args);
 
-    private readonly Dictionary<string, OptionPreview?> eventScripts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?> scriptTexts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, OptionPreview>?> scriptMaps = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>A story script's original text by name (cached), or null when the game has none.</summary>
+    public string? ScriptText(string name)
+    {
+        if (scriptTexts.TryGetValue(name, out var text)) return text;
+        var prefix = R.Field<string>(LuaManager.Instance, "_scriptPrefix", "Story");
+        var asset = Resources.Load<TextAsset>(prefix + "/ChineseTraditional/" + name.ToLowerInvariant());
+        return scriptTexts[name] = asset == null ? null : asset.text;
+    }
+    private Dictionary<string, OptionPreview>? ScriptMap(string name)
+    {
+        if (!scriptMaps.TryGetValue(name, out var map)) scriptMaps[name] = map = ScriptText(name) is string text ? LuaOptions.Analyze(text) : null;
+        return map;
+    }
+    /// <summary>Story flags an event's script sets or adds in any branch, plus its literal next script's.</summary>
+    public HashSet<string> EventFlags(string script)
+    {
+        var flags = new HashSet<string>(StringComparer.Ordinal);
+        void Add(Dictionary<string, OptionPreview>? map)
+        {
+            if (map == null) return;
+            foreach (var preview in map.Values)
+                foreach (var effect in preview.Effects.Concat(preview.Cases.SelectMany(group => group.Effects)))
+                    if (effect.Kind == "flag" || effect.Kind == "set-flag") flags.Add(effect.Key);
+        }
+        var own = ScriptMap(script); Add(own);
+        string next = own != null && own.TryGetValue(LuaOptions.ScriptLevel, out var top) ? top.NextScript : "";
+        if (next.Length > 0 && !next.Equals(script, StringComparison.OrdinalIgnoreCase)) Add(ScriptMap(next));
+        return flags;
+    }
     /// <summary>
     /// What an action event's script does when it runs: its top-level effects, condition branches and markers (choices
     /// inside it are shown on their own option rows when they appear), plus its literal next script's top level.
@@ -240,13 +273,8 @@ internal sealed class OptionHints : IDisposable
     {
         try
         {
-            if (!eventScripts.TryGetValue(script, out var preview))
-            {
-                var prefix = R.Field<string>(LuaManager.Instance, "_scriptPrefix", "Story");
-                var asset = Resources.Load<TextAsset>(prefix + "/ChineseTraditional/" + script.ToLowerInvariant());
-                eventScripts[script] = preview = asset == null ? null : LuaOptions.Analyze(asset.text)[LuaOptions.ScriptLevel];
-            }
-            if (preview == null) return null;
+            var map = ScriptMap(script);
+            if (map == null || !map.TryGetValue(LuaOptions.ScriptLevel, out var preview)) return null;
             bool follow = preview.NextScript.Length > 0 && !preview.NextScript.Equals(script, StringComparison.OrdinalIgnoreCase);
             var segments = LuaOptions.Describe(LuaOptions.Merge(preview, follow ? NextScript(preview.NextScript) : null), EffectText, SwitchArm, Requirement, Format, Otherwise);
             return segments.Count == 0 ? null : segments;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace ZhaoHuoSystem;
 
@@ -323,6 +324,44 @@ public static class LuaOptions
             return string.Join(" ", all);
         }
     }
+    /// <summary>A pool reached from an entry script, with the option keys passed on the way there.</summary>
+    public sealed class Reached { public string Pool = ""; public List<string> Path = new(); }
+    /// <summary>
+    /// Pools reachable from an entry script through literal next scripts, literal Position calls, menu options and the
+    /// pools' own result scripts, nearest first, each with the shortest option path. Nothing is executed; unknown
+    /// scripts (null text) end their branch.
+    /// </summary>
+    public static List<Reached> Reach(string entry, Func<string, string?> scriptText, Func<string, IEnumerable<string>> poolScripts, int maxSteps = 8)
+    {
+        var result = new List<Reached>();
+        var scripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var pools = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<(bool Pool, string Name, List<string> Path, int Steps)>();
+        queue.Enqueue((false, entry, new List<string>(), 0));
+        while (queue.Count > 0)
+        {
+            var (isPool, name, path, steps) = queue.Dequeue();
+            if (steps > maxSteps || name.Length == 0) continue;
+            if (isPool)
+            {
+                if (!pools.Add(name)) continue;
+                result.Add(new Reached { Pool = name, Path = path });
+                foreach (var script in poolScripts(name)) queue.Enqueue((false, script, path, steps + 1));
+                continue;
+            }
+            if (!scripts.Add(name) || scriptText(name) is not string text) continue;
+            foreach (var pair in Analyze(text))
+            {
+                var through = pair.Key == ScriptLevel ? path : new List<string>(path) { pair.Key };
+                queue.Enqueue((true, pair.Value.Pool, through, steps + 1));
+                queue.Enqueue((false, pair.Value.NextScript, through, steps + 1));
+            }
+            // A branch may draw more than one pool; any literal call not already reached keeps this script's path.
+            foreach (Match match in Regex.Matches(text, "checkpointmanager\\s*\\.\\s*Position\\s*\\(\\s*\"([^\"]+)\"")) queue.Enqueue((true, match.Groups[1].Value, path, steps + 1));
+            foreach (Match match in Regex.Matches(text, "luamanager\\s*\\.\\s*SetNextScript\\s*\\(\\s*\"([^\"]+)\"")) queue.Enqueue((false, match.Groups[1].Value, path, steps + 1));
+        }
+        return result;
+    }
+
     /// <summary>Merge a literal next script's own top-level consequences into the option that leads to it (one level only).</summary>
     public static OptionPreview Merge(OptionPreview option, OptionPreview? next)
     {

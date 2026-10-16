@@ -52,6 +52,9 @@ public sealed class GameAdapter : IGameAdapter
     public ToolSnapshot Snapshot { get; private set; } = new();
     /// <summary>Diagnostics only: the game assemblies match the build this version was developed on. Nothing is gated on it.</summary>
     public bool TestedBuild { get; set; }
+    /// <summary>Story script text and the flags an event script changes (the option hints' reading); set by the plugin.</summary>
+    public Func<string, string?>? ScriptText { get; set; }
+    public Func<string, HashSet<string>>? EventFlags { get; set; }
     /// <summary>Consequences of an event script by name (the option hints' analysis); set by the plugin.</summary>
     public Func<string, List<HintSegment>?>? EventConsequences { get; set; }
     public string RuntimeVersion { get; set; } = "运行版本待核验";
@@ -226,6 +229,8 @@ public sealed class GameAdapter : IGameAdapter
                 catch (Exception ex) { log.LogWarning("VALUE_CATALOG " + ex.GetBaseException().Message); }
                 try { next.MapLocations = MapOverview.Read(p, missions); }
                 catch (Exception ex) { log.LogWarning("MAP_READ " + ex.GetBaseException().Message); }
+                try { AddOneShots(next.MapLocations, p); }
+                catch (Exception ex) { log.LogWarning("ONE_SHOT " + ex.GetBaseException().Message); }
                 var pool = Pool();
                 if (pool != null)
                 {
@@ -243,11 +248,63 @@ public sealed class GameAdapter : IGameAdapter
         }
         catch (Exception ex) { SetStatus("读取失败：{0}", ex.GetBaseException().Message); log.LogError(ex); Snapshot.Status = StatusText(); Snapshot.Ready = false; Snapshot.Events.Clear(); Snapshot.MapLocations.Clear(); Snapshot.Values.Clear(); }
     }
+    // One-shot events reachable from a location: found once per entry script, then checked against current values.
+    private sealed class OneShot { public string Pool = "", Item = ""; public List<string> Path = new(); }
+    private readonly Dictionary<string, List<OneShot>> oneShots = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// A one-shot event reads a story flag in its trigger condition that its own script changes, so once triggered it is
+    /// gone. Those whose conditions hold now are added, green, to the location that reaches them (F32: the gate).
+    /// </summary>
+    private void AddOneShots(List<MapLocationSnapshot> locations, PlayerStatManagerData p)
+    {
+        foreach (var location in locations)
+        {
+            if (!location.SurfaceReachable || location.EntryScript.Length == 0 || ScriptText == null || EventFlags == null) continue;
+            foreach (var shot in OneShotsFrom(location.EntryScript))
+            {
+                if (FindPool(shot.Pool) is not PositionResultData pool || pool.List.FirstOrDefault(x => x.name == shot.Item) is not PositionEventData item) continue;
+                var ev = ReadPoolEvent(pool, item, p, false);
+                if (!ev.Eligible) continue;
+                string place = string.Join(" · ", shot.Path.Skip(Math.Max(0, shot.Path.Count - 2)).Select(OptionTitle).Where(x => x.Length > 0));
+                location.Entries.Add(new MapEventSnapshot
+                {
+                    Id = "oneshot:" + ev.Id, Title = place.Length > 0 ? L.Format("{0} · {1}", place, ev.Title) : ev.Title, Ready = true, Known = true, Conditions = ev.Conditions,
+                    Detail = L.Text("一次性事件：触发后条件不再满足") + "\n" + (place.Length > 0 ? place + "\n" : "") + ev.Detail
+                });
+            }
+        }
+    }
+    private List<OneShot> OneShotsFrom(string entry)
+    {
+        if (oneShots.TryGetValue(entry, out var found)) return found;
+        found = new List<OneShot>();
+        var reached = LuaOptions.Reach(entry, name => ScriptText!(name),
+            name => FindPool(name) is PositionResultData data ? data.List.Select(item => R.Field<string>(data, "_scriptPrefix", "") + "_" + item.ResultType).ToList() : new List<string>());
+        foreach (var target in reached)
+        {
+            if (FindPool(target.Pool) is not PositionResultData pool) continue;
+            foreach (var item in pool.List)
+            {
+                if (R.Field(item, "_toggleCondition") is not true) continue;
+                var gates = Conditions.Flags(R.Field(item, "_activeCondition"));
+                if (gates.Count == 0 || !gates.Overlaps(EventFlags!(R.Field<string>(pool, "_scriptPrefix", "") + "_" + item.ResultType))) continue;
+                found.Add(new OneShot { Pool = pool.name, Item = item.name, Path = target.Path });
+            }
+        }
+        log.LogInfo($"ONE_SHOT entry={entry} pools={reached.Count} candidates={found.Count}");
+        return oneShots[entry] = found;
+    }
+    private static string OptionTitle(string key) => Regex.Replace(L.GameText("Story/" + key, ""), "<[^>]+>", "").Trim();
+
     /// <summary>Events of one position pool. Only the actual pool registers objects that can be specified.</summary>
     private List<EventSnapshot> ReadPoolEvents(PositionResultData pool, PlayerStatManagerData p, bool actual)
     {
         var events = new List<EventSnapshot>();
-        foreach (var item in pool.List)
+        foreach (var item in pool.List) events.Add(ReadPoolEvent(pool, item, p, actual));
+        return events;
+    }
+    private EventSnapshot ReadPoolEvent(PositionResultData pool, PositionEventData item, PlayerStatManagerData p, bool actual)
+    {
         {
             var id = pool.name + "/" + item.name + "/" + item.ResultType;
             if (actual) eventObjects[id] = item;
@@ -274,9 +331,8 @@ public sealed class GameAdapter : IGameAdapter
             var effects = EffectSummary(script, p);
             var label = !string.IsNullOrWhiteSpace(note) ? note.Trim() : !string.IsNullOrWhiteSpace(mappingKey) ? mappingKey : mappingName;
             if (string.IsNullOrWhiteSpace(label) || Regex.IsMatch(label, @"^[A-Za-z0-9_]+$")) label = effects.Length > 0 ? Tone.Plain(effects) : L.Text("未命名结果") + " · " + item.ResultType;
-            events.Add(new() { Id = id, Title = L.DisplayText(label), Detail = item.name + "\n" + L.Text("映射") + " " + mappingName + " / " + mappingKey + "\n" + L.Text("结果") + " " + script + (effects.Length > 0 ? "\n" + L.Text("固定数值调用") + " " + effects : "") + "\n" + L.Format("基础权重 {0}；最终权重 {1}", R.Field<int>(item, "_defaultRate"), known ? weight.ToString() : L.Text("未核验")) + (weightDetails.Count > 0 ? "\n" + string.Join("\n", weightDetails) : ""), Eligible = weight > 0, Weight = weight, Conditions = conditions, Consequences = EventConsequences?.Invoke(script) ?? new List<HintSegment>() });
+            return new() { Id = id, Title = L.DisplayText(label), Detail = item.name + "\n" + L.Text("映射") + " " + mappingName + " / " + mappingKey + "\n" + L.Text("结果") + " " + script + (effects.Length > 0 ? "\n" + L.Text("固定数值调用") + " " + effects : "") + "\n" + L.Format("基础权重 {0}；最终权重 {1}", R.Field<int>(item, "_defaultRate"), known ? weight.ToString() : L.Text("未核验")) + (weightDetails.Count > 0 ? "\n" + string.Join("\n", weightDetails) : ""), Eligible = weight > 0, Weight = weight, Conditions = conditions, Consequences = EventConsequences?.Invoke(script) ?? new List<HintSegment>() };
         }
-        return events;
     }
     private string EffectSummary(string script, PlayerStatManagerData player)
     {

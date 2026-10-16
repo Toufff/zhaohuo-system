@@ -132,6 +132,22 @@ internal static partial class Program
             Require(segments.Count == 1 && Tone.Plain(segments[0].Summary) == "mental-10 money-500 team+5", "all three changes in source order");
             Require(segments[0].Summary.Contains(Tone.Negative + "-10" + Tone.End) && segments[0].Summary.Contains(Tone.Positive + "+5" + Tone.End), "losses toned red, gains green");
         });
+        Test("pools reachable from a location follow scripts, menu options and pool results with their option path", () =>
+        {
+            // Shape of the gate: own pool -> a result that opens the "where to" menu -> a shop with two pools; one option loops back.
+            var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["gate"] = "var1 = checkpointmanager.Position(\"Gate_Pool\")\nluamanager.SetNextScript(var1)",
+                ["gate_a"] = "luamanager.SetNextScript(\"outside\")",
+                ["outside"] = "local t = {}\nt[1] = \"O_Shop\"\nt[2] = \"O_Back\"\nlocal c = choose(t)\nif c == 1 then\n--index:O_Shop\nluamanager.SetNextScript(\"shop\")\nelseif c == 2 then\n--index:O_Back\nluamanager.SetNextScript(\"gate\")\nend",
+                ["shop"] = "var1 = checkpointmanager.Position(\"Shop_Work\")\nvar2 = checkpointmanager.Position(\"Shop_Extra\")\nluamanager.SetNextScript(var2)",
+            };
+            var pools = new Dictionary<string, string[]> { ["Gate_Pool"] = new[] { "gate_a" }, ["Shop_Work"] = new string[0], ["Shop_Extra"] = new string[0] };
+            var reached = LuaOptions.Reach("gate", n => texts.TryGetValue(n, out var t) ? t : null, p => pools.TryGetValue(p, out var s) ? s : Array.Empty<string>());
+            Require(reached.Count == 3 && reached[0].Pool == "Gate_Pool" && reached[0].Path.Count == 0, "the location's own pool first, no menu passed");
+            Require(reached.Skip(1).Select(r => r.Pool).OrderBy(p => p).SequenceEqual(new[] { "Shop_Extra", "Shop_Work" }), "both pools a branch draws, once each, loop ignored");
+            Require(reached.Skip(1).All(r => r.Path.SequenceEqual(new[] { "O_Shop" })), "outside pools carry the menu option that leads there");
+        });
         Test("a literal next script contributes its own top level once", () =>
         {
             var next = LuaOptions.Analyze("statmodifymanager.Player(\"money\", 1000, \"\", 1)\nluamanager.SetNextScript(\"deeper\")")[LuaOptions.ScriptLevel];

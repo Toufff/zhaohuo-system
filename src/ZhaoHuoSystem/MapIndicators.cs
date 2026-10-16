@@ -11,6 +11,7 @@ internal sealed class MapIndicators : IDisposable
     private Font? font;
     private GUIStyle? marker, readyMarker, tooltip;
     private long revision = -1;
+    private float scale = -1;
     private sealed class Line { public string Text = ""; public Color Color = Color.white; public bool Ready; }
     public void Draw(ToolSnapshot snapshot)
     {
@@ -21,17 +22,19 @@ internal sealed class MapIndicators : IDisposable
     }
     private void DrawCore(ToolSnapshot snapshot)
     {
-        if (revision != L.Revision || marker == null)
+        float k = UiScale.Current;
+        if (revision != L.Revision || marker == null || Mathf.Abs(scale - k) > .01f)
         {
+            scale = k;
             if (font != null) UnityEngine.Object.Destroy(font);
             font = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
             if (background == null) { background = new Texture2D(1, 1, TextureFormat.RGBA32, false); background.SetPixel(0, 0, new Color(0, 0, 0, .78f)); background.Apply(); }
-            marker = new GUIStyle { font = font, fontSize = 13, alignment = TextAnchor.MiddleCenter };
+            marker = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(13 * k), alignment = TextAnchor.MiddleCenter };
             marker.normal.background = background; marker.normal.textColor = Color.white;
             // Fully satisfied events stand out on the map count and in the hover list.
             if (readyBackground == null) { readyBackground = new Texture2D(1, 1, TextureFormat.RGBA32, false); readyBackground.SetPixel(0, 0, new Color(.18f, .45f, .27f, .92f)); readyBackground.Apply(); }
             readyMarker = new GUIStyle(marker); readyMarker.normal.background = readyBackground;
-            tooltip = new GUIStyle { font = font, fontSize = 14, alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
+            tooltip = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(14 * k), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
             revision = L.Revision;
         }
         List<Line>? hovered = null;
@@ -39,7 +42,7 @@ internal sealed class MapIndicators : IDisposable
         foreach (var location in snapshot.MapLocations)
         {
             if (!location.Visible || !location.HasScreenPosition || location.Entries.Count == 0) continue;
-            var rect = new Rect(Mathf.Clamp(location.ScreenX + 20, 4, Screen.width - 32), Mathf.Clamp(Screen.height - location.ScreenY - 28, 4, Screen.height - 28), 27, 23);
+            var rect = new Rect(Mathf.Clamp(location.ScreenX + 20 * k, 4, Screen.width - 32 * k), Mathf.Clamp(Screen.height - location.ScreenY - 28 * k, 4, Screen.height - 28 * k), 27 * k, 23 * k);
             GUI.Label(rect, location.Entries.Count.ToString(), location.Entries.Exists(entry => entry.Ready) ? readyMarker! : marker!);
             if (!rect.Contains(pointer)) continue;
             hovered = new List<Line> { new() { Text = L.Format("{0}：{1} 个事件", location.Name, location.Entries.Count) } };
@@ -51,20 +54,20 @@ internal sealed class MapIndicators : IDisposable
             }
         }
         if (hovered == null) return;
-        float width = Mathf.Min(430, Screen.width - 24), innerWidth = width - 20, height = 16;
+        float width = Mathf.Min(430 * k, Screen.width - 24), innerWidth = width - 20 * k, height = 16 * k;
         var heights = new List<float>();
-        foreach (var line in hovered) { float h = Mathf.Max(20, tooltip!.CalcHeight(new GUIContent(line.Text), innerWidth)); heights.Add(h); height += h; }
+        foreach (var line in hovered) { float h = Mathf.Max(20 * k, tooltip!.CalcHeight(new GUIContent(line.Text), innerWidth)); heights.Add(h); height += h; }
         height = Mathf.Min(Screen.height - 24, height);
-        var box = new Rect(Mathf.Clamp(pointer.x + 14, 12, Screen.width - width - 12), Mathf.Clamp(pointer.y + 18, 12, Screen.height - height - 12), width, height);
+        var box = new Rect(Mathf.Clamp(pointer.x + 14 * k, 12, Screen.width - width - 12), Mathf.Clamp(pointer.y + 18 * k, 12, Screen.height - height - 12), width, height);
         GUI.DrawTexture(box, background!);
         GUI.BeginGroup(box);
         try
         {
-            float y = 8;
+            float y = 8 * k;
             for (int i = 0; i < hovered.Count; i++)
             {
-                if (hovered[i].Ready) GUI.DrawTexture(new Rect(4, y, width - 8, heights[i]), readyBackground!);
-                tooltip!.normal.textColor = hovered[i].Color; GUI.Label(new Rect(10, y, innerWidth, heights[i]), hovered[i].Text, tooltip); y += heights[i];
+                if (hovered[i].Ready) GUI.DrawTexture(new Rect(4 * k, y, width - 8 * k, heights[i]), readyBackground!);
+                tooltip!.normal.textColor = hovered[i].Color; GUI.Label(new Rect(10 * k, y, innerWidth, heights[i]), hovered[i].Text, tooltip); y += heights[i];
             }
         }
         finally { GUI.EndGroup(); }

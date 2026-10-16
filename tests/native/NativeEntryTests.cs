@@ -44,6 +44,14 @@ internal static partial class Program
             Signature(story, "Mortal.Story", "CheckPointManager", "Switch", "name");
             Has(story, "Mortal.Story", "SwitchResultData", "_useCount", "_count", "_items", "_countItems");
             Has(core, "Mortal.Core", "ValueCompareItem", "_compareOp", "_value");
+            // 修炼 / 锻造 without the count cap: the martial panel's own mode argument and the upgrade panel's count members.
+            string mortalCore = Path.Combine(managed, "Mortal.Core.dll");
+            Signature(mortalCore, "Mortal.Core", "MartialPanel", "Open", "mode");
+            Signature(mortalCore, "Mortal.Core", "UpgradePanel", "Open");
+            foreach (string method in new[] { "UpdateMartialPointInfo", "UpdateCurrentStatus" }) Signature(mortalCore, "Mortal.Core", "MartialPanel", method);
+            Has(mortalCore, "Mortal.Core", "MartialPanel", "_mode", "_maxCountText");
+            foreach (string method in new[] { "UpdateButton", "UpgradeButtonClick", "NextLevelButtonClick", "UpdateStatus" }) Signature(mortalCore, "Mortal.Core", "UpgradePanel", method);
+            Has(mortalCore, "Mortal.Core", "UpgradePanel", "_currentCount", "_maxCountText");
             // The box is placed in the active dialogue box: left of its story text, below its name text.
             Has(Path.Combine(managed, "Fungus.dll"), "Fungus", "SayDialog", "ActiveSayDialog", "StoryTextRectTrans", "nameText", "nameTextGO");
         });

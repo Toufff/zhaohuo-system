@@ -123,7 +123,7 @@ public sealed class ToolWindow : IDisposable
     }
     public void PrepareInputRegions()
     {
-        float scale = Mathf.Clamp(Screen.height / 1080f, .85f, 1.25f);
+        float scale = UiScale.Current;
         if (Hidden) LauncherRect = default;
         else if (Visible)
         {
@@ -175,7 +175,7 @@ public sealed class ToolWindow : IDisposable
         IsPointerOver = false; HasKeyboardFocus = HasTextFocus = false;
         if (!_snapshot.Ready) return false;
 
-        float scale = Mathf.Clamp(Screen.height / 1080f, .85f, 1.25f);
+        float scale = UiScale.Current;
         if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision) BuildStyles(scale);
         LauncherRect = ComputeLauncherRect(scale);
         IsPointerOver = LauncherRect.Contains(Event.current.mousePosition);
@@ -206,8 +206,14 @@ public sealed class ToolWindow : IDisposable
             return;
         }
 
-        float scale = Mathf.Clamp(Screen.height / 1080f, .85f, 1.25f);
-        if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision) BuildStyles(scale);
+        float scale = UiScale.Current;
+        if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision)
+        {
+            // A new scale resizes the open window with its content instead of overflowing it.
+            if (_initialized && _background != null && Math.Abs(scale - _scale) > .02f)
+                WindowRect = new Rect(WindowRect.x, WindowRect.y, WindowRect.width * scale / _scale, WindowRect.height * scale / _scale);
+            BuildStyles(scale);
+        }
         if (!_initialized)
         {
             if (WindowRect.width <= 0) WindowRect = new Rect(S(42), S(58), S(900), S(620));
@@ -567,6 +573,14 @@ public sealed class ToolWindow : IDisposable
             Execute(() => _adapter.SetActionSelection(!_snapshot.ActionSelectionEnabled));
         Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。", _muted);
         y += S(52);
+        // Size of every mod surface on top of the automatic screen-height scale.
+        Label(new Rect(r.x, y, labelWidth, S(32)), "界面缩放", _label);
+        float step = ButtonWidth("−", 44);
+        if (Button(new Rect(x, y, step, S(30)), "−", "settings.scale.down")) SetScale(UiScale.User - .1f);
+        Label(new Rect(x + step + S(8), y, S(70), S(32)), L.Format("{0}%", Mathf.RoundToInt(UiScale.User * 100)), _label);
+        if (Button(new Rect(x + step + S(84), y, step, S(30)), "+", "settings.scale.up")) SetScale(UiScale.User + .1f);
+        if (Button(new Rect(x + step * 2 + S(94), y, ButtonWidth("恢复", 70), S(30)), "恢复", "settings.scale.reset")) SetScale(1f);
+        y += S(44);
         KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
         Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
         if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
@@ -615,6 +629,11 @@ public sealed class ToolWindow : IDisposable
         float detailWidth = r.xMax - detailX, detailHeight = Mathf.Max(S(30), _muted.CalcHeight(new GUIContent(L.Text(detail)), detailWidth));
         Label(new Rect(detailX, y + S(3), detailWidth, detailHeight), detail, _muted);
         y += Mathf.Max(S(42), detailHeight + S(12));
+    }
+    private void SetScale(float value)
+    {
+        UiScale.User = Mathf.Clamp(Mathf.Round(value * 10) / 10, UiScale.MinUser, UiScale.MaxUser);
+        SettingsChanged?.Invoke();
     }
     private void KeyRow(float labelX, float x, ref float y, float labelWidth, string label, KeyCode key, int slot)
     {

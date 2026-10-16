@@ -117,6 +117,33 @@ internal static class Conditions
         if (sign < 0) v.Text = "−" + v.Text;
         return v;
     }
+    /// <summary>Names of the story flags a condition reads, at any depth. Read-only, like <see cref="Read"/>.</summary>
+    internal static HashSet<string> Flags(object? condition)
+    {
+        var flags = new HashSet<string>(StringComparer.Ordinal);
+        FlagsOf(condition, flags, 0);
+        return flags;
+    }
+    private static void FlagsOf(object? condition, HashSet<string> flags, int depth)
+    {
+        if (condition == null || depth > 12) return;
+        foreach (var item in R.Items(R.Field(condition, "_items")))
+        {
+            if (item is StatCompareItem) { GroupFlags(R.Field(item, "_value1"), flags, depth + 1); GroupFlags(R.Field(item, "_value2"), flags, depth + 1); }
+            else FlagsOf(item, flags, depth + 1);
+        }
+    }
+    private static void GroupFlags(object? group, HashSet<string> flags, int depth)
+    {
+        if (group == null || depth > 12) return;
+        foreach (var reference in R.Items(R.Field(group, "_value")))
+            switch (R.Property(reference, "CheckType")?.ToString())
+            {
+                case "旗標": if (R.Field<FlagData>(reference, "_flag") is FlagData flag && flag != null) flags.Add(flag.name); break;
+                case "數值群組": GroupFlags(R.Field(reference, "_statGroup"), flags, depth + 1); break;
+                case "條件設定": FlagsOf(R.Field(reference, "_condition"), flags, depth + 1); break;
+            }
+    }
     internal static string TimeName(GameTime time) => L.Format("{0}年{1}月{2}", time.Year, time.Month, L.GameText(time.StageText, time.Stage.ToString()));
     private static string AssetName(object? asset, string type) => asset switch
     {

@@ -20,7 +20,15 @@ internal sealed class BranchNotice : IDisposable
 {
     private sealed class Row { public string Text = ""; public int State; public bool Taken; public float Height; }
     private const int Kept = 3;
-    private const float Width = 380, Pad = 10, Head = 28, Gap = 9, Marker = 18, PopTime = .45f, FlashTime = 1.1f, Blink = .18f;
+    private const float PopTime = .45f, FlashTime = 1.1f, Blink = .18f;
+    // Sizes follow the mod's one scale (4K, player multiplier).
+    private static float K => UiScale.Current;
+    private static float Width => 380 * K;
+    private static float Pad => 10 * K;
+    private static float Head => 28 * K;
+    private static float Gap => 9 * K;
+    private static float Marker => 18 * K;
+    private float styleScale = -1;
     private readonly List<List<Row>> judgments = new(); // newest first
     private bool closed = true, dragging, follow;
     private Vector2? position;
@@ -76,11 +84,11 @@ internal sealed class BranchNotice : IDisposable
         if (hidden || closed || judgments.Count == 0) { Rect = default; dragging = false; return; }
         EnsureStyles();
         var e = Event.current;
-        float inner = Width - Pad * 2 - Marker, height = Head + 6 + Pad;
+        float inner = Width - Pad * 2 - Marker, height = Head + 6 * K + Pad;
         for (int j = 0; j < judgments.Count; j++)
         {
             if (j > 0) height += Gap;
-            foreach (var row in judgments[j]) { row.Height = Mathf.Max(20, text!.CalcHeight(new GUIContent(row.Text), inner)); height += row.Height; }
+            foreach (var row in judgments[j]) { row.Height = Mathf.Max(20 * K, text!.CalcHeight(new GUIContent(row.Text), inner)); height += row.Height; }
         }
         height = Mathf.Min(height, Screen.height - 8);
         // Until the player drags it, the box sits at the fixed spot; before that spot is known, beside the story text.
@@ -92,7 +100,7 @@ internal sealed class BranchNotice : IDisposable
         position = origin;
         Rect = new Rect(origin.x, origin.y, Width, height);
         var titleRect = new Rect(origin.x, origin.y, Width, Head);
-        var closeRect = new Rect(Rect.xMax - 32, origin.y + 1, 30, Head - 2);
+        var closeRect = new Rect(Rect.xMax - 32 * K, origin.y + 1, 30 * K, Head - 2);
         if (e.type == EventType.MouseDown && e.button == 0 && Rect.Contains(e.mousePosition))
         {
             if (closeRect.Contains(e.mousePosition)) { closed = true; Rect = default; e.Use(); return; }
@@ -114,19 +122,19 @@ internal sealed class BranchNotice : IDisposable
             // Arrival: grow a little and lift, then settle back; the title flashes a few times.
             float t = Time.unscaledTime - pulse, k = t >= 0 && t < PopTime ? Mathf.Sin(Mathf.PI * t / PopTime) : 0;
             bool flash = t >= 0 && t < FlashTime && (int)(t / Blink) % 2 == 0;
-            var box = new Rect(Rect.x, Rect.y - 10 * k, Rect.width, Rect.height);
+            var box = new Rect(Rect.x, Rect.y - 10 * K * k, Rect.width, Rect.height);
             if (k > 0) GUIUtility.ScaleAroundPivot(new Vector2(1 + .07f * k, 1 + .07f * k), box.center);
             GUI.color = Color.white;
             GUI.DrawTexture(box, background!);
             if (flash) GUI.DrawTexture(new Rect(box.x, box.y, Width, Head), accent!);
             title!.normal.textColor = flash ? Color.white : Palette.Text;
-            title.fontSize = flash ? 16 : 15;
-            GUI.Label(new Rect(box.x + Pad, box.y + 4, Width - Pad * 2 - 32, Head - 4), L.Text("剧情分支"), title);
-            var closeRect = new Rect(box.xMax - 32, box.y + 1, 30, Head - 2);
+            title.fontSize = Mathf.RoundToInt((flash ? 16 : 15) * K);
+            GUI.Label(new Rect(box.x + Pad, box.y + 4 * K, Width - Pad * 2 - 32 * K, Head - 4 * K), L.Text("剧情分支"), title);
+            var closeRect = new Rect(box.xMax - 32 * K, box.y + 1, 30 * K, Head - 2);
             close!.normal.textColor = closeRect.Contains(Event.current.mousePosition) ? Color.white : new Color(.72f, .75f, .78f);
             GUI.Label(closeRect, "×", close);
             GUI.DrawTexture(new Rect(box.x, box.y + Head, Width, 1), line!);
-            float y = box.y + Head + 6, inner = Width - Pad * 2 - Marker;
+            float y = box.y + Head + 6 * K, inner = Width - Pad * 2 - Marker;
             GUI.BeginGroup(new Rect(0, 0, Screen.width, box.yMax - 2));
             try
             {
@@ -139,7 +147,7 @@ internal sealed class BranchNotice : IDisposable
                     {
                         if (row.Taken)
                         {
-                            GUI.DrawTexture(new Rect(box.x + 4, y, Width - 8, row.Height), highlight!);
+                            GUI.DrawTexture(new Rect(box.x + 4 * K, y, Width - 8 * K, row.Height), highlight!);
                             text!.normal.textColor = Color.white;
                             GUI.Label(new Rect(box.x + Pad, y, Marker, row.Height), "▶", text);
                         }
@@ -201,7 +209,8 @@ internal sealed class BranchNotice : IDisposable
 
     private void EnsureStyles()
     {
-        if (text != null && revision == L.Revision) return;
+        if (text != null && revision == L.Revision && Mathf.Abs(styleScale - K) < .01f) return;
+        styleScale = K;
         if (font != null) UnityEngine.Object.Destroy(font);
         font = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
         background ??= Solid(new Color(0, 0, 0, .78f));
@@ -209,9 +218,9 @@ internal sealed class BranchNotice : IDisposable
         highlight ??= Solid(new Color(1, 1, 1, .09f));
         // The panel's own accent, so the flash reads as "look here" rather than as a red / green meaning.
         accent ??= Solid(new Color(.29f, .46f, .61f, .95f));
-        text = new GUIStyle { font = font, fontSize = 15, alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
+        text = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(15 * K), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
         title = new GUIStyle(text) { fontStyle = FontStyle.Bold, wordWrap = false }; title.normal.textColor = Palette.Text;
-        close = new GUIStyle(text) { fontSize = 20, alignment = TextAnchor.MiddleCenter, wordWrap = false };
+        close = new GUIStyle(text) { fontSize = Mathf.RoundToInt(20 * K), alignment = TextAnchor.MiddleCenter, wordWrap = false };
         revision = L.Revision;
     }
     private static Texture2D Solid(Color color)
