@@ -5,7 +5,7 @@
   official BepInEx build it installs when missing. Called by release.ps1; can also be run on its own.
 
   Package layout (extracting it straight into the game folder also works for a manual install):
-    install.bat, uninstall.bat
+    install.bat, uninstall.bat, install guides in four languages (from installer/docs, {VERSION} filled in)
     BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE
     installer/ZhaoHuoSystem-Setup.ps1, BepInEx-*.zip, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt
 
@@ -46,6 +46,13 @@ $installerDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'ins
 Copy-Item -LiteralPath (Resolve-Path -LiteralPath $Dll).Path -Destination (Join-Path $pluginDir 'ZhaoHuoSystem.dll')
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
 foreach ($file in 'install.bat', 'uninstall.bat') { Copy-Item -LiteralPath (Join-Path $installer $file) -Destination $stage }
+# Install guides at the package root, UTF-8 with BOM and CRLF so Notepad opens them correctly.
+$guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt' }
+foreach ($guide in $guides.GetEnumerator()) {
+    $text = (Get-Content -LiteralPath (Join-Path $installer "docs/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
+    $text = ($text -replace "`r?`n", "`r`n")
+    [IO.File]::WriteAllText((Join-Path $stage $guide.Value), $text, (New-Object System.Text.UTF8Encoding $true))
+}
 foreach ($file in 'ZhaoHuoSystem-Setup.ps1', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { Copy-Item -LiteralPath (Join-Path $installer $file) -Destination $installerDir }
 Copy-Item -LiteralPath $bepinex -Destination $installerDir
 

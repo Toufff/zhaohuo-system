@@ -1,0 +1,32 @@
+趙活系統 v{VERSION} —— 《活俠傳》遊戲內修改器
+================================================
+
+適用版本：Steam 版《活俠傳》build 25957922。遊戲更新後，模組會自動停用，等這裡發布新版本後再更新。
+
+【一鍵安裝】
+1. 關閉遊戲。
+2. 按兩下本資料夾裡的 install.bat。
+   - 它會自動找到 Steam 裡的《活俠傳》；找不到時會跳出視窗，讓你選擇遊戲資料夾（有 Mortal.exe 的那個）。
+   - 遊戲還沒有 BepInEx 時，會一併安裝包裡附帶的官方 BepInEx 6.0.0-be.788。
+3. 啟動遊戲，讀取存檔後按 F8 開啟面板，也可以點擊畫面左側的「趙活系統」小按鈕。
+
+修改數值和指定事件都會寫入存檔，第一次使用前請先備份存檔。
+如果 Windows 跳出安全性提示，確認執行即可。
+
+【更新】下載新版本，解壓縮後再按兩下一次 install.bat。
+
+【解除安裝】按兩下 uninstall.bat。它會刪除外掛和設定，然後詢問是否一併刪除 BepInEx；直接按 Enter 就會保留。存檔不受影響。
+
+【手動安裝】（Steam Deck / Linux 請用這種方式）
+1. 在 Steam 收藏庫中對《活俠傳》按右鍵 → 管理 → 瀏覽本機檔案，開啟遊戲資料夾。
+2. 把 installer 資料夾裡的 BepInEx-Unity.Mono-win-x64-6.0.0-be.788+5b766a3.zip 的全部內容解壓縮到遊戲資料夾。
+3. 把本包裡的 BepInEx 資料夾複製到遊戲資料夾，與既有的 BepInEx 資料夾合併。
+4. Steam Deck / Linux：在遊戲內容的啟動選項中填入 WINEDLLOVERRIDES="winhttp=n,b" %command%
+
+【遇到問題】
+- 進入遊戲後按 F8 沒有反應：開啟遊戲資料夾裡的 BepInEx/LogOutput.log，如果出現 compatible=False，表示目前的遊戲版本還沒有適配。
+- 回報問題：https://github.com/Toufff/zhaohuo-system/issues
+  請寫明遊戲語言、出問題的場景，並附上設定頁「匯出診斷」產生的資料夾，或 BepInEx/LogOutput.log。
+
+專案主頁：https://github.com/Toufff/zhaohuo-system
+MIT © Toufff。玩家自製模組，與《活俠傳》的開發商和發行商無關，不包含任何遊戲檔案。
