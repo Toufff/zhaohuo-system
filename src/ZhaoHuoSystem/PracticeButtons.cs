@@ -27,18 +27,8 @@ internal sealed class PracticeButtons(ManualLogSource log) : IDisposable
         if (entries.Exists(entry => entry.Panel == panel)) return;
         var count = R.Field<Text>(panel, "_maxCountText");
         if (count == null) return;
-        var root = new GameObject("ZhaoHuo.LiftCap", typeof(RectTransform), typeof(Image), typeof(Button));
-        root.transform.SetParent(count.transform, false);
-        var image = root.GetComponent<Image>(); image.color = Color.white;
-        var button = root.GetComponent<Button>(); button.targetGraphic = image;
-        var colors = button.colors; colors.normalColor = new Color(.15f, .18f, .21f, 1); colors.highlightedColor = new Color(.25f, .32f, .39f, 1);
-        colors.pressedColor = new Color(.22f, .37f, .51f, 1); colors.selectedColor = colors.highlightedColor; button.colors = colors;
-        var labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text)); labelObject.transform.SetParent(root.transform, false);
-        var label = labelObject.GetComponent<Text>(); label.alignment = TextAnchor.MiddleCenter; label.color = new Color(.94f, .95f, .96f, 1); label.raycastTarget = false;
-        var labelRect = (RectTransform)labelObject.transform; labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one; labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
-        button.onClick.AddListener(() => Lift(panel, count));
+        var button = InlineButton.Create("ZhaoHuo.LiftCap", count.transform, () => Lift(panel, count), out var label);
         entries.Add(new Entry { Panel = panel, Count = count, Button = button, Label = label });
-        root.SetActive(false);
     }
 
     /// <summary>Each frame: shown while the panel still has its cap, next to the line's visible text, at the mod's scale.</summary>
@@ -55,22 +45,7 @@ internal sealed class PracticeButtons(ManualLogSource log) : IDisposable
         {
             bool show = !hidden && entry.Count.isActiveAndEnabled && !Unlimited(entry.Panel);
             if (entry.Button.gameObject.activeSelf != show) entry.Button.gameObject.SetActive(show);
-            if (!show) continue;
-            entry.Label.font = font; entry.Label.text = L.Text("本次取消上限");
-            entry.Label.fontSize = Mathf.Max(10, Mathf.RoundToInt(entry.Count.fontSize * .8f * UiScale.User));
-            // The game's canvas already scales with the screen; only the player's own multiplier is added here.
-            var rect = entry.Count.rectTransform.rect; float visible = entry.Count.preferredWidth;
-            float right = entry.Count.alignment switch
-            {
-                TextAnchor.UpperRight or TextAnchor.MiddleRight or TextAnchor.LowerRight => rect.xMax,
-                TextAnchor.UpperCenter or TextAnchor.MiddleCenter or TextAnchor.LowerCenter => rect.center.x + visible / 2,
-                _ => rect.xMin + visible
-            };
-            var own = (RectTransform)entry.Button.transform;
-            own.anchorMin = own.anchorMax = new Vector2(0, .5f); own.pivot = new Vector2(0, .5f);
-            float height = entry.Count.fontSize * 1.35f * UiScale.User;
-            own.sizeDelta = new Vector2(entry.Label.preferredWidth + height * .8f, height);
-            own.anchoredPosition = new Vector2(right - rect.xMin + height * .4f, 0);
+            if (show) InlineButton.Place(entry.Button, entry.Label, entry.Count, font, L.Text("本次取消上限"));
         }
     }
 

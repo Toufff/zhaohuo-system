@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using UnityEngine;
 
 namespace ZhaoHuoSystem;
@@ -32,7 +33,9 @@ public sealed class ToolWindow : IDisposable
     private long _contextRevision = long.MinValue;
     private string _expandedValue = "";
     private bool _eligibleOnly;
-    private Vector2 _eventScroll, _conditionScroll, _valueScroll;
+    private Vector2 _eventScroll, _conditionScroll, _valueScroll, _collectionScroll;
+    private string _collection = "achievement";
+    private float _collectionConfirm;
     private List<ValueSnapshot>? _valueSource;
     private readonly List<ValueSnapshot> _filteredValues = new();
     private string _filteredSearch = "", _filteredGroup = "";
@@ -262,7 +265,8 @@ public sealed class ToolWindow : IDisposable
                 {
                     case 0: DrawEvents(body); break;
                     case 2: DrawCombat(body); break;
-                    case 3: DrawSettings(body); break;
+                    case 3: DrawCollection(body); break;
+                    case 4: DrawSettings(body); break;
                     default: DrawValues(body); break;
                 }
                 DrawStatus(new Rect(S(14), height - S(33), width - S(42), S(25)));
@@ -306,7 +310,7 @@ public sealed class ToolWindow : IDisposable
     private void DrawTabs(float width)
     {
         // 设置 always stays the last tab.
-        string[] names = { "事件", "数值", "战斗", "设置" };
+        string[] names = { "事件", "数值", "战斗", "收集", "设置" };
         for (int i = 0; i < names.Length; i++)
         {
             Rect r = new(S(14 + i * 95), S(51), S(86), S(32));
@@ -599,6 +603,63 @@ public sealed class ToolWindow : IDisposable
         }
         Label(new Rect(r.x, y + S(38), r.width, S(50)), "把最近 5 次游戏的日志、当前状态、配置和性能统计放进一个文件夹，路径会复制到剪贴板。", _muted);
     }
+    // 收集: the game's 讲经堂 lists, one section at a time, with per-item and whole-section unlock (F42).
+    private void DrawCollection(Rect r)
+    {
+        float x = r.x;
+        foreach (string id in LibraryCollections.Sections)
+        {
+            var all = LibraryCollections.Items(id);
+            string text = LibraryCollections.SectionName(id) + " " + all.Count(item => item.Count > 0) + "/" + all.Count;
+            float width = Mathf.Max(S(95), _button.CalcSize(new GUIContent(text)).x + S(16));
+            if (Button(new Rect(x, r.y, width, S(29)), text, "collection." + id, _collection == id ? _tabSelected : _tabButton))
+            { _collection = id; _collectionScroll = Vector2.zero; _collectionConfirm = 0; }
+            x += width + S(6);
+        }
+        r.y += S(39); r.height -= S(39);
+        var items = LibraryCollections.Items(_collection);
+        if (items.Count == 0) { Empty(r, "讲经堂数据未载入"); return; }
+        // Unlocking a whole section asks once more; the question stands for a few seconds.
+        bool confirming = Time.unscaledTime < _collectionConfirm;
+        float allWidth = Mathf.Max(ButtonWidth("全部解锁", 95), ButtonWidth("确定全部解锁？", 95));
+        bool previous = GUI.enabled;
+        GUI.enabled = previous && items.Any(item => item.Count == 0);
+        if (Button(new Rect(r.xMax - allWidth, r.y, allWidth, S(29)), confirming ? "确定全部解锁？" : "全部解锁", "collection.all", confirming ? _primary : _button))
+        {
+            if (confirming) { _collectionConfirm = 0; Execute(() => LibraryCollections.Unlock(_collection, items)); }
+            else _collectionConfirm = Time.unscaledTime + 3f;
+        }
+        GUI.enabled = previous;
+        string note = _collection == "achievement" ? "解锁时会一并解锁对应的 Steam 成就，解锁后不能撤销；带奖励的成就在新开存档时生效。" : "解锁后在讲经堂里可以查看；记在全局存档里，不影响当前存档。";
+        Label(new Rect(r.x, r.y, r.width - allWidth - S(12), S(46)), note, _muted);
+        Rect rows = new(r.x, r.y + S(54), r.width, r.height - S(54));
+        GUI.DrawTexture(new Rect(rows.x, rows.y - S(4), rows.width, 1), _line);
+        bool awards = _collection == "achievement";
+        float rowHeight = S(awards ? 54 : 36), contentWidth = rows.width - S(18), stateWidth = Mathf.Max(ButtonWidth("解锁", 74), ButtonWidth("已解锁", 74));
+        _collectionScroll = BeginScroll(rows, _collectionScroll, new Rect(0, 0, contentWidth, Mathf.Max(rows.height, items.Count * rowHeight)));
+        try
+        {
+            for (int i = 0; i < items.Count; i++)
+            {
+                float y = i * rowHeight;
+                if (y + rowHeight < _collectionScroll.y || y > _collectionScroll.y + rows.height) continue;
+                var item = items[i];
+                string description = LibraryCollections.Description(item);
+                Label(new Rect(S(8), y + S(4), contentWidth - stateWidth - S(24), S(28)), LibraryCollections.Title(item), _label, description);
+                if (awards)
+                {
+                    string award = LibraryCollections.Award(item);
+                    if (award.Length > 0) Label(new Rect(S(8), y + S(28), contentWidth - stateWidth - S(24), S(24)), award, _small, description);
+                }
+                var state = new Rect(contentWidth - stateWidth - S(4), y + S(3), stateWidth, S(28));
+                if (item.Count > 0) Label(state, "已解锁", _met);
+                else if (Button(state, "解锁", "collection.item." + item.name)) Execute(() => LibraryCollections.Unlock(_collection, new[] { item }));
+                GUI.DrawTexture(new Rect(0, y + rowHeight - 1, contentWidth, 1), _line);
+            }
+        }
+        finally { EndScroll(); }
+    }
+
     private void DrawCombat(Rect r)
     {
         float y = r.y, labelWidth = Mathf.Min(S(150), r.width * .3f), x = r.x + labelWidth + S(10), detailX = x + S(124);

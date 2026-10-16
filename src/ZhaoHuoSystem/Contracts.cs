@@ -61,7 +61,6 @@ public sealed class MapLocationSnapshot
     public List<MapEventSnapshot> Entries { get; set; } = new();
     /// <summary>The location's own entry script, and whether one-shot events reachable from it are surfaced here.</summary>
     public string EntryScript { get; set; } = "";
-    public bool SurfaceReachable { get; set; }
 }
 
 public sealed class MapEventSnapshot
@@ -174,6 +173,8 @@ public sealed class HintSegment
     public string Summary = "";
     /// <summary>Hover: the requirement, condition or marker line; for an arm, its effects follow on their own line.</summary>
     public string Head = "", Body = "";
+    /// <summary>The row leads to one-shot events that can run now (F43): the row gets a green dot in front.</summary>
+    public bool OneShot;
     /// <summary>1 met, -1 unmet, 0 neutral or unknown.</summary>
     public int State;
 }

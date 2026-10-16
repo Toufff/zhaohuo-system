@@ -3,18 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using Mortal.Core;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace ZhaoHuoSystem;
 
 /// <summary>
 /// Floating reminder of the story's recent condition branches: every arm's condition with current values (red / green)
 /// and the arm the game actually took. Fed only by the native Switch result; nothing is evaluated for the game.
-/// Each new branch places it at one fixed spot in the dialogue area, taken once from the game's standard character
-/// dialogue box (left of the story text, below the name) and kept as a screen fraction, so dialogue boxes without a
-/// name or with another layout never move it. It announces itself with a short pop and a flashing title. Drag by the
-/// title (until the next branch), close with ×; the next branch brings it back. Cleared when a choice menu opens or the
-/// scene changes.
+/// Each new branch places it in the game window's bottom-left corner (its own bottom-left on the window's, growing
+/// upwards) and announces itself with a short pop and a flashing title. Drag by the title (until the next branch),
+/// close with ×; the next branch brings it back. Cleared when a choice menu opens or the scene changes.
 /// </summary>
 internal sealed class BranchNotice : IDisposable
 {
@@ -38,9 +35,6 @@ internal sealed class BranchNotice : IDisposable
     private Texture2D? background, line, highlight, accent;
     private GUIStyle? text, title, close;
     private long revision = -1;
-    /// <summary>The fixed spot as screen fractions of the box's top-left; learned from the character dialogue box.</summary>
-    public Vector2? Reference { get; set; }
-    public Action<Vector2>? ReferenceLearned;
     /// <summary>The box in GUI coordinates, empty while nothing is shown. The input guard keeps game clicks out of it.</summary>
     public Rect Rect { get; private set; }
 
@@ -72,7 +66,7 @@ internal sealed class BranchNotice : IDisposable
         rows.Add(new Row { Text = L.Text("否则"), State = fallback ? 1 : 0, Taken = fallback });
         judgments.Insert(0, rows);
         if (judgments.Count > Kept) judgments.RemoveRange(Kept, judgments.Count - Kept);
-        // A new branch always returns to the dialogue box, even after a drag, and announces itself.
+        // A new branch always returns to the corner, even after a drag, and announces itself.
         closed = false; follow = true; dragging = false; pulse = Time.unscaledTime;
     }
 
@@ -91,10 +85,8 @@ internal sealed class BranchNotice : IDisposable
             foreach (var row in judgments[j]) { row.Height = Mathf.Max(20 * K, text!.CalcHeight(new GUIContent(row.Text), inner)); height += row.Height; }
         }
         height = Mathf.Min(height, Screen.height - 8);
-        // Until the player drags it, the box sits at the fixed spot; before that spot is known, beside the story text.
-        if (follow) Learn();
-        var origin = !follow ? position ?? Fallback()
-            : Reference.HasValue ? new Vector2(Reference.Value.x * Screen.width, Reference.Value.y * Screen.height) : Fallback();
+        // Until the player drags it, the box sits in the bottom-left corner.
+        var origin = !follow && position.HasValue ? position.Value : new Vector2(0, Screen.height - height);
         origin.x = Mathf.Clamp(origin.x, 0, Mathf.Max(0, Screen.width - Width));
         origin.y = Mathf.Clamp(origin.y, 0, Mathf.Max(0, Screen.height - height));
         position = origin;
@@ -160,51 +152,6 @@ internal sealed class BranchNotice : IDisposable
             finally { GUI.EndGroup(); }
         }
         finally { GUI.color = old; GUI.matrix = oldMatrix; }
-    }
-
-    /// <summary>
-    /// Takes the fixed spot from the game's standard character dialogue box while it shows a name: left of the story
-    /// text, just below the name. Other dialogue layouts only use the spot, never change it.
-    /// </summary>
-    private void Learn()
-    {
-        // The static active dialogue can outlive its scene; Unity's null check also catches a destroyed one.
-        var dialog = Fungus.SayDialog.ActiveSayDialog;
-        if (dialog == null || dialog is not CharacterSayDialog || !dialog.gameObject.activeInHierarchy || Screen.width <= 0 || Screen.height <= 0) return;
-        var story = dialog.StoryTextRectTrans;
-        var name = R.Field<Text>(dialog, "nameText")?.rectTransform ?? R.Field<GameObject>(dialog, "nameTextGO")?.transform as RectTransform;
-        if (story == null || name == null || !story.gameObject.activeInHierarchy || !name.gameObject.activeInHierarchy) return;
-        var camera = CanvasCamera(story);
-        var spot = new Vector2((ScreenRect(story, camera).xMin - Width - 12) / Screen.width, (ScreenRect(name, camera).yMax + 8) / Screen.height);
-        spot = new Vector2(Mathf.Clamp01(spot.x), Mathf.Clamp01(spot.y));
-        if (Reference.HasValue && (Reference.Value - spot).sqrMagnitude < .003f * .003f) return;
-        Reference = spot; ReferenceLearned?.Invoke(spot);
-    }
-    /// <summary>Before the spot is known: beside the active dialogue's story text, else the top-right corner.</summary>
-    private static Vector2 Fallback()
-    {
-        var dialog = Fungus.SayDialog.ActiveSayDialog;
-        var story = dialog != null && dialog.gameObject.activeInHierarchy ? dialog.StoryTextRectTrans : null;
-        if (story == null || !story.gameObject.activeInHierarchy) return new Vector2(Screen.width - Width - 24, 72);
-        var rect = ScreenRect(story, CanvasCamera(story));
-        return new Vector2(rect.xMin - Width - 12, rect.yMin);
-    }
-    private static Camera? CanvasCamera(RectTransform rect)
-    {
-        var canvas = rect.GetComponentInParent<Canvas>()?.rootCanvas;
-        return canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
-    }
-    /// <summary>A RectTransform in IMGUI coordinates (origin top-left).</summary>
-    private static Rect ScreenRect(RectTransform rect, Camera? camera)
-    {
-        var corners = new Vector3[4]; rect.GetWorldCorners(corners);
-        Vector2 min = new(float.MaxValue, float.MaxValue), max = new(float.MinValue, float.MinValue);
-        foreach (var corner in corners)
-        {
-            var point = RectTransformUtility.WorldToScreenPoint(camera, corner);
-            min = Vector2.Min(min, point); max = Vector2.Max(max, point);
-        }
-        return Rect.MinMaxRect(min.x, Screen.height - max.y, max.x, Screen.height - min.y);
     }
 
     private void EnsureStyles()

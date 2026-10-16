@@ -54,7 +54,7 @@ public sealed class GameAdapter : IGameAdapter
     public bool TestedBuild { get; set; }
     /// <summary>Story script text and the flags an event script changes (the option hints' reading); set by the plugin.</summary>
     public Func<string, string?>? ScriptText { get; set; }
-    public Func<string, HashSet<string>>? EventFlags { get; set; }
+    public Func<string, Dictionary<string, List<OptionEffect>>>? EventFlagChanges { get; set; }
     /// <summary>Consequences of an event script by name (the option hints' analysis); set by the plugin.</summary>
     public Func<string, List<HintSegment>?>? EventConsequences { get; set; }
     public string RuntimeVersion { get; set; } = "运行版本待核验";
@@ -141,10 +141,15 @@ public sealed class GameAdapter : IGameAdapter
         Refresh(); return OperationResult.Ok(StatusText());
     }
     private PositionResultData? Pool() => poolName.Length == 0 ? null : FindPool(poolName);
-    private static PositionResultData? FindPool(string name)
+    private static PositionResultData? FindPool(string name) => Pools()?.List.FirstOrDefault(x => x.name == name);
+    // The pool table belongs to the story scene; kept from there so the free map (F32 gate reminders) can still read it.
+    // While this reference lives, Unity keeps the asset loaded. Right after loading a save into the map it is not known
+    // until the first story scene.
+    private static PositionResultConfig? pools;
+    private static PositionResultConfig? Pools()
     {
-        if (CheckPointManager.Instance == null) return null;
-        return R.Field<PositionResultConfig>(CheckPointManager.Instance, "_position")?.List.FirstOrDefault(x => x.name == name);
+        if (CheckPointManager.Instance != null && R.Field<PositionResultConfig>(CheckPointManager.Instance, "_position") is PositionResultConfig live && live != null) pools = live;
+        return pools != null ? pools : null;
     }
     private string previewPool = "", previewTitle = "";
     /// <summary>Read-only preview of the pool a hovered menu row would reach. Never specifiable, never consumed.</summary>
@@ -229,7 +234,7 @@ public sealed class GameAdapter : IGameAdapter
                 catch (Exception ex) { log.LogWarning("VALUE_CATALOG " + ex.GetBaseException().Message); }
                 try { next.MapLocations = MapOverview.Read(p, missions); }
                 catch (Exception ex) { log.LogWarning("MAP_READ " + ex.GetBaseException().Message); }
-                try { AddOneShots(next.MapLocations, p); }
+                try { using (Perf.Time("one-shot")) AddOneShots(next.MapLocations, p); }
                 catch (Exception ex) { log.LogWarning("ONE_SHOT " + ex.GetBaseException().Message); }
                 var pool = Pool();
                 if (pool != null)
@@ -252,14 +257,15 @@ public sealed class GameAdapter : IGameAdapter
     private sealed class OneShot { public string Pool = "", Item = ""; public List<string> Path = new(); }
     private readonly Dictionary<string, List<OneShot>> oneShots = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>
-    /// A one-shot event reads a story flag in its trigger condition that its own script changes, so once triggered it is
-    /// gone. Those whose conditions hold now are added, green, to the location that reaches them (F32: the gate).
+    /// A one-shot event is gone after it runs once: the flag changes its script always makes leave its own trigger
+    /// condition unmet (F40: a counter that allows several runs, like 行商 大失败 under "< 2", is not one). Those whose
+    /// conditions hold now are added, green, to the location that reaches them (F32 the gate, F41 every location).
     /// </summary>
     private void AddOneShots(List<MapLocationSnapshot> locations, PlayerStatManagerData p)
     {
         foreach (var location in locations)
         {
-            if (!location.SurfaceReachable || location.EntryScript.Length == 0 || ScriptText == null || EventFlags == null) continue;
+            if (location.EntryScript.Length == 0 || ScriptText == null || EventFlagChanges == null) continue;
             foreach (var shot in OneShotsFrom(location.EntryScript))
             {
                 if (FindPool(shot.Pool) is not PositionResultData pool || pool.List.FirstOrDefault(x => x.name == shot.Item) is not PositionEventData item) continue;
@@ -274,25 +280,53 @@ public sealed class GameAdapter : IGameAdapter
             }
         }
     }
-    private List<OneShot> OneShotsFrom(string entry)
+    /// <summary>
+    /// One-shot events that can run now behind a menu option (F43): its own pool and whatever its next script reaches.
+    /// Titles in the game's language; empty when nothing qualifies or the pool table is not known yet.
+    /// </summary>
+    public List<string> ReadyOneShots(string pool, string nextScript)
     {
-        if (oneShots.TryGetValue(entry, out var found)) return found;
+        var titles = new List<string>();
+        try
+        {
+            if (ScriptText == null || EventFlagChanges == null || PlayerStatManagerData.Instance is not PlayerStatManagerData p || p == null) return titles;
+            var shots = new List<OneShot>();
+            if (pool.Length > 0) shots.AddRange(OneShotsFrom(pool, true));
+            if (nextScript.Length > 0) shots.AddRange(OneShotsFrom(nextScript));
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var shot in shots)
+            {
+                if (!seen.Add(shot.Pool + "/" + shot.Item)) continue;
+                if (FindPool(shot.Pool) is not PositionResultData data || data.List.FirstOrDefault(x => x.name == shot.Item) is not PositionEventData item) continue;
+                var ev = ReadPoolEvent(data, item, p, false);
+                if (ev.Eligible) titles.Add(ev.Title);
+            }
+        }
+        catch (Exception ex) { log.LogWarning("ONE_SHOT option " + ex.GetBaseException().Message); }
+        return titles;
+    }
+    private List<OneShot> OneShotsFrom(string entry, bool fromPool = false)
+    {
+        string key = (fromPool ? "pool:" : "") + entry;
+        if (oneShots.TryGetValue(key, out var found)) return found;
         found = new List<OneShot>();
+        // Without the pool table nothing past the entry script can be followed; try again on a later refresh.
+        if (Pools() == null) return found;
         var reached = LuaOptions.Reach(entry, name => ScriptText!(name),
-            name => FindPool(name) is PositionResultData data ? data.List.Select(item => R.Field<string>(data, "_scriptPrefix", "") + "_" + item.ResultType).ToList() : new List<string>());
+            name => FindPool(name) is PositionResultData data ? data.List.Select(item => R.Field<string>(data, "_scriptPrefix", "") + "_" + item.ResultType).ToList() : new List<string>(), entryIsPool: fromPool);
         foreach (var target in reached)
         {
             if (FindPool(target.Pool) is not PositionResultData pool) continue;
             foreach (var item in pool.List)
             {
                 if (R.Field(item, "_toggleCondition") is not true) continue;
-                var gates = Conditions.Flags(R.Field(item, "_activeCondition"));
-                if (gates.Count == 0 || !gates.Overlaps(EventFlags!(R.Field<string>(pool, "_scriptPrefix", "") + "_" + item.ResultType))) continue;
+                var changes = EventFlagChanges!(R.Field<string>(pool, "_scriptPrefix", "") + "_" + item.ResultType);
+                if (!Conditions.EndsAfterOnce(R.Field(item, "_activeCondition"), changes)) continue;
                 found.Add(new OneShot { Pool = pool.name, Item = item.name, Path = target.Path });
             }
         }
-        log.LogInfo($"ONE_SHOT entry={entry} pools={reached.Count} candidates={found.Count}");
-        return oneShots[entry] = found;
+        log.LogInfo($"ONE_SHOT entry={key} pools={reached.Count} candidates={found.Count}");
+        return oneShots[key] = found;
     }
     private static string OptionTitle(string key) => Regex.Replace(L.GameText("Story/" + key, ""), "<[^>]+>", "").Trim();
 

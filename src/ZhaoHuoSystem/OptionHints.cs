@@ -25,6 +25,8 @@ internal sealed class OptionHints : IDisposable
     public OptionHints(ManualLogSource log) => this.log = log;
     /// <summary>Hidden-overlay mode: no brackets or shop lines are added to native text.</summary>
     public bool Suppressed;
+    /// <summary>Titles of one-shot events that can run now behind an option's pool or next script (F43).</summary>
+    public Func<string, string, List<string>>? ReadyOneShots;
     // Each option's full consequences go to the session log once per menu, so a report can be matched to what was shown.
     private readonly HashSet<string> logged = new(StringComparer.Ordinal);
     public void MenuStarted() => logged.Clear();
@@ -61,6 +63,7 @@ internal sealed class OptionHints : IDisposable
         foreach (var text in texts)
         {
             if (text == null) continue;
+            if (detail.Exists(segment => segment.OneShot)) text.text = Colorize(Tone.Mark(1, Dot), text.color, text.supportRichText) + " " + text.text;
             string size = "<size=" + Mathf.Max(10, Mathf.RoundToInt(text.fontSize * .8f)) + ">";
             string inline = " " + Render(segments, text.color, text.supportRichText, size);
             try
@@ -88,6 +91,7 @@ internal sealed class OptionHints : IDisposable
         foreach (var text in texts)
         {
             if (text == null) continue;
+            if (detail.Exists(segment => segment.OneShot)) text.text = Colorize(Tone.Mark(1, Dot), text.color, text.richText) + " " + text.text;
             try
             {
                 float available = Available(row, text.rectTransform, own) - text.GetPreferredValues(text.text + " ").x;
@@ -224,6 +228,14 @@ internal sealed class OptionHints : IDisposable
             var preview = Resolve(key);
             if (preview == null) return null;
             var segments = LuaOptions.Describe(preview, EffectText, SwitchArm, Requirement, Format, Otherwise);
+            // One-shot events behind the option lead the bracket, and the row gets a green dot in front (F43).
+            var own = Find(key, out _);
+            var ready = own == null || ReadyOneShots == null ? null : ReadyOneShots(own.Pool, own.NextScript);
+            if (ready != null && ready.Count > 0)
+            {
+                string all = Tone.Mark(1, L.Format("一次性事件：{0}", string.Join(L.Text("、"), ready)));
+                segments.Insert(0, new HintSegment { OneShot = true, State = 1, Summary = Tone.Mark(1, L.Format("一次性事件×{0}", ready.Count)), Full = all, Head = all });
+            }
             if (logged.Count > 500) logged.Clear();
             if (segments.Count > 0 && logged.Add(key)) log.LogInfo("OPTION " + key + " " + Tone.Plain(string.Join("；", segments.Select(segment => segment.Full))));
             return segments.Count == 0 ? null : segments;
@@ -248,21 +260,24 @@ internal sealed class OptionHints : IDisposable
         if (!scriptMaps.TryGetValue(name, out var map)) scriptMaps[name] = map = ScriptText(name) is string text ? LuaOptions.Analyze(text) : null;
         return map;
     }
-    /// <summary>Story flags an event's script sets or adds in any branch, plus its literal next script's.</summary>
-    public HashSet<string> EventFlags(string script)
+    /// <summary>
+    /// Story flag changes an event's script makes every time it runs (its top level, then its literal next script's), in
+    /// order per flag. Changes inside a branch or a choice may not happen, so they are left out.
+    /// </summary>
+    public Dictionary<string, List<OptionEffect>> EventFlagChanges(string script)
     {
-        var flags = new HashSet<string>(StringComparer.Ordinal);
+        var changes = new Dictionary<string, List<OptionEffect>>(StringComparer.Ordinal);
         void Add(Dictionary<string, OptionPreview>? map)
         {
-            if (map == null) return;
-            foreach (var preview in map.Values)
-                foreach (var effect in preview.Effects.Concat(preview.Cases.SelectMany(group => group.Effects)))
-                    if (effect.Kind == "flag" || effect.Kind == "set-flag") flags.Add(effect.Key);
+            if (map == null || !map.TryGetValue(LuaOptions.ScriptLevel, out var level)) return;
+            foreach (var effect in level.Effects)
+                if (effect.Kind == "flag" || effect.Kind == "set-flag")
+                { if (!changes.TryGetValue(effect.Key, out var list)) changes[effect.Key] = list = new(); list.Add(effect); }
         }
         var own = ScriptMap(script); Add(own);
         string next = own != null && own.TryGetValue(LuaOptions.ScriptLevel, out var top) ? top.NextScript : "";
         if (next.Length > 0 && !next.Equals(script, StringComparison.OrdinalIgnoreCase)) Add(ScriptMap(next));
-        return flags;
+        return changes;
     }
     /// <summary>
     /// What an action event's script does when it runs: its top-level effects, condition branches and markers (choices
@@ -291,9 +306,12 @@ internal sealed class OptionHints : IDisposable
         bool follow = preview.NextScript.Length > 0 && !script.Equals(preview.NextScript, StringComparison.OrdinalIgnoreCase);
         return LuaOptions.Merge(preview, follow ? NextScript(preview.NextScript) : null);
     }
-    /// <summary>Native row text without this mod's bracket, whether it sits on the title line or its own line.</summary>
+    private const string Dot = "●";
+    /// <summary>Native row text without this mod's bracket or leading dot, whether the bracket sits on the title line or its own line.</summary>
     public static string StripHint(string text)
     {
+        int dot = text.IndexOf(Dot + (text.StartsWith("<", StringComparison.Ordinal) ? "</color> " : " "), StringComparison.Ordinal);
+        if (dot >= 0 && dot < 32) text = text.Substring(text.IndexOf(' ', dot) + 1);
         foreach (string marker in new[] { " <size=", "\n<size=", " （", "\n（" })
         {
             int at = text.IndexOf(marker, StringComparison.Ordinal);

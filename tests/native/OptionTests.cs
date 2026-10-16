@@ -132,6 +132,18 @@ internal static partial class Program
             Require(segments.Count == 1 && Tone.Plain(segments[0].Summary) == "mental-10 money-500 team+5", "all three changes in source order");
             Require(segments[0].Summary.Contains(Tone.Negative + "-10" + Tone.End) && segments[0].Summary.Contains(Tone.Positive + "+5" + Tone.End), "losses toned red, gains green");
         });
+        Test("a one-shot event is one its own flag changes end after a single run, not a counter with runs left", () =>
+        {
+            OptionEffect Add(int d) => new() { Kind = "flag", Key = "F", Value = d };
+            OptionEffect Set(int v) => new() { Kind = "set-flag", Key = "F", Value = v };
+            // 行商 大失败: "Door_Work_201 < 2" with +1 runs twice; 龙湘服务生1: "!= -1" with +1 never ends.
+            Require(!LuaOptions.EndsAfterOnce("<", 2, new[] { Add(1) }) && !LuaOptions.EndsAfterOnce("!=", -1, new[] { Add(1) }), "counters with runs left");
+            // 福韫 揍你: "E20005 = 1" set to 0; plain "= 0" / "< 1" / "<= 0" counters end at once.
+            Require(LuaOptions.EndsAfterOnce("=", 1, new[] { Set(0) }) && LuaOptions.EndsAfterOnce("=", 0, new[] { Add(1) }), "set away and equality");
+            Require(LuaOptions.EndsAfterOnce("<", 1, new[] { Add(1) }) && LuaOptions.EndsAfterOnce("<=", 0, new[] { Add(1) }), "single-run counters");
+            Require(!LuaOptions.EndsAfterOnce(">=", 1, new[] { Add(1) }) && LuaOptions.EndsAfterOnce(">=", 1, new[] { Set(0) }), "growing counters stay, a reset ends");
+            Require(!LuaOptions.EndsAfterOnce("=", 0, new OptionEffect[0]) && LuaOptions.Mirror("<") == ">" && LuaOptions.Mirror("=") == "=", "no change, mirrored sides");
+        });
         Test("pools reachable from a location follow scripts, menu options and pool results with their option path", () =>
         {
             // Shape of the gate: own pool -> a result that opens the "where to" menu -> a shop with two pools; one option loops back.

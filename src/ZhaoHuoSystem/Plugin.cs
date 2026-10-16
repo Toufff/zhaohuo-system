@@ -26,13 +26,16 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.19")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.20")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
     internal GameAdapter Adapter = null!;
     internal OptionHints OptionHints = null!;
     internal PracticeButtons Practice = null!;
+    private RoundSkip roundSkip = null!;
+    private PinballScore pinball = null!;
+    internal SaveSlotSort SaveSort = null!;
     internal BranchNotice Branches = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
@@ -70,10 +73,10 @@ public sealed class Plugin : BaseUnityPlugin
         var managed = Path.Combine(Paths.GameRootPath, "Mortal_Data", "Managed");
         var expected = new Dictionary<string, string>
         {
-            ["Mortal.Core.dll"] = "E2FE344EA90DED6E11F06711DE86F27290E005D817B21755149F9EE24966FC9F",
-            ["Mortal.Story.dll"] = "69340F2B4908A96DE26ED947B870752D674D2CF7193DA17431F4F94A6F41F66A",
-            ["Mortal.Free.dll"] = "F82558A87E1A735E5DCA71A106B27128BE9FC376A0120CCFC8DD0D50158F54C9"
-            ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
+            ["Mortal.Core.dll"] = "C0CF84F41F110DD475D62AFFB58681BA4A1E5B3DEEC7698B8349D85876EA8A9C",
+            ["Mortal.Story.dll"] = "EE9139A5E4631DC275B80CC3FF6A81A4959F3C908A3FE751E778A42350372249",
+            ["Mortal.Free.dll"] = "0ABC19100F216515BCA88975E52051AFCE11955A8439FFACF4FF02118FD27920"
+            ,["Fungus.dll"] = "BCB6D47EB31DEDC5D23D0DA281E0835AF0F939F30B64A39AAE7D5F6DAB96CAD2"
         };
         // Diagnostics only. Game updates are mostly small fixes that leave the mod working, so nothing is switched off here;
         // a patch that no longer fits is skipped on its own (PatchEach) and the rest keep working.
@@ -95,8 +98,16 @@ public sealed class Plugin : BaseUnityPlugin
         dicePresenter = new NativeDicePresenter(Adapter, Logger);
         OptionHints = new OptionHints(Logger);
         Practice = new PracticeButtons(Logger);
+        LibraryCollections.Log = Logger;
+        OptionHints.ReadyOneShots = Adapter.ReadyOneShots;
+        roundSkip = new RoundSkip(Logger);
+        pinball = new PinballScore(Logger);
+        SaveSort = new SaveSlotSort(Logger);
+        var saveSort = Config.Bind("界面", "存档排序", 0, "读档、存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前。");
+        SaveSort.Mode = Mathf.Clamp(saveSort.Value, 0, SaveSlotSort.Modes.Length - 1);
+        SaveSort.Changed = mode => saveSort.Value = mode;
         Adapter.EventConsequences = OptionHints.EventConsequences;
-        Adapter.ScriptText = OptionHints.ScriptText; Adapter.EventFlags = OptionHints.EventFlags;
+        Adapter.ScriptText = OptionHints.ScriptText; Adapter.EventFlagChanges = OptionHints.EventFlagChanges;
         var panelKey = Config.Bind("界面", "面板快捷键", "F8", "打开/收起面板的按键（UnityEngine.KeyCode 名称，None 为不绑定）。");
         var hideKey = Config.Bind("界面", "隐藏快捷键", "None", "切换「隐藏全部悬浮窗」的按键；默认不绑定。");
         var hidden = Config.Bind("界面", "隐藏全部悬浮窗", false, "隐藏本模组在游戏内的全部悬浮显示，便于截图；用面板或隐藏快捷键恢复。");
@@ -124,9 +135,6 @@ public sealed class Plugin : BaseUnityPlugin
             Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown}");
         };
         Branches = new BranchNotice();
-        var branchSpot = Config.Bind("界面", "分支提示参考位置", "", "剧情分支提示框的固定位置（屏幕比例 x,y），从游戏标准人物对话框自动取得；留空会重新取得。");
-        if (NativeUiState.TryParseAnchor(branchSpot.Value, out var spotX, out var spotY)) Branches.Reference = new Vector2(spotX, spotY);
-        Branches.ReferenceLearned = spot => branchSpot.Value = NativeUiState.FormatAnchor(spot.x, spot.y);
         inputGuard = new NativeInputGuard(window, Logger, () => Branches.Rect);
         LocalizationManager.OnLanguageChanged += LanguageChanged;
         window.ExportDiagnostics = ExportDiagnostics;
@@ -185,6 +193,9 @@ public sealed class Plugin : BaseUnityPlugin
             if (wasVisible && !window.Visible) Adapter.ContinueAction();
             using (Perf.Time("dice-ui")) dicePresenter.Update(window.Hidden);
             try { Practice.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PRACTICE_CAP " + ex.GetBaseException().Message); }
+            try { roundSkip.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("ROUND_SKIP " + ex.GetBaseException().Message); }
+            try { pinball.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PINBALL_SCORE " + ex.GetBaseException().Message); }
+            try { SaveSort.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_SORT " + ex.GetBaseException().Message); }
             wasVisible = window.Visible; inputGuard.Tick();
             if (Time.unscaledTime >= nextRefresh)
             {
@@ -286,7 +297,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose();
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();
@@ -560,6 +571,23 @@ internal static class DiceOptionHintPatch
 {
     private static void Postfix(DiceOption __instance)
     { using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_sourceText"), R.Field<TMP_Text>(__instance, "_normalText"), R.Field<TMP_Text>(__instance, "_highText")); }
+}
+// Manual save slots in the chosen order each time the load or save page refreshes them from disk (F44).
+[HarmonyPatch(typeof(LoadGamePanel), "UpdateSlot")]
+internal static class LoadSlotSortPatch
+{
+    private static void Postfix(LoadGamePanel __instance)
+    => Plugin.Instance?.SaveSort.Refreshed(__instance);
+}
+[HarmonyPatch(typeof(SaveGamePanel))]
+internal static class SaveSlotSortPatch
+{
+    [HarmonyPostfix, HarmonyPatch("UpdateSlot")]
+    private static void Refreshed(SaveGamePanel __instance)
+    => Plugin.Instance?.SaveSort.Refreshed(__instance);
+    [HarmonyPostfix, HarmonyPatch(nameof(SaveGamePanel.OnPanelOpen))]
+    private static void Opened(SaveGamePanel __instance)
+    => Plugin.Instance?.SaveSort.Opened(__instance);
 }
 // 「本次取消上限」 is offered whenever a martial (修炼) or upgrade (锻造 / 炼丹) panel opens.
 [HarmonyPatch(typeof(MartialPanel), nameof(MartialPanel.Open))]

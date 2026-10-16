@@ -52,8 +52,31 @@ internal static partial class Program
             Has(mortalCore, "Mortal.Core", "MartialPanel", "_mode", "_maxCountText");
             foreach (string method in new[] { "UpdateButton", "UpgradeButtonClick", "NextLevelButtonClick", "UpdateStatus" }) Signature(mortalCore, "Mortal.Core", "UpgradePanel", method);
             Has(mortalCore, "Mortal.Core", "UpgradePanel", "_currentCount", "_maxCountText");
-            // The box is placed in the active dialogue box: left of its story text, below its name text.
-            Has(Path.Combine(managed, "Fungus.dll"), "Fungus", "SayDialog", "ActiveSayDialog", "StoryTextRectTrans", "nameText", "nameTextGO");
+            // 跳过本旬: the free map's date and state, and the calls a story makes when it returns to the map.
+            string mortalFree = Path.Combine(managed, "Mortal.Free.dll");
+            Has(mortalFree, "Mortal.Free", "FreeManager", "Instance", "IsProcessing", "_timeText", "_menuOpen", "_statOpen", "_saveOpen");
+            foreach (string method in new[] { "SetProcessing", "DisableButton", "TransitionScreen" }) Signature(mortalFree, "Mortal.Free", "FreeManager", method);
+            Signature(mortalFree, "Mortal.Free", "FreeManager", "SetHotKey", "active");
+            Signature(mortalFree, "Mortal.Free", "FreeManager", "UpdateActionValue", "value");
+            Has(mortalCore, "Mortal.Core", "GameDateTimeText", "_text");
+            Has(mortalCore, "Mortal.Core", "MissionManagerData", "MainMissionStart", "MainMissionPosition");
+            foreach (string method in new[] { "UpdateCheckMissions", "HasAnyMissionTrigger" }) Signature(mortalCore, "Mortal.Core", "MissionManagerData", method);
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "SaveUniverseData");
+            foreach (string method in new[] { "LoadStory", "LoadFree" }) Signature(mortalCore, "Mortal.Core", "SceneController", method);
+            Has(mortalCore, "Mortal.Core", "SceneController", "IsPrepare", "IsLoading");
+            // 弹珠台: the table's total, its native add path, and the broken state that hides the row.
+            string mortalPinball = Path.Combine(managed, "Mortal.Pinball.dll");
+            Has(mortalPinball, "Mortal.Pinball", "PinballManager", "Instance", "_totalScore", "_totalText", "_isBroken");
+            Signature(mortalPinball, "Mortal.Pinball", "PinballManager", "AddScore", "score");
+            // 存档排序: both pages' slot arrays, refresh and pad wiring, and each slot's number and loaded save.
+            foreach (string page in new[] { "LoadGamePanel", "SaveGamePanel" })
+            {
+                Has(mortalCore, "Mortal.Core", page, "_saveSlots");
+                foreach (string method in new[] { "UpdateSlot", "SetButtonNavigation", "OnPanelOpen" }) Signature(mortalCore, "Mortal.Core", page, method);
+            }
+            foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slot", "_currentData");
+            Signature(mortalCore, "Mortal.Core", "SaveSlotPanel", "SelectButton");
+            Has(mortalCore, "Mortal.Core", "GameSave", "TimeTick");
         });
     }
 

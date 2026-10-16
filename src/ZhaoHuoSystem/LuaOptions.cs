@@ -331,12 +331,12 @@ public static class LuaOptions
     /// pools' own result scripts, nearest first, each with the shortest option path. Nothing is executed; unknown
     /// scripts (null text) end their branch.
     /// </summary>
-    public static List<Reached> Reach(string entry, Func<string, string?> scriptText, Func<string, IEnumerable<string>> poolScripts, int maxSteps = 8)
+    public static List<Reached> Reach(string entry, Func<string, string?> scriptText, Func<string, IEnumerable<string>> poolScripts, int maxSteps = 8, bool entryIsPool = false)
     {
         var result = new List<Reached>();
         var scripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var pools = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<(bool Pool, string Name, List<string> Path, int Steps)>();
-        queue.Enqueue((false, entry, new List<string>(), 0));
+        queue.Enqueue((entryIsPool, entry, new List<string>(), 0));
         while (queue.Count > 0)
         {
             var (isPool, name, path, steps) = queue.Dequeue();
@@ -361,6 +361,26 @@ public static class LuaOptions
         }
         return result;
     }
+
+    /// <summary>
+    /// Whether a clause "flag op constant" that holds now fails after one run of these changes, whatever count the flag
+    /// had (flags count up from 0). A set lands on its value. An add of d ends "= n" at once, "< n" only when n ≤ d and
+    /// "<= n" only when n + 1 ≤ d; otherwise the event can run again, so it is not a one-shot.
+    /// </summary>
+    public static bool EndsAfterOnce(string op, int constant, IEnumerable<OptionEffect> changes)
+    {
+        int? set = null; int delta = 0; bool any = false;
+        foreach (var change in changes) { any = true; if (change.Kind == "set-flag") { set = change.Value; delta = 0; } else delta += change.Value; }
+        if (!any) return false;
+        if (set.HasValue) return !Holds(set.Value + delta, op, constant);
+        return op switch { "=" => delta != 0, "<" => delta > 0 && constant <= delta, "<=" => delta > 0 && constant + 1 <= delta, _ => false };
+    }
+    /// <summary>The same comparison with its sides swapped: "n &lt; flag" is "flag &gt; n".</summary>
+    public static string Mirror(string op) => op switch { "<" => ">", "<=" => ">=", ">" => "<", ">=" => "<=", _ => op };
+    private static bool Holds(int value, string op, int constant) => op switch
+    {
+        "=" => value == constant, "!=" => value != constant, "<" => value < constant, "<=" => value <= constant, ">" => value > constant, _ => value >= constant
+    };
 
     /// <summary>Merge a literal next script's own top-level consequences into the option that leads to it (one level only).</summary>
     public static OptionPreview Merge(OptionPreview option, OptionPreview? next)

@@ -44,8 +44,9 @@ internal static class MapOverview
             {
                 Id = scene.name + ":" + (int)position + ":" + controller.GetInstanceID(),
                 Name = PositionName(position), Visible = true, HasScreenPosition = projected, ScreenX = point.x, ScreenY = point.y,
-                // The gate leads to places outside the sect that have no map location of their own (F32).
-                EntryScript = R.Field<string>(controller, "_scriptName", ""), SurfaceReachable = position == PositionType.大門,
+                // Each location's entry script leads through its menus to its event pools; the gate's reach places outside
+                // the sect that have no map location of their own (F32, F41).
+                EntryScript = R.Field<string>(controller, "_scriptName", ""),
                 Detail = L.Text("当前场景地点") + "\n" + scene.name + " / " + position + "\n" + L.Format("行动消耗 {0}", cost) +
                     (active ? "" : "\n" + L.Text("地点未启用")) + (!allowedByMain ? "\n" + L.Text("主线限制") : "") + (processing ? "\n" + L.Text("原生流程处理中") : "")
             };

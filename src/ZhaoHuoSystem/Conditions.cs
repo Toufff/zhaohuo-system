@@ -117,32 +117,38 @@ internal static class Conditions
         if (sign < 0) v.Text = "−" + v.Text;
         return v;
     }
-    /// <summary>Names of the story flags a condition reads, at any depth. Read-only, like <see cref="Read"/>.</summary>
-    internal static HashSet<string> Flags(object? condition)
+    /// <summary>
+    /// Whether one run of an event with these flag changes leaves this condition unmet: an AND fails when any part
+    /// fails, an OR when every part does. Only "flag op constant" parts can fail; anything else is taken to stay.
+    /// </summary>
+    internal static bool EndsAfterOnce(object? condition, IReadOnlyDictionary<string, List<OptionEffect>> changes, int depth = 0)
     {
-        var flags = new HashSet<string>(StringComparer.Ordinal);
-        FlagsOf(condition, flags, 0);
-        return flags;
+        if (condition == null || depth > 12 || changes.Count == 0) return false;
+        var parts = R.Items(R.Field(condition, "_items")).Select(item => item is StatCompareItem ? ClauseEnds(item, changes) : EndsAfterOnce(item, changes, depth + 1)).ToList();
+        if (parts.Count == 0) return false;
+        bool or = condition is ConditionResultData || R.Field(condition, "_logicOp") is LogicOperatorType.OR;
+        return or ? parts.All(x => x) : parts.Any(x => x);
     }
-    private static void FlagsOf(object? condition, HashSet<string> flags, int depth)
+    private static bool ClauseEnds(object item, IReadOnlyDictionary<string, List<OptionEffect>> changes)
     {
-        if (condition == null || depth > 12) return;
-        foreach (var item in R.Items(R.Field(condition, "_items")))
+        string op = Symbol(R.RequiredField<StatCompareType>(item, "_compareOp"));
+        var (leftFlag, leftConstant) = Single(R.Field(item, "_value1"));
+        var (rightFlag, rightConstant) = Single(R.Field(item, "_value2"));
+        if (leftFlag != null && rightConstant.HasValue && changes.TryGetValue(leftFlag, out var own)) return LuaOptions.EndsAfterOnce(op, rightConstant.Value, own);
+        if (rightFlag != null && leftConstant.HasValue && changes.TryGetValue(rightFlag, out own)) return LuaOptions.EndsAfterOnce(LuaOptions.Mirror(op), leftConstant.Value, own);
+        return false;
+    }
+    // A value group that is exactly one plain flag or one constant.
+    private static (string? Flag, int? Constant) Single(object? group)
+    {
+        var values = R.Items(R.Field(group, "_value")).ToList();
+        if (values.Count != 1 || R.Field(values[0], "_negative") is true) return (null, null);
+        return R.Property(values[0], "CheckType")?.ToString() switch
         {
-            if (item is StatCompareItem) { GroupFlags(R.Field(item, "_value1"), flags, depth + 1); GroupFlags(R.Field(item, "_value2"), flags, depth + 1); }
-            else FlagsOf(item, flags, depth + 1);
-        }
-    }
-    private static void GroupFlags(object? group, HashSet<string> flags, int depth)
-    {
-        if (group == null || depth > 12) return;
-        foreach (var reference in R.Items(R.Field(group, "_value")))
-            switch (R.Property(reference, "CheckType")?.ToString())
-            {
-                case "旗標": if (R.Field<FlagData>(reference, "_flag") is FlagData flag && flag != null) flags.Add(flag.name); break;
-                case "數值群組": GroupFlags(R.Field(reference, "_statGroup"), flags, depth + 1); break;
-                case "條件設定": FlagsOf(R.Field(reference, "_condition"), flags, depth + 1); break;
-            }
+            "旗標" => (R.Field<FlagData>(values[0], "_flag") is FlagData flag && flag != null ? flag.name : null, null),
+            "常數" => (null, R.Field(values[0], "_constant") is int constant ? constant : null),
+            _ => (null, null)
+        };
     }
     internal static string TimeName(GameTime time) => L.Format("{0}年{1}月{2}", time.Year, time.Month, L.GameText(time.StageText, time.Stage.ToString()));
     private static string AssetName(object? asset, string type) => asset switch
