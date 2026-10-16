@@ -21,9 +21,13 @@ The in-game panel follows the game's language and is available in Simplified Chi
   - When an action pauses, pick an event in the list and press 继续本次行动 (continue); that event triggers. Pick nothing and it stays random as usual.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
   - When an action stops for you to choose, press 重复上次选择 (repeat last choice) to pick the same event as last time for that action.
-- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list. Places you can only reach through the gate count too: if one of them has a one-time event you can trigger now, the gate's badge turns green.
+- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list.
 
   <img src="media/map-hover.webp" width="420" alt="Event count badges on the map and the hover list">
+
+- **One-time event reminders**: map locations, and dialogue options such as picking a route while travelling, are marked when an event that can happen only once is available behind them right now. The location's badge turns green and the option gets a green ●.
+
+- **Skip the rest of a period**: on the free-action map, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location.
 
 - **Values**: edit attributes, character affection, sect relations and story flags directly.
 
@@ -35,13 +39,15 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/options.webp" width="560" alt="Consequence notes after options and the hover details">
 
-- **Story branches**: when the story branches on a flag or condition, a small box appears at a fixed spot on the left of the dialogue box. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere or close it; at the next branch it comes back to that spot.
+- **Story branches**: when the story branches on a flag or condition, a small box appears in the bottom-left corner of the game window. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere or close it; at the next branch it comes back to that corner.
 
   <img src="media/branch.webp" width="620" alt="The story branch box">
 
 - **Dice**: each outcome gets a 指定 N% button, where N is its natural chance. Click one to roll that outcome. Outcomes your bonuses make impossible (shown as 0%) can be picked too: the dice face is worked back from the total, so the shown sum still adds up. If you click nothing, the roll stays random as usual.
 
   <img src="media/dice.webp" width="520" alt="Clicking 指定 50% makes the wheel stop on that outcome">
+
+- **Pinball**: a 总分改为 (set total to) 100 60 30 0 row sits below the total score. The story after the pinball table only checks which band the total falls in (100+, 60+, 30+ or lower), so click a value to set the total to it, then leave with the game's own button.
 
 - **Shop**: item descriptions get one extra line with the item's actual effect.
 
@@ -51,6 +57,10 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/battle-tab.webp" width="560" alt="Combat switches">
 
+- **Collection**: the 收集 (Collection) tab lists the records kept in the 讲经堂 hall: achievements (风云史), deaths (生死簿) and endings (汗青书). Unlock them one at a time, or a whole list at once with 全部解锁 (unlock all). Unlocking an achievement also unlocks the matching Steam achievement, the same way the game does, and cannot be undone.
+
+- **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last.
+
 - **UI scale**: the mod grows automatically on 4K and other high resolutions; adjust it further with 界面缩放 (UI scale) on the 设置 (Settings) tab.
 
 - **Lift the cap once**: the training, forging and alchemy panels get a 本次取消上限 (lift the cap this time) button next to the per-visit count. It removes the count cap for this visit only (shown as ∞); close and reopen the panel to get the normal cap back. Points and silver are still spent.
@@ -59,7 +69,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 ## Install
 
-Built and tested on the Steam release, build 25957922.
+Built and tested on the Steam release, build 25987745.
 
 1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
 2. Close the game and double-click `install.bat`.
