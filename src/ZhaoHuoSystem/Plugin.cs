@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.15")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.16")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -244,11 +244,12 @@ public sealed class Plugin : BaseUnityPlugin
         {
             inputGuard.ObserveGui(Event.current);
             bool mouseDown = Event.current.type == EventType.MouseDown;
-            // The branch notice handles its clicks first and paints last, on top of the other surfaces.
-            Branches.Draw(window.Hidden);
+            // Passive overlays are guarded one by one: a failure in any of them must never keep the panel from drawing,
+            // because a paused action waits for the panel. The branch notice handles its clicks first, paints last.
+            try { Branches.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
             if (!window.Visible)
             {
-                if (!window.Hidden) mapIndicators.Draw(Adapter.Snapshot);
+                try { if (!window.Hidden) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
                 if (window.DrawLauncher())
                 {
                     lastToggleFrame = Time.frameCount; lastToggleTime = Time.realtimeSinceStartup;
@@ -259,11 +260,21 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 window.Draw();
             }
-            Branches.Paint();
-            if (!window.Hidden) OptionHints.DrawTooltip(window.Visible && window.IsPointerOver);
+            try { Branches.Paint(); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
+            try { if (!window.Hidden) OptionHints.DrawTooltip(window.Visible && window.IsPointerOver); } catch (Exception ex) { OverlayFailed("tooltip", ex); }
             if (mouseDown) inputGuard.FocusResolved(); else inputGuard.Tick();
         }
-        catch (Exception ex) { inputGuard?.Reset(); Logger.LogError(ex); }
+        catch (Exception ex)
+        {
+            inputGuard?.Reset(); Logger.LogError(ex);
+            // Never leave the game waiting on a panel that cannot draw: the action goes on with the game's own choice.
+            if (Adapter.Snapshot.ActionWaiting) { Adapter.ContinueAction(); Logger.LogWarning("PANEL_FAILED paused action released"); }
+        }
+    }
+    private readonly HashSet<string> overlayFailures = new(StringComparer.Ordinal);
+    private void OverlayFailed(string overlay, Exception ex)
+    {
+        if (overlayFailures.Add(overlay + ex.GetType().Name)) Logger.LogError("OVERLAY_FAILED " + overlay + " " + ex);
     }
     private void OnDestroy()
     {

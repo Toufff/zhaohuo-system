@@ -160,8 +160,9 @@ internal sealed class BranchNotice : IDisposable
     /// </summary>
     private void Learn()
     {
+        // The static active dialogue can outlive its scene; Unity's null check also catches a destroyed one.
         var dialog = Fungus.SayDialog.ActiveSayDialog;
-        if (dialog is not CharacterSayDialog || !dialog.gameObject.activeInHierarchy || Screen.width <= 0 || Screen.height <= 0) return;
+        if (dialog == null || dialog is not CharacterSayDialog || !dialog.gameObject.activeInHierarchy || Screen.width <= 0 || Screen.height <= 0) return;
         var story = dialog.StoryTextRectTrans;
         var name = R.Field<Text>(dialog, "nameText")?.rectTransform ?? R.Field<GameObject>(dialog, "nameTextGO")?.transform as RectTransform;
         if (story == null || name == null || !story.gameObject.activeInHierarchy || !name.gameObject.activeInHierarchy) return;
@@ -174,7 +175,8 @@ internal sealed class BranchNotice : IDisposable
     /// <summary>Before the spot is known: beside the active dialogue's story text, else the top-right corner.</summary>
     private static Vector2 Fallback()
     {
-        var story = Fungus.SayDialog.ActiveSayDialog is { } dialog && dialog.gameObject.activeInHierarchy ? dialog.StoryTextRectTrans : null;
+        var dialog = Fungus.SayDialog.ActiveSayDialog;
+        var story = dialog != null && dialog.gameObject.activeInHierarchy ? dialog.StoryTextRectTrans : null;
         if (story == null || !story.gameObject.activeInHierarchy) return new Vector2(Screen.width - Width - 24, 72);
         var rect = ScreenRect(story, CanvasCamera(story));
         return new Vector2(rect.xMin - Width - 12, rect.yMin);
