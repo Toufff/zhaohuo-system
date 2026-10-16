@@ -124,6 +124,14 @@ internal static partial class Program
             Require(segments.Count == 1 && segments[0].Full == "money F1=1", "flag after stat: " + segments[0].Full);
             Require(segments[0].Summary == "money 标记×1" && segments[0].Head == "money、F1=1", "inline counts flags; the hover names them, separated by 、");
         });
+        Test("an action event script's own top level is what triggering it does", () =>
+        {
+            // Shape of a daily-work result script: plain stat calls with display waits, no menu.
+            var work = LuaOptions.Analyze("statmodifymanager.Player(\"mental\", -10, \"\", 1)\nwait(statmodifymanager.GetDisplayTime(\"mental\"))\nstatmodifymanager.Player(\"money\", -500, \"\", 1)\nstatmodifymanager.Player(\"team\", 5, \"\", 1)")[LuaOptions.ScriptLevel];
+            var segments = LuaOptions.Describe(work, e => e.Key + Tone.Mark(e.Value, e.Value.ToString("+0;-0;0")), (n, a) => default, n => default, (t, a) => string.Format(t, a));
+            Require(segments.Count == 1 && Tone.Plain(segments[0].Summary) == "mental-10 money-500 team+5", "all three changes in source order");
+            Require(segments[0].Summary.Contains(Tone.Negative + "-10" + Tone.End) && segments[0].Summary.Contains(Tone.Positive + "+5" + Tone.End), "losses toned red, gains green");
+        });
         Test("a literal next script contributes its own top level once", () =>
         {
             var next = LuaOptions.Analyze("statmodifymanager.Player(\"money\", 1000, \"\", 1)\nluamanager.SetNextScript(\"deeper\")")[LuaOptions.ScriptLevel];

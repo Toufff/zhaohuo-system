@@ -220,12 +220,38 @@ internal sealed class OptionHints : IDisposable
             if (key.Length == 0) return null;
             var preview = Resolve(key);
             if (preview == null) return null;
-            var segments = LuaOptions.Describe(preview, EffectText, SwitchArm, Requirement, (template, args) => args.Length == 0 ? L.Text(template) : L.Format(template, args), Otherwise);
+            var segments = LuaOptions.Describe(preview, EffectText, SwitchArm, Requirement, Format, Otherwise);
             if (logged.Count > 500) logged.Clear();
             if (segments.Count > 0 && logged.Add(key)) log.LogInfo("OPTION " + key + " " + Tone.Plain(string.Join("；", segments.Select(segment => segment.Full))));
             return segments.Count == 0 ? null : segments;
         }
         catch (Exception ex) { log.LogWarning("OPTION_HINT " + ex.GetBaseException().Message); return null; }
+    }
+
+    private static string Format(string template, object[] args) => args.Length == 0 ? L.Text(template) : L.Format(template, args);
+
+    private readonly Dictionary<string, OptionPreview?> eventScripts = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// What an action event's script does when it runs: its top-level effects, condition branches and markers (choices
+    /// inside it are shown on their own option rows when they appear), plus its literal next script's top level.
+    /// Branch states use current values. Null when the script is unknown or shows nothing.
+    /// </summary>
+    public List<HintSegment>? EventConsequences(string script)
+    {
+        try
+        {
+            if (!eventScripts.TryGetValue(script, out var preview))
+            {
+                var prefix = R.Field<string>(LuaManager.Instance, "_scriptPrefix", "Story");
+                var asset = Resources.Load<TextAsset>(prefix + "/ChineseTraditional/" + script.ToLowerInvariant());
+                eventScripts[script] = preview = asset == null ? null : LuaOptions.Analyze(asset.text)[LuaOptions.ScriptLevel];
+            }
+            if (preview == null) return null;
+            bool follow = preview.NextScript.Length > 0 && !preview.NextScript.Equals(script, StringComparison.OrdinalIgnoreCase);
+            var segments = LuaOptions.Describe(LuaOptions.Merge(preview, follow ? NextScript(preview.NextScript) : null), EffectText, SwitchArm, Requirement, Format, Otherwise);
+            return segments.Count == 0 ? null : segments;
+        }
+        catch (Exception ex) { log.LogWarning("EVENT_HINT " + script + " " + ex.GetBaseException().Message); return null; }
     }
 
     /// <summary>An option's own consequences plus its literal next script's top level.</summary>
@@ -288,7 +314,7 @@ internal sealed class OptionHints : IDisposable
             var use = new OptionPreview { Key = option.Key, Pool = option.Pool, Dice = option.Dice, Unknown = option.Unknown };
             use.Effects.AddRange(option.Effects.FindAll(effect => !(effect.Kind == "item-remove" && effect.ItemType == type && effect.Key == id)));
             use.Cases.AddRange(option.Cases);
-            var segments = LuaOptions.Describe(use, EffectText, SwitchArm, Requirement, (template, args) => args.Length == 0 ? L.Text(template) : L.Format(template, args), Otherwise);
+            var segments = LuaOptions.Describe(use, EffectText, SwitchArm, Requirement, Format, Otherwise);
             if (segments.Count > 0) return L.Format("饮食：{0}", string.Join("；", segments.Select(segment => segment.Full)));
         }
         return "";

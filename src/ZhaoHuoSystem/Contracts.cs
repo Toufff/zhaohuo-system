@@ -23,6 +23,8 @@ public sealed class EventSnapshot
     public bool Eligible { get; set; }
     public int Weight { get; set; }
     public List<ConditionSnapshot> Conditions { get; set; } = new();
+    /// <summary>What the event's script does once it runs, in the option hints' forms; empty when nothing is known.</summary>
+    public List<HintSegment> Consequences { get; set; } = new();
 }
 
 public sealed class ValueSnapshot
@@ -154,4 +156,17 @@ public static class Tone
     /// <summary>Marks text positive (sign &gt; 0) or negative (sign &lt; 0); zero stays plain.</summary>
     public static string Mark(int sign, string text) => text.Length == 0 || sign == 0 ? text : (sign > 0 ? Positive : Negative) + text + End;
     public static string Plain(string text) => text.Replace(Positive.ToString(), "").Replace(Negative.ToString(), "").Replace(End.ToString(), "");
+}
+
+/// <summary>One consequence segment in three forms: one line, the inline overview, and the hover's lines.</summary>
+public sealed class HintSegment
+{
+    /// <summary>Everything on one line, e.g. 「若 道德 45>=60：变心+1 攻略小梅=1」 (shop lines).</summary>
+    public string Full = "";
+    /// <summary>Inline overview: arm conditions left to the hover, story flags only counted, e.g. 「若…：变心+1 标记×1」.</summary>
+    public string Summary = "";
+    /// <summary>Hover: the requirement, condition or marker line; for an arm, its effects follow on their own line.</summary>
+    public string Head = "", Body = "";
+    /// <summary>1 met, -1 unmet, 0 neutral or unknown.</summary>
+    public int State;
 }

@@ -52,6 +52,8 @@ public sealed class GameAdapter : IGameAdapter
     public ToolSnapshot Snapshot { get; private set; } = new();
     /// <summary>Diagnostics only: the game assemblies match the build this version was developed on. Nothing is gated on it.</summary>
     public bool TestedBuild { get; set; }
+    /// <summary>Consequences of an event script by name (the option hints' analysis); set by the plugin.</summary>
+    public Func<string, List<HintSegment>?>? EventConsequences { get; set; }
     public string RuntimeVersion { get; set; } = "运行版本待核验";
     public GameAdapter(ManualLogSource log, bool selectBeforeAction = true, Action<bool>? selectionChanged = null)
     { this.log = log; selectionEnabled = selectBeforeAction; this.selectionChanged = selectionChanged; }
@@ -256,7 +258,7 @@ public sealed class GameAdapter : IGameAdapter
             var effects = EffectSummary(script, p);
             var label = !string.IsNullOrWhiteSpace(note) ? note.Trim() : !string.IsNullOrWhiteSpace(mappingKey) ? mappingKey : mappingName;
             if (string.IsNullOrWhiteSpace(label) || Regex.IsMatch(label, @"^[A-Za-z0-9_]+$")) label = effects.Length > 0 ? Tone.Plain(effects) : L.Text("未命名结果") + " · " + item.ResultType;
-            events.Add(new() { Id = id, Title = L.DisplayText(label), Detail = item.name + "\n" + L.Text("映射") + " " + mappingName + " / " + mappingKey + "\n" + L.Text("结果") + " " + script + (effects.Length > 0 ? "\n" + L.Text("固定数值调用") + " " + effects : "") + "\n" + L.Format("基础权重 {0}；最终权重 {1}", R.Field<int>(item, "_defaultRate"), known ? weight.ToString() : L.Text("未核验")) + (weightDetails.Count > 0 ? "\n" + string.Join("\n", weightDetails) : ""), Eligible = weight > 0, Weight = weight, Conditions = conditions });
+            events.Add(new() { Id = id, Title = L.DisplayText(label), Detail = item.name + "\n" + L.Text("映射") + " " + mappingName + " / " + mappingKey + "\n" + L.Text("结果") + " " + script + (effects.Length > 0 ? "\n" + L.Text("固定数值调用") + " " + effects : "") + "\n" + L.Format("基础权重 {0}；最终权重 {1}", R.Field<int>(item, "_defaultRate"), known ? weight.ToString() : L.Text("未核验")) + (weightDetails.Count > 0 ? "\n" + string.Join("\n", weightDetails) : ""), Eligible = weight > 0, Weight = weight, Conditions = conditions, Consequences = EventConsequences?.Invoke(script) ?? new List<HintSegment>() });
         }
         return events;
     }

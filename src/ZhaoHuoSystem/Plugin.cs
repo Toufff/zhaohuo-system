@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.13")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.14")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -90,6 +90,7 @@ public sealed class Plugin : BaseUnityPlugin
         window.LauncherMoved = anchor => launcherAnchor.Value = NativeUiState.FormatAnchor(anchor.x, anchor.y);
         dicePresenter = new NativeDicePresenter(Adapter, Logger);
         OptionHints = new OptionHints(Logger);
+        Adapter.EventConsequences = OptionHints.EventConsequences;
         var panelKey = Config.Bind("界面", "面板快捷键", "F8", "打开/收起面板的按键（UnityEngine.KeyCode 名称，None 为不绑定）。");
         var hideKey = Config.Bind("界面", "隐藏快捷键", "None", "切换「隐藏全部悬浮窗」的按键；默认不绑定。");
         var hidden = Config.Bind("界面", "隐藏全部悬浮窗", false, "隐藏本模组在游戏内的全部悬浮显示，便于截图；用面板或隐藏快捷键恢复。");

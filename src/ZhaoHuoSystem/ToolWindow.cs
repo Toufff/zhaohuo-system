@@ -51,6 +51,8 @@ public sealed class ToolWindow : IDisposable
     private GUIStyle _listItem = null!, _listSelected = null!, _scrollbar = null!;
     // Fully satisfied events share one green treatment with the map markers.
     private GUIStyle _listReady = null!, _readySmall = null!;
+    // Event consequences carry the mod's one colour meaning, so these styles render its marks as rich text.
+    private GUIStyle _rich = null!, _richBody = null!, _richLine = null!;
     private Texture2D _background = null!, _line = null!, _section = null!, _selection = null!;
     private string _hoverText = "";
     private ValueSnapshot? _hoverEnum;
@@ -358,7 +360,7 @@ public sealed class ToolWindow : IDisposable
             var rowHeights = new List<float>();
             foreach (var item in items)
             {
-                float rowHeight = Mathf.Max(S(26), _label.CalcHeight(new GUIContent(item.Title), viewWidth - S(18))) + S(37);
+                float rowHeight = Mathf.Max(S(26), _label.CalcHeight(new GUIContent(item.Title), viewWidth - S(18))) + S(37) + (item.Consequences.Count > 0 ? S(20) : 0);
                 rowHeights.Add(rowHeight); listHeight += rowHeight;
             }
             Rect view = new(0, 0, viewWidth, Mathf.Max(list.height, listHeight));
@@ -369,15 +371,17 @@ public sealed class ToolWindow : IDisposable
                 for (int i = 0; i < items.Count; i++)
                 {
                     var item = items[i];
-                    float titleHeight = rowHeights[i] - S(37);
+                    float consequenceHeight = item.Consequences.Count > 0 ? S(20) : 0, titleHeight = rowHeights[i] - S(37) - consequenceHeight;
                     Rect row = new(0, y, view.width, rowHeights[i] - S(5));
                     if (Button(row, "", "event." + item.Id, item.Id == _selectedEvent ? _listSelected : item.Eligible ? _listReady : _listItem, EventDetail(item)))
                     {
                         _selectedEvent = item.Id; selected = item; _conditionScroll = Vector2.zero;
                     }
                     Label(new Rect(S(9), row.y + S(5), row.width - S(18), titleHeight), item.Title, _label, EventDetail(item));
+                    // One overview line, cut to the row like the option brackets; the detail pane has everything.
+                    if (consequenceHeight > 0) GUI.Label(new Rect(S(9), row.y + S(5) + titleHeight, row.width - S(18), consequenceHeight), EventLine(item, row.width - S(18)), _richLine);
                     string state = item.Id == _snapshot.PendingEventId ? "已指定" : item.Eligible ? "可触发" : "条件未满足";
-                    Label(new Rect(S(9), row.y + S(7) + titleHeight, row.width - S(18), S(22)), state, item.Eligible ? _readySmall : _small);
+                    Label(new Rect(S(9), row.y + S(7) + titleHeight + consequenceHeight, row.width - S(18), S(22)), state, item.Eligible ? _readySmall : _small);
                     y += rowHeights[i];
                 }
             }
@@ -386,7 +390,7 @@ public sealed class ToolWindow : IDisposable
         if (selected == null) return;
         float contentWidth = detail.width - S(18);
         float headingHeight = Mathf.Max(S(36), _heading.CalcHeight(new GUIContent(selected.Title), contentWidth) + S(6));
-        float contentHeight = headingHeight + S(9);
+        float contentHeight = headingHeight + S(9) + Consequences(selected, contentWidth, 0, false);
         foreach (var condition in selected.Conditions) contentHeight += ConditionHeight(condition, contentWidth);
         if (selected.Conditions.Count == 0) contentHeight += S(30);
         _conditionScroll = BeginScroll(detail, _conditionScroll, new Rect(0, 0, contentWidth, Mathf.Max(detail.height, contentHeight)));
@@ -394,10 +398,50 @@ public sealed class ToolWindow : IDisposable
         {
             Label(new Rect(0, 0, contentWidth, headingHeight), selected.Title, _heading, EventDetail(selected));
             float y = headingHeight + S(9);
+            y += Consequences(selected, contentWidth, y, true);
             if (selected.Conditions.Count == 0) Label(new Rect(0, y, contentWidth, S(30)), "无额外条件", _muted);
             foreach (var condition in selected.Conditions) DrawCondition(condition, 0, ref y, contentWidth);
         }
         finally { EndScroll(); }
+    }
+
+    private static string Toned(string text) => NativeUiState.ToneColors(text, Tone.PositiveOnDark, Tone.NegativeOnDark);
+    /// <summary>The list row's one-line overview, leading segments first, closed by 「…」 when cut.</summary>
+    private string EventLine(EventSnapshot item, float width)
+    {
+        var segments = item.Consequences.ConvertAll(segment => new KeyValuePair<string, int>(segment.Summary, segment.State));
+        var fit = NativeUiState.FitSegments(segments, list => _richLine.CalcSize(new GUIContent(Toned(string.Join("；", list.ConvertAll(pair => pair.Key))))).x, width, out _);
+        return Toned(string.Join("；", fit.ConvertAll(pair => pair.Key)));
+    }
+    /// <summary>
+    /// The detail pane's 「触发后」 block, laid out like the option hover (condition line, then 「→ effects」 indented),
+    /// followed by the 「触发条件」 heading. Returns its height; draws only when asked.
+    /// </summary>
+    private float Consequences(EventSnapshot item, float width, float top, bool draw)
+    {
+        if (item.Consequences.Count == 0) return 0;
+        float y = top;
+        if (draw) Label(new Rect(0, y, width, S(24)), "触发后", _muted);
+        y += S(26);
+        foreach (var segment in item.Consequences)
+        {
+            string head = Toned(segment.Head);
+            float h = _rich.CalcHeight(new GUIContent(head), width - S(8));
+            if (draw) GUI.Label(new Rect(S(8), y, width - S(8), h), head, _rich);
+            y += h;
+            if (segment.Body.Length > 0)
+            {
+                string body = Toned(segment.Body);
+                float b = _richBody.CalcHeight(new GUIContent(body), width - S(26));
+                if (draw) GUI.Label(new Rect(S(26), y, width - S(26), b), body, _richBody);
+                y += b;
+            }
+            y += S(4);
+        }
+        y += S(8);
+        if (draw) Label(new Rect(0, y, width, S(24)), "触发条件", _muted);
+        y += S(28);
+        return y - top;
     }
 
     private void DrawEventPending(Rect r)
@@ -1104,6 +1148,9 @@ public sealed class ToolWindow : IDisposable
         _listSelected = ButtonStyle(_selection, _selection, text);
         _listReady = ButtonStyle(TextureOnce("ready", new Color(.18f, .45f, .27f, .92f)), TextureOnce("readyHover", new Color(.23f, .53f, .33f, .95f)), text);
         _readySmall = TextStyle(13, text); _readySmall.wordWrap = true;
+        _rich = TextStyle(15, text); _rich.wordWrap = true; _rich.richText = true;
+        _richBody = new GUIStyle(_rich); _richBody.normal.textColor = Palette.Effects;
+        _richLine = TextStyle(13, muted); _richLine.wordWrap = false; _richLine.clipping = TextClipping.Clip; _richLine.richText = true;
         _input = TextStyle(16, text);
         _input.alignment = TextAnchor.MiddleLeft; _input.padding = new RectOffset((int)S(9), (int)S(9), (int)S(3), (int)S(3));
         _input.normal.background = TextureOnce("input", new Color(.10f, .12f, .14f, 1));
