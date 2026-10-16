@@ -136,5 +136,5 @@ internal static class Conditions
         _ => ""
     };
     internal static string Expression(ConditionSnapshot condition) => condition.Children.Count == 0 ? condition.Text : string.Join(" " + condition.Operator + " ", condition.Children.Select(x => "(" + Expression(x) + ")"));
-    private static string Symbol(StatCompareType op) => op switch { StatCompareType.Equal => "=", StatCompareType.NotEqual => "!=", StatCompareType.Less => "<", StatCompareType.LessEqual => "<=", StatCompareType.Greater => ">", _ => ">=" };
+    internal static string Symbol(StatCompareType op) => op switch { StatCompareType.Equal => "=", StatCompareType.NotEqual => "!=", StatCompareType.Less => "<", StatCompareType.LessEqual => "<=", StatCompareType.Greater => ">", _ => ">=" };
 }

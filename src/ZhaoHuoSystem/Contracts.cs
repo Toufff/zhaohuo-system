@@ -75,6 +75,8 @@ public sealed class DiceBranchSnapshot
     public string Title { get; set; } = "";
     public string Detail { get; set; } = "";
     public bool Reachable { get; set; }
+    /// <summary>Raw dice value that lands on this branch; may lie outside the native range when the branch is only
+    /// reachable by working back from the total. Null when even that is impossible and the branch is forced.</summary>
     public int? RawValue { get; set; }
     /// <summary>Share of the native raw range landing on this branch; null when the range was too wide to count.</summary>
     public double? Chance { get; set; }
@@ -138,4 +140,18 @@ public interface IGameAdapter
     /// <summary>Specify a reachable branch, then press the game's own start (or restart) once.</summary>
     OperationResult RollDiceBranch(string branchId);
     OperationResult CancelDice();
+}
+
+/// <summary>
+/// The mod's single colour meaning. Green = positive: a condition holds, a value rises, something is gained.
+/// Red = negative: a condition fails, a value falls, something is lost. Text carries invisible marks;
+/// each surface turns them into its own shade (light on dark panels, deep on the game's cream rows).
+/// </summary>
+public static class Tone
+{
+    public const char Positive = '\uE000', Negative = '\uE001', End = '\uE002';
+    public const string PositiveOnDark = "#8FDEA3", NegativeOnDark = "#FF9494", PositiveOnLight = "#2E7D3C", NegativeOnLight = "#B03030";
+    /// <summary>Marks text positive (sign &gt; 0) or negative (sign &lt; 0); zero stays plain.</summary>
+    public static string Mark(int sign, string text) => text.Length == 0 || sign == 0 ? text : (sign > 0 ? Positive : Negative) + text + End;
+    public static string Plain(string text) => text.Replace(Positive.ToString(), "").Replace(Negative.ToString(), "").Replace(End.ToString(), "");
 }

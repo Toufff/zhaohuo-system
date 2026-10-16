@@ -13,6 +13,9 @@ internal sealed class NativeInputGuard : IDisposable
 {
     private readonly ToolWindow window;
     private readonly ManualLogSource log;
+    // A second mod surface outside the panel (the branch notice), empty when not shown.
+    private readonly Func<Rect> extra;
+    private RectTransform? extraRect;
     private readonly InputIsolationPolicy policy = new();
     private readonly Dictionary<InputAction, ActionOrigin> origins = new();
     private RectTransform? shieldRoot, shieldRect;
@@ -22,9 +25,9 @@ internal sealed class NativeInputGuard : IDisposable
     public bool BlocksPointer => policy.BlockPointer;
     public bool BlocksKeyboard => policy.BlockKeyboard;
 
-    public NativeInputGuard(ToolWindow window, ManualLogSource log)
+    public NativeInputGuard(ToolWindow window, ManualLogSource log, Func<Rect> extra)
     {
-        this.window = window; this.log = log;
+        this.window = window; this.log = log; this.extra = extra;
         if (Mouse.current != null) { pointer = Mouse.current.position.ReadValue(); buttons = MouseButtons(Mouse.current); }
         InputSystem.onBeforeUpdate += BeforeUpdate;
         InputSystem.onEvent += InputEvent;
@@ -106,6 +109,8 @@ internal sealed class NativeInputGuard : IDisposable
             window.PrepareInputRegions();
             Vector2 guiPointer = new(pointer.x, Screen.height - pointer.y);
             bool over = window.Visible ? window.WindowRect.Contains(guiPointer) : window.LauncherRect.width > 0 && window.LauncherRect.Contains(guiPointer);
+            var other = extra();
+            over |= other.width > 0 && other.Contains(guiPointer);
             if (policy.Pointer(Time.frameCount, over, buttons)) window.RequestInputBlur();
             policy.Keyboard(Time.frameCount, window.HasTextFocus, false);
             UpdateShield();
@@ -122,6 +127,8 @@ internal sealed class NativeInputGuard : IDisposable
         var child = new GameObject("Window", typeof(RectTransform), typeof(Image)); child.transform.SetParent(root.transform, false);
         shieldRect = (RectTransform)child.transform; shieldRect.anchorMin = shieldRect.anchorMax = new Vector2(0, 1); shieldRect.pivot = new Vector2(0, 1);
         var image = child.GetComponent<Image>(); image.color = Color.clear; image.raycastTarget = true; image.canvasRenderer.cullTransparentMesh = false;
+        var second = UnityEngine.Object.Instantiate(child, root.transform, false); second.name = "Extra";
+        extraRect = (RectTransform)second.transform;
     }
     private void UpdateShield()
     {
@@ -129,6 +136,9 @@ internal sealed class NativeInputGuard : IDisposable
         Rect region = window.Visible ? window.WindowRect : window.LauncherRect;
         shieldRect!.gameObject.SetActive(region.width > 0 && region.height > 0);
         shieldRect.anchoredPosition = new Vector2(region.x, -region.y); shieldRect.sizeDelta = region.size;
+        var other = extra();
+        extraRect!.gameObject.SetActive(other.width > 0 && other.height > 0);
+        extraRect.anchoredPosition = new Vector2(other.x, -other.y); extraRect.sizeDelta = other.size;
     }
     private void Fail(Exception ex) { log.LogWarning("INPUT_GUARD released: " + ex.GetType().Name + " " + ex.Message); Reset(); }
     public void Reset()
@@ -136,6 +146,7 @@ internal sealed class NativeInputGuard : IDisposable
         policy.Reset(); origins.Clear(); buttons = 0;
         window.CancelInputCapture();
         if (shieldRect != null) shieldRect.gameObject.SetActive(false);
+        if (extraRect != null) extraRect.gameObject.SetActive(false);
     }
     public void Dispose()
     {

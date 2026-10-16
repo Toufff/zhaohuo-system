@@ -36,6 +36,19 @@ internal static partial class Program
         });
     }
 
+    private static void BranchEntryTests(string managed)
+    {
+        Test("branch notice reads the native Switch result and its own condition data", () =>
+        {
+            string story = Path.Combine(managed, "Mortal.Story.dll"), core = Path.Combine(managed, "Mortal.Core.dll");
+            Signature(story, "Mortal.Story", "CheckPointManager", "Switch", "name");
+            Has(story, "Mortal.Story", "SwitchResultData", "_useCount", "_count", "_items", "_countItems");
+            Has(core, "Mortal.Core", "ValueCompareItem", "_compareOp", "_value");
+            // The box is placed in the active dialogue box: left of its story text, below its name text.
+            Has(Path.Combine(managed, "Fungus.dll"), "Fungus", "SayDialog", "ActiveSayDialog", "StoryTextRectTrans", "nameText", "nameTextGO");
+        });
+    }
+
     private sealed class TypeMembers
     {
         public readonly Dictionary<string, List<string[]>> Methods = new(StringComparer.Ordinal);

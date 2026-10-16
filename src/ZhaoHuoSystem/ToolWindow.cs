@@ -88,6 +88,8 @@ public sealed class ToolWindow : IDisposable
     public Action? SettingsChanged;
     /// <summary>Battle-tab toggles live in CombatCheats; this only reports a change so it can be saved.</summary>
     public Action? CombatChanged;
+    /// <summary>Writes the diagnostics folder and returns its path.</summary>
+    public Func<string>? ExportDiagnostics;
     private int _capturing; // 0 none, 1 panel key, 2 hide key
     public bool CapturingKey => _capturing != 0;
     public void LoadSettings(KeyCode panelKey, KeyCode hideKey, bool hidden)
@@ -489,6 +491,14 @@ public sealed class ToolWindow : IDisposable
         if (PanelKey != KeyCode.None) keys.Add(KeyLabel(PanelKey));
         if (HideKey != KeyCode.None) keys.Add(KeyLabel(HideKey));
         Label(new Rect(r.x, y + S(4), r.width, S(50)), keys.Count > 0 ? L.Format("隐藏后按 {0} 恢复显示。", string.Join(" / ", keys)) : L.Text("请先绑定面板或隐藏快捷键"), _muted);
+        y += S(60);
+        Label(new Rect(r.x, y, labelWidth, S(32)), "反馈诊断", _label);
+        if (Button(new Rect(x, y, ButtonWidth("导出诊断", 110), S(30)), "导出诊断", "settings.export"))
+        {
+            try { Message(L.Format("已导出诊断：{0}（路径已复制）", ExportDiagnostics?.Invoke() ?? ""), false); }
+            catch (Exception ex) { Message(L.Format("导出诊断失败：{0}", ex.GetBaseException().Message), true); }
+        }
+        Label(new Rect(r.x, y + S(38), r.width, S(50)), "把最近 5 次游戏的日志、当前状态、配置和性能统计放进一个文件夹，路径会复制到剪贴板。", _muted);
     }
     private void DrawCombat(Rect r)
     {
@@ -875,7 +885,7 @@ public sealed class ToolWindow : IDisposable
     private static bool Matches(string query, params string[] fields)
     {
         if (string.IsNullOrWhiteSpace(query)) return true;
-        foreach (string field in fields) if (field != null && field.IndexOf(query.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        foreach (string field in fields) if (field != null && Tone.Plain(field).IndexOf(query.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) return true;
         return false;
     }
 
@@ -1011,9 +1021,10 @@ public sealed class ToolWindow : IDisposable
         if (_hoverEnum != null) { DrawEnumTooltip(pointer, _hoverEnum); return; }
         if (string.IsNullOrWhiteSpace(_hoverText)) return;
         float width = Mathf.Min(S(430), Screen.width - S(24));
-        float height = Mathf.Min(_tooltip.CalcHeight(new GUIContent(_hoverText), width), Screen.height - S(24));
+        string text = NativeUiState.ToneColors(_hoverText, Tone.PositiveOnDark, Tone.NegativeOnDark);
+        float height = Mathf.Min(_tooltip.CalcHeight(new GUIContent(text), width), Screen.height - S(24));
         var r = new Rect(Mathf.Min(pointer.x + S(15), Screen.width - width - S(10)), Mathf.Min(pointer.y + S(22), Screen.height - height - S(10)), width, height);
-        GUI.Label(r, _hoverText, _tooltip);
+        GUI.Label(r, text, _tooltip);
     }
 
     private void DrawEnumTooltip(Vector2 pointer, ValueSnapshot value)
@@ -1077,8 +1088,8 @@ public sealed class ToolWindow : IDisposable
         _small = TextStyle(13, muted); _small.wordWrap = true;
         _heading = TextStyle(18, text); _heading.fontStyle = FontStyle.Bold; _heading.wordWrap = true;
         _title = TextStyle(18, text); _title.fontStyle = FontStyle.Bold;
-        _met = new GUIStyle(_label); _met.normal.textColor = new Color(.56f, .87f, .64f, 1);
-        _unmet = new GUIStyle(_label); _unmet.normal.textColor = new Color(1, .58f, .58f, 1);
+        _met = new GUIStyle(_label); _met.normal.textColor = Palette.Positive;
+        _unmet = new GUIStyle(_label); _unmet.normal.textColor = Palette.Negative;
         _metSmall = new GUIStyle(_small); _metSmall.normal.textColor = _met.normal.textColor;
         _button = ButtonStyle(_section, TextureOnce("hover", new Color(.26f, .29f, .33f, 1)), text);
         _primary = ButtonStyle(TextureOnce("primary", new Color(.22f, .37f, .51f, 1)), TextureOnce("primaryHover", new Color(.29f, .46f, .61f, 1)), text);
@@ -1095,7 +1106,7 @@ public sealed class ToolWindow : IDisposable
         _input.focused.background = TextureOnce("inputFocused", new Color(.18f, .26f, .34f, 1));
         _input.hover.background = _input.normal.background;
         _input.focused.textColor = _input.hover.textColor = text;
-        _tooltip = TextStyle(14, text); _tooltip.wordWrap = true;
+        _tooltip = TextStyle(14, text); _tooltip.wordWrap = true; _tooltip.richText = true;
         _tooltip.padding = new RectOffset((int)S(11), (int)S(11), (int)S(8), (int)S(8));
         _tooltip.normal.background = TextureOnce("tooltip", new Color(.06f, .07f, .08f, .98f));
         _enumLine = TextStyle(14, text); _enumLine.wordWrap = true;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -25,12 +26,13 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.7")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.11")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
     internal GameAdapter Adapter = null!;
     internal OptionHints OptionHints = null!;
+    internal BranchNotice Branches = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
     private NativeDicePresenter dicePresenter = null!;
@@ -52,7 +54,8 @@ public sealed class Plugin : BaseUnityPlugin
         GetWindowThreadProcessId(GetForegroundWindow(), out var foregroundId);
         return foregroundId == (uint)processId;
     }
-    private string diagnostics = "";
+    private string diagnostics = "", fingerprints = "";
+    private Diagnostics? sessionLog;
     private void Awake()
     {
         Instance = this;
@@ -68,8 +71,14 @@ public sealed class Plugin : BaseUnityPlugin
             ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
         };
         Adapter.Compatible = expected.All(entry => Hash(Path.Combine(managed, entry.Key)) == entry.Value);
-        Logger.LogInfo($"BOOT plugin=0.3.7 game={Adapter.RuntimeVersion} unity={Application.unityVersion} x64={IntPtr.Size == 8} compatible={Adapter.Compatible}");
+        // The mod's own session log starts before anything else is logged, so BOOT and fingerprints are in it.
+        diagnostics = Path.Combine(Paths.BepInExRootPath, "ZhaoHuoSystem"); Directory.CreateDirectory(diagnostics);
+        Diagnostics.Scene = SceneManager.GetActiveScene().name;
+        sessionLog = new Diagnostics(diagnostics, Logger.SourceName, $"ZhaoHuoSystem {typeof(Plugin).Assembly.GetName().Version} | game {Adapter.RuntimeVersion} | Unity {Application.unityVersion} | compatible={Adapter.Compatible} | started {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        BepInEx.Logging.Logger.Listeners.Add(sessionLog);
+        Logger.LogInfo($"BOOT plugin=0.3.11 game={Adapter.RuntimeVersion} unity={Application.unityVersion} x64={IntPtr.Size == 8} compatible={Adapter.Compatible}");
         foreach (var entry in expected) Logger.LogInfo("FINGERPRINT " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)));
+        fingerprints = string.Join("\n", expected.Select(entry => "fingerprint " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)) + (Hash(Path.Combine(managed, entry.Key)) == entry.Value ? "" : " (expected " + entry.Value + ")")));
         L.RefreshLanguage();
         window = new ToolWindow(Adapter);
         var launcherAnchor = Config.Bind("界面", "入口位置", "", "收起入口位置，屏幕可用区域比例 x,y；留空或无效时用默认位置。");
@@ -100,13 +109,18 @@ public sealed class Plugin : BaseUnityPlugin
             keepStamina.Value = CombatCheats.KeepStamina; noCooldown.Value = CombatCheats.NoCooldown;
             Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown}");
         };
-        inputGuard = new NativeInputGuard(window, Logger);
+        Branches = new BranchNotice();
+        var branchSpot = Config.Bind("界面", "分支提示参考位置", "", "剧情分支提示框的固定位置（屏幕比例 x,y），从游戏标准人物对话框自动取得；留空会重新取得。");
+        if (NativeUiState.TryParseAnchor(branchSpot.Value, out var spotX, out var spotY)) Branches.Reference = new Vector2(spotX, spotY);
+        Branches.ReferenceLearned = spot => branchSpot.Value = NativeUiState.FormatAnchor(spot.x, spot.y);
+        inputGuard = new NativeInputGuard(window, Logger, () => Branches.Rect);
         LocalizationManager.OnLanguageChanged += LanguageChanged;
-        diagnostics = Path.Combine(Paths.BepInExRootPath, "ZhaoHuoSystem"); Directory.CreateDirectory(diagnostics);
+        window.ExportDiagnostics = ExportDiagnostics;
         harmony = new Harmony("local.zhaohuo.system");
         if (Adapter.Compatible) { harmony.PatchAll(typeof(Plugin).Assembly); CombatCheats.Install(harmony, Logger); }
         SceneManager.activeSceneChanged += SceneChanged;
         MenuSignals.OnMenuEnd += MenuEnded;
+        MenuSignals.OnMenuStart += MenuStarted;
         Logger.LogInfo($"READY panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden}; diagnostics=" + diagnostics);
         Logger.LogInfo($"INPUT keyboard={(Keyboard.current == null ? "none" : Keyboard.current.name)} focused={Application.isFocused}");
     }
@@ -128,11 +142,14 @@ public sealed class Plugin : BaseUnityPlugin
     }
     private void SceneChanged(Scene before, Scene after)
     {
-        inputGuard?.Reset(); dicePresenter?.Dispose();
+        Diagnostics.Scene = after.name; Logger.LogInfo("SCENE " + before.name + " -> " + after.name);
+        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear();
         Adapter.Invalidate("场景已变化，旧指定已清除", true, after.name == "Free" || after.name == "Title");
     }
     private void Update()
     {
+        if (Perf.Frame() is string slow) Logger.LogWarning(slow);
+        using var timing = Perf.Time("update");
         try
         {
             // Typing in a mod field or binding a new key never fires a hotkey.
@@ -140,13 +157,15 @@ public sealed class Plugin : BaseUnityPlugin
             if (Pressed(window.PanelKey) && !typing) TogglePanel();
             if (Pressed(window.HideKey) && !typing) ToggleHidden();
             if (wasVisible && !window.Visible) Adapter.ContinueAction();
-            dicePresenter.Update(window.Hidden);
+            using (Perf.Time("dice-ui")) dicePresenter.Update(window.Hidden);
             wasVisible = window.Visible; inputGuard.Tick();
             if (Time.unscaledTime >= nextRefresh)
             {
                 nextRefresh = Time.unscaledTime + .4f;
                 if (L.RefreshLanguage()) RefreshPresentation();
-                Adapter.Refresh(); ReadCommand(); WriteStatus();
+                using (Perf.Time("refresh")) Adapter.Refresh();
+                // The full state snapshot is written only when a diagnostic command asks for it, or on export.
+                if (ReadCommand()) File.WriteAllText(Path.Combine(diagnostics, "status.txt"), StatusText(), Encoding.UTF8);
             }
         }
         catch (Exception ex) { Logger.LogError(ex); }
@@ -194,6 +213,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnGUI()
     {
         if (window == null) return;
+        using var timing = Perf.Time("gui");
         var key = Event.current;
         if (key.type == EventType.KeyDown && key.keyCode != KeyCode.None && !window.CapturingKey && !window.HasTextFocus)
         {
@@ -204,6 +224,8 @@ public sealed class Plugin : BaseUnityPlugin
         {
             inputGuard.ObserveGui(Event.current);
             bool mouseDown = Event.current.type == EventType.MouseDown;
+            // The branch notice handles its clicks first and paints last, on top of the other surfaces.
+            Branches.Draw(window.Hidden);
             if (!window.Visible)
             {
                 if (!window.Hidden) mapIndicators.Draw(Adapter.Snapshot);
@@ -217,6 +239,7 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 window.Draw();
             }
+            Branches.Paint();
             if (!window.Hidden) OptionHints.DrawTooltip(window.Visible && window.IsPointerOver);
             if (mouseDown) inputGuard.FocusResolved(); else inputGuard.Tick();
         }
@@ -225,11 +248,12 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose();
-        inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded;
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose();
+        inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();
         harmony?.UnpatchSelf(); Instance = null;
+        if (sessionLog != null) { BepInEx.Logging.Logger.Listeners.Remove(sessionLog); sessionLog.Dispose(); }
     }
     private bool Debounced()
     {
@@ -254,12 +278,22 @@ public sealed class Plugin : BaseUnityPlugin
     }
     internal void ShowForAction() { if (window.Hidden) return; window.ShowEvents(true); inputGuard.Tick(); }
     private void MenuEnded(MenuDialog menu) => Adapter?.ClearPreview();
+    // A choice menu takes over from the branch that led to it.
+    private void MenuStarted(MenuDialog menu) { Branches?.Clear(); OptionHints?.MenuStarted(); Logger.LogInfo("MENU start"); }
+    /// <summary>Called after the game's own Switch ran; reads the same data, evaluates nothing for the game.</summary>
+    internal void BranchTaken(string name, int result)
+    {
+        using var timing = Perf.Time("branch");
+        Logger.LogInfo($"BRANCH name={name} result={result}");
+        try { if (OptionHints.FindSwitch(name) is object data) Branches.Record(data, result); }
+        catch (Exception ex) { Logger.LogWarning("BRANCH " + name + " " + ex.GetBaseException().Message); }
+    }
     /// <summary>Appends a short effect line under the merchant's description; the item and shop state are untouched.</summary>
     internal void ShopItemHovered(ShopPanel panel, IGameItem item)
     {
         var description = R.Field<Text>(panel, "_dialogDesc");
         string effect = description == null || item == null ? "" : OptionHints.ItemEffect(item);
-        if (effect.Length > 0) description!.text += "\n" + effect;
+        if (effect.Length > 0) description!.text += "\n" + OptionHints.Colorize(effect, description!.color, description.supportRichText);
     }
     /// <summary>A hovered menu row that leads into a random pool previews that pool in the panel, read-only.</summary>
     internal void OptionHovered(Component row)
@@ -285,12 +319,12 @@ public sealed class Plugin : BaseUnityPlugin
         try { return !window.Hidden && Adapter.WaitForPosition(name, token); }
         catch (Exception ex) { Logger.LogError(ex); Adapter.ContinueAction(); return false; }
     }
-    private void ReadCommand()
+    private bool ReadCommand()
     {
         var path = Path.Combine(diagnostics, "command.txt");
-        if (!File.Exists(path)) return;
+        if (!File.Exists(path)) return false;
         var parts = File.ReadAllText(path, Encoding.UTF8).Trim().Split(new[] { '\t' }, StringSplitOptions.None); File.Delete(path);
-        if (parts.Length == 0) return;
+        if (parts.Length == 0) return false;
         OperationResult result;
         switch (parts[0])
         {
@@ -307,8 +341,37 @@ public sealed class Plugin : BaseUnityPlugin
             default: result = OperationResult.Fail("未知诊断操作"); break;
         }
         File.WriteAllText(Path.Combine(diagnostics, "command-result.txt"), DateTime.Now.ToString("O") + "\t" + result.Success + "\t" + result.Message, Encoding.UTF8);
+        return true;
     }
-    private void WriteStatus()
+    /// <summary>One folder with the kept session logs, current state, settings, performance and environment; its path is copied.</summary>
+    private string ExportDiagnostics()
+    {
+        string folder = Path.Combine(diagnostics, "reports", "report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(folder);
+        Logger.LogInfo("EXPORT " + folder);
+        sessionLog?.CopyLogs(folder);
+        File.WriteAllText(Path.Combine(folder, "status.txt"), StatusText(), Encoding.UTF8);
+        File.WriteAllText(Path.Combine(folder, "performance.txt"), Perf.Report() + "\n\nrepeated warnings:\n" + (sessionLog?.RepeatSummary() ?? ""), Encoding.UTF8);
+        File.WriteAllText(Path.Combine(folder, "environment.txt"), EnvironmentText(), Encoding.UTF8);
+        if (File.Exists(Config.ConfigFilePath))
+        {
+            using var input = new FileStream(Config.ConfigFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var output = File.Create(Path.Combine(folder, Path.GetFileName(Config.ConfigFilePath)));
+            input.CopyTo(output);
+        }
+        GUIUtility.systemCopyBuffer = folder;
+        return folder;
+    }
+    private string EnvironmentText() => string.Join("\n", new[]
+    {
+        "plugin=" + typeof(Plugin).Assembly.GetName().Version, "pluginSha256=" + Hash(typeof(Plugin).Assembly.Location), "game=" + Adapter.RuntimeVersion,
+        "compatible=" + Adapter.Compatible, fingerprints, "unity=" + Application.unityVersion, "bepinex=" + typeof(Paths).Assembly.GetName().Version,
+        "language=" + L.LanguageId, "screen=" + Screen.width + "x" + Screen.height + " " + Screen.fullScreenMode, "os=" + SystemInfo.operatingSystem,
+        "gpu=" + SystemInfo.graphicsDeviceName, "scene=" + SceneManager.GetActiveScene().name, "panelKey=" + window.PanelKey + " hideKey=" + window.HideKey + " hidden=" + window.Hidden,
+        "combat invincible=" + CombatCheats.Invincible + " oneHit=" + CombatCheats.OneHit + " keepStamina=" + CombatCheats.KeepStamina + " noCooldown=" + CombatCheats.NoCooldown,
+        "exported=" + DateTime.Now.ToString("O")
+    });
+    private string StatusText()
     {
         var s = Adapter.Snapshot; var text = new StringBuilder();
         text.AppendLine($"time={DateTime.Now:O}\nversion={s.Version}\nready={s.Ready}\nrevision={s.Revision}\nscene={SceneManager.GetActiveScene().name}\nlocation={s.Location}\naction={s.Action}\nstatus={s.Status}\npanel={window.Visible}\nselectionEnabled={s.ActionSelectionEnabled}\nactionWaiting={s.ActionWaiting}\npointerBlocked={inputGuard.BlocksPointer}\nkeyboardBlocked={inputGuard.BlocksKeyboard}\npendingEvent={s.PendingEventId}");
@@ -326,7 +389,7 @@ public sealed class Plugin : BaseUnityPlugin
                 text.AppendLine($"POSITION\t{R.Field(position, "_position")}\t{position.gameObject.name}\tclient=({point.x:0},{Screen.height - point.y:0})\tz={point.z:0.0}");
             }
         }
-        File.WriteAllText(Path.Combine(diagnostics, "status.txt"), text.ToString(), Encoding.UTF8);
+        return text.ToString();
     }
 }
 
@@ -336,6 +399,7 @@ internal static class LuaContextPatch
     private static void Prefix(ref string luaString, string friendlyName, out long __state)
     {
         __state = 0;
+        using var timing = Perf.Time("lua-load");
         var plugin = Plugin.Instance;
         if (plugin == null) return;
         // Option consequences are read from the original text, before instrumentation.
@@ -443,19 +507,23 @@ internal static class MenuHoverPatch
 [HarmonyPatch(typeof(NormalOptionButton), nameof(NormalOptionButton.UpdateContent))]
 internal static class NormalOptionHintPatch
 {
-    private static void Postfix(NormalOptionButton __instance) => Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_source"), R.Field<Text[]>(__instance, "_text"));
+    private static void Postfix(NormalOptionButton __instance)
+    { using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_source"), R.Field<Text[]>(__instance, "_text")); }
 }
 [HarmonyPatch(typeof(BreakOptionButton), nameof(BreakOptionButton.UpdateContent))]
 internal static class BreakOptionHintPatch
 {
     private static void Postfix(BreakOptionButton __instance)
-    { if (__instance.gameObject.activeSelf) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_source"), R.Field<Text[]>(__instance, "_titleText")); }
+    { if (__instance.gameObject.activeSelf) using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_source"), R.Field<Text[]>(__instance, "_titleText")); }
 }
 [HarmonyPatch(typeof(DiceOption), nameof(DiceOption.UpdateContent))]
 internal static class DiceOptionHintPatch
 {
-    private static void Postfix(DiceOption __instance) => Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_sourceText"), R.Field<TMP_Text>(__instance, "_normalText"), R.Field<TMP_Text>(__instance, "_highText"));
+    private static void Postfix(DiceOption __instance)
+    { using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_sourceText"), R.Field<TMP_Text>(__instance, "_normalText"), R.Field<TMP_Text>(__instance, "_highText")); }
 }
+[HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Switch))]
+internal static class BranchPatch { private static void Postfix(string name, int __result) => Plugin.Instance?.BranchTaken(name, __result); }
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Dice))]
 internal static class DicePatch
 {

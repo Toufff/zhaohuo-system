@@ -79,7 +79,7 @@ internal sealed class MapIndicators : IDisposable
             foreach (var child in condition.Children) AppendCondition(text, child, depth + 1);
             text.Add(new() { Text = indent + ")" }); return;
         }
-        text.Add(new() { Text = indent + condition.Text, Color = !condition.Known ? new Color(.76f, .79f, .81f) : condition.Satisfied ? new Color(.56f, .87f, .64f) : new Color(1, .58f, .58f) });
+        text.Add(new() { Text = indent + condition.Text, Color = Palette.State(!condition.Known ? 0 : condition.Satisfied ? 1 : -1) });
     }
     public void Dispose()
     {

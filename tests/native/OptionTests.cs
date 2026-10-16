@@ -96,11 +96,12 @@ internal static partial class Program
             var segments = LuaOptions.Describe(LuaOptions.Merge(map["O_A_002"], null), e => e.Kind == "flag" ? "" : e.Key + e.Value.ToString("+0;-0;0"),
                 (name, arm) => arm == 1 ? new KeyValuePair<string, int>("A 3>=5", -1) : new KeyValuePair<string, int>("", 1),
                 name => new KeyValuePair<string, int>("C 1=1", 1), (template, args) => string.Format(template.Replace("{0}", "{0}").Replace("{1}", "{1}"), args));
-            Require(segments[0].Full == "7002+1", "a met requirement adds no words");
-            Require(segments[1].Full == "若 A 3>=5：mental+70" && segments[1].State == -1, "unmet conditional arm");
-            Require(segments[2].Full == "否则：change-heart+2" && segments[2].State == 1, "else arm");
+            Require(Tone.Plain(segments[0].Full) == "7002+1", "a met requirement adds no words");
+            Require(Tone.Plain(segments[1].Full) == "若 A 3>=5：mental+70" && segments[1].State == -1, "unmet conditional arm");
+            Require(segments[1].Full.StartsWith(Tone.Negative + "若 A 3>=5：" + Tone.End, StringComparison.Ordinal), "only the unmet condition lead is toned red");
+            Require(Tone.Plain(segments[2].Full) == "否则：change-heart+2" && segments[2].State == 1 && segments[2].Full[0] == Tone.Positive, "else arm toned green");
             var failing = LuaOptions.Describe(map["O_A_002"], e => e.Key, (n, a) => new KeyValuePair<string, int>("", 0), name => new KeyValuePair<string, int>("C 0=1", -1), (t, a) => string.Format(t, a));
-            Require(failing[0].Full == "需 C 0=1" && failing[0].State == -1, "an unmet requirement leads in red");
+            Require(failing[0].Full == Tone.Negative + "需 C 0=1" + Tone.End && failing[0].State == -1, "an unmet requirement leads in red");
             var flags = LuaOptions.Describe(map["O_A_001"], e => e.Kind == "flag" ? "" : e.Key, (n, a) => default, n => default, (t, a) => string.Format(t, a));
             Require(flags[0].Full.EndsWith("标记×1", StringComparison.Ordinal), "unnamed flag counted, never dropped");
         });
@@ -110,11 +111,11 @@ internal static partial class Program
             string Format(string template, object[] args) => string.Format(template, args);
             // Arm 1 shows nothing here, so the default arm names the condition it stands for.
             var lone = LuaOptions.Describe(map["O_A_002"], e => e.Key == "mental" ? "" : e.Key, Arm, n => default, Format, n => "未满足 A 3>=5");
-            Require(lone.Count == 2 && lone[1].Full == "若 未满足 A 3>=5：change-heart" && lone[1].State == 1, "orphan else names its condition");
+            Require(lone.Count == 2 && Tone.Plain(lone[1].Full) == "若 未满足 A 3>=5：change-heart" && lone[1].State == 1, "orphan else names its condition");
             var paired = LuaOptions.Describe(map["O_A_002"], e => e.Key, Arm, n => default, Format, n => "未满足 A 3>=5");
-            Require(paired[1].Full == "若 A 3>=5：mental" && paired[2].Full == "否则：change-heart", "else right after its own if");
-            Require(paired[1].Summary == "若…：mental" && paired[1].Head == "若 A 3>=5" && paired[1].Body == "→ mental", "inline leaves the condition to the hover, which splits it from its effects");
-            Require(paired[2].Summary == "否则：change-heart" && paired[2].Head == "否则" && paired[2].Body == "→ change-heart", "else keeps its word inline and in the hover");
+            Require(Tone.Plain(paired[1].Full) == "若 A 3>=5：mental" && Tone.Plain(paired[2].Full) == "否则：change-heart", "else right after its own if");
+            Require(Tone.Plain(paired[1].Summary) == "若…：mental" && Tone.Plain(paired[1].Head) == "若 A 3>=5" && paired[1].Body == "→ mental", "inline leaves the condition to the hover, which splits it from its effects");
+            Require(Tone.Plain(paired[2].Summary) == "否则：change-heart" && Tone.Plain(paired[2].Head) == "否则" && paired[2].Body == "→ change-heart", "else keeps its word inline and in the hover");
         });
         Test("named story flags follow stats so a cut line keeps what matters", () =>
         {

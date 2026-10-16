@@ -118,7 +118,7 @@ internal sealed class NativeDicePresenter : IDisposable
             var branch = dice.Branches[i];
             SetLabel(button, !branch.Reachable ? L.Text("不可达") : branch.RawValue.HasValue && dice.PendingRawValue == branch.RawValue ? L.Text("已指定")
                 : L.Format("指定 {0}", NativeUiState.ChanceLabel(branch.Chance)));
-            button.interactable = dice.CanSpecify && branch.Reachable && branch.RawValue.HasValue;
+            button.interactable = dice.CanSpecify && branch.Reachable;
             columnWidth = Mathf.Max(columnWidth, Width(button, 76));
             rowsLeft = Mathf.Min(rowsLeft, VisualBounds(nativeRows[i]).xMin);
         }

@@ -25,6 +25,9 @@ internal sealed class OptionHints : IDisposable
     public OptionHints(ManualLogSource log) => this.log = log;
     /// <summary>Hidden-overlay mode: no brackets or shop lines are added to native text.</summary>
     public bool Suppressed;
+    // Each option's full consequences go to the session log once per menu, so a report can be matched to what was shown.
+    private readonly HashSet<string> logged = new(StringComparer.Ordinal);
+    public void MenuStarted() => logged.Clear();
 
     /// <summary>Called with each script's original text before the mod instruments it.</summary>
     public void Load(string source, string friendlyName)
@@ -164,7 +167,7 @@ internal sealed class OptionHints : IDisposable
             if (tipFont != null) UnityEngine.Object.Destroy(tipFont);
             tipFont = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
             if (tipBackground == null) { tipBackground = new Texture2D(1, 1, TextureFormat.RGBA32, false); tipBackground.SetPixel(0, 0, new Color(0, 0, 0, .78f)); tipBackground.Apply(); }
-            tipStyle = new GUIStyle { font = tipFont, fontSize = 15, alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
+            tipStyle = new GUIStyle { font = tipFont, fontSize = 15, alignment = TextAnchor.UpperLeft, wordWrap = true, richText = true };
             tipRevision = L.Revision;
         }
         const float indent = 18, gap = 7;
@@ -173,8 +176,9 @@ internal sealed class OptionHints : IDisposable
         for (int i = 0; i < shown.Segments.Count; i++)
         {
             var segment = shown.Segments[i];
-            lines.Add((segment.Head, false, segment.State, i > 0));
-            if (segment.Body.Length > 0) lines.Add((segment.Body, true, 0, false));
+            // Marks colour the condition (holds / fails) and each change (rises / falls) with the panel shades.
+            lines.Add((Colorize(segment.Head, Color.white, true), false, segment.State, i > 0));
+            if (segment.Body.Length > 0) lines.Add((Colorize(segment.Body, Color.white, true), true, 0, false));
         }
         var heights = lines.ConvertAll(line => Mathf.Max(20, tipStyle.CalcHeight(new GUIContent(line.Text), line.Effects ? inner - indent : inner)));
         for (int i = 0; i < lines.Count; i++) height += heights[i] + (lines[i].Gap ? gap : 0);
@@ -193,9 +197,7 @@ internal sealed class OptionHints : IDisposable
                 {
                     var line = lines[i];
                     if (line.Gap) y += gap;
-                    // Conditions carry the red/green meaning; effects stay in a calm light tone under them.
-                    tipStyle.normal.textColor = line.Effects ? new Color(.84f, .86f, .88f)
-                        : line.State > 0 ? new Color(.56f, .87f, .64f) : line.State < 0 ? new Color(1, .58f, .58f) : new Color(.94f, .95f, .96f);
+                    tipStyle.normal.textColor = line.Effects ? Palette.Effects : Palette.Text;
                     float x = line.Effects ? 10 + indent : 10;
                     GUI.Label(new Rect(x, y, inner - (x - 10), heights[i]), line.Text, tipStyle); y += heights[i];
                 }
@@ -219,6 +221,8 @@ internal sealed class OptionHints : IDisposable
             var preview = Resolve(key);
             if (preview == null) return null;
             var segments = LuaOptions.Describe(preview, EffectText, SwitchArm, Requirement, (template, args) => args.Length == 0 ? L.Text(template) : L.Format(template, args), Otherwise);
+            if (logged.Count > 500) logged.Clear();
+            if (segments.Count > 0 && logged.Add(key)) log.LogInfo("OPTION " + key + " " + Tone.Plain(string.Join("；", segments.Select(segment => segment.Full))));
             return segments.Count == 0 ? null : segments;
         }
         catch (Exception ex) { log.LogWarning("OPTION_HINT " + ex.GetBaseException().Message); return null; }
@@ -311,13 +315,20 @@ internal sealed class OptionHints : IDisposable
 
     private static string Render(List<KeyValuePair<string, int>> segments, Color baseColor, bool rich, string size)
     {
-        // Pick condition colors that stay legible on the row's own text color (cream menus vs dark dice rows).
-        bool darkText = baseColor.r * .299f + baseColor.g * .587f + baseColor.b * .114f < .5f;
-        string met = darkText ? "#2E7D3C" : "#8FDEA3", unmet = darkText ? "#B03030" : "#FF9494";
-        var parts = segments.Select(segment => !rich || segment.Value == 0 ? segment.Key
-            : "<color=" + (segment.Value > 0 ? met : unmet) + ">" + segment.Key + "</color>");
-        string body = "（" + string.Join("；", parts) + "）";
+        // Only the marked parts take colour: the condition lead and each change; names keep the row's own colour.
+        string body = "（" + string.Join("；", segments.Select(segment => Colorize(segment.Key, baseColor, rich))) + "）";
         return rich ? size + body + "</size>" : body;
+    }
+    private static bool DarkText(Color color) => color.r * .299f + color.g * .587f + color.b * .114f < .5f;
+    /// <summary>
+    /// <see cref="Tone"/> marks in the mod's one meaning (green holds / rises / gains, red fails / falls / loses).
+    /// Deep shades on the game's cream rows (dark text), light shades on dark rows and panels.
+    /// </summary>
+    public static string Colorize(string text, Color baseColor, bool rich)
+    {
+        if (!rich) return NativeUiState.ToneColors(text, null, null);
+        bool darkText = DarkText(baseColor);
+        return NativeUiState.ToneColors(text, darkText ? Tone.PositiveOnLight : Tone.PositiveOnDark, darkText ? Tone.NegativeOnLight : Tone.NegativeOnDark);
     }
 
     private OptionPreview? NextScript(string name)
@@ -340,17 +351,18 @@ internal sealed class OptionHints : IDisposable
         string signed = effect.Value.ToString("+0;-0;0", CultureInfo.InvariantCulture), value = effect.Value.ToString(CultureInfo.InvariantCulture);
         switch (effect.Kind)
         {
-            case "stat": return StatName(effect.Key) + (effect.Approximate ? "≈" : "") + signed;
+            // Only the change itself is marked, so a conditional segment keeps its own red / green around it.
+            case "stat": return StatName(effect.Key) + Tone.Mark(effect.Value, (effect.Approximate ? "≈" : "") + signed);
             case "set-stat": return StatName(effect.Key) + "=" + value;
-            case "relation": return RelationName(effect.Key) + signed;
+            case "relation": return RelationName(effect.Key) + Tone.Mark(effect.Value, signed);
             case "set-relation": return RelationName(effect.Key) + "=" + value;
             case "flag":
             case "set-flag":
                 // Same name as the 数值 page: official term, verified name, the game's own short note, else the raw ID.
                 return FlagName(effect.Key) + (effect.Kind == "flag" ? signed : "=" + value);
-            case "item-add": return L.Format("获得{0}×{1}", ItemName(effect), effect.Value);
-            case "item-remove": return L.Format("失去{0}", ItemName(effect));
-            case "talent": return L.Format("天赋{0} Lv{1}", L.GameText("PlayerTalent/Name/" + effect.Key, effect.Key), effect.Value);
+            case "item-add": return Tone.Mark(1, L.Format("获得{0}×{1}", ItemName(effect), effect.Value));
+            case "item-remove": return Tone.Mark(-1, L.Format("失去{0}", ItemName(effect)));
+            case "talent": return Tone.Mark(1, L.Format("天赋{0} Lv{1}", L.GameText("PlayerTalent/Name/" + effect.Key, effect.Key), effect.Value));
             default: return "";
         }
     }
@@ -414,13 +426,13 @@ internal sealed class OptionHints : IDisposable
         var condition = Conditions.Read(data);
         return new(Flatten(condition), condition.Known ? condition.Satisfied ? 1 : -1 : 0);
     }
-    private static object? FindSwitch(string name)
+    internal static object? FindSwitch(string name)
     {
         foreach (var config in R.Items(R.Field(CheckPointManager.Instance, "_switchList")))
             if (config is SwitchResultConfig switches && switches.GetData(name) is SwitchResultData data) return data;
         return null;
     }
-    private static string Flatten(ConditionSnapshot condition)
+    internal static string Flatten(ConditionSnapshot condition)
     {
         if (condition.Children.Count == 1) return Flatten(condition.Children[0]);
         if (condition.Children.Count == 0) return condition.Text;

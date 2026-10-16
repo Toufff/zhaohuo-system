@@ -28,6 +28,7 @@ internal static partial class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(managed, "Fungus.dll"));
             InterpreterTests();
             NativeEntryTests(managed);
+            BranchEntryTests(managed);
         }
         catch (Exception exception)
         {

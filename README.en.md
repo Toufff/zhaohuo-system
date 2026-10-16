@@ -11,19 +11,45 @@ An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped
 
 The in-game panel follows the game's language and is available in Simplified Chinese, Traditional Chinese and Korean. Other game languages show Simplified Chinese.
 
+![Seeing which events this action can trigger and choosing one in the panel](media/event-choose.webp)
+
 ## Features
 
 - **Events**: before each action, the panel lists the events it can trigger and their conditions. Conditions show current values (for example, `Actions 3>=1`), and the ones you already meet are green.
   - Pick an event and press 指定本次行动 (choose for this action); this action will trigger it.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
 - **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list.
+
+  <img src="media/map-hover.webp" width="420" alt="Event count badges on the map and the hover list">
+
 - **Values**: edit attributes, character affection, sect relations and story flags directly.
+
+  <img src="media/values-tab.webp" width="560" alt="The Values tab">
+
 - **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls.
-  - Green means it happens with your current values; red means it does not.
+  - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
   - Hover the option to see the full conditions and the flags involved.
-- **Dice**: each outcome gets a 指定 N% button, where N is its chance. Click one to roll that outcome. If you click nothing, the roll stays random as usual.
+
+  <img src="media/options.webp" width="560" alt="Consequence notes after options and the hover details">
+
+- **Story branches**: when the story branches on a flag or condition, a small box appears at a fixed spot on the left of the dialogue box. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere or close it; at the next branch it comes back to that spot.
+
+  <img src="media/branch.webp" width="620" alt="The story branch box">
+
+- **Dice**: each outcome gets a 指定 N% button, where N is its natural chance. Click one to roll that outcome. Outcomes your bonuses make impossible (shown as 0%) can be picked too: the dice face is worked back from the total, so the shown sum still adds up. If you click nothing, the roll stays random as usual.
+
+  <img src="media/dice.webp" width="520" alt="Clicking 指定 50% makes the wheel stop on that outcome">
+
 - **Shop**: item descriptions get one extra line with the item's actual effect.
+
+  <img src="media/shop.webp" width="560" alt="The effect line under an item description">
+
 - **Combat**: god mode, one-hit kill, no stamina cost and no skill cooldown. They work in both real-time battles and turn-based duels, apply only during a fight, and are not written to your save.
+
+  <img src="media/battle-tab.webp" width="560" alt="Combat switches">
+
+  <img src="media/duel.webp" width="720" alt="Turn-based duel with god mode and one-hit kill on">
+
 - **Screenshots**: hide everything the mod draws with one switch or a hotkey of your choice.
 
 ## Install
@@ -65,7 +91,7 @@ To confirm this is what happened, open `BepInEx/LogOutput.log`. If it contains `
 
 ## Reporting problems
 
-Open an [issue](https://github.com/Toufff/zhaohuo-system/issues) with your game language, what you were doing when it happened, and your `BepInEx/LogOutput.log`.
+Open an [issue](https://github.com/Toufff/zhaohuo-system/issues) with your game language, what you were doing and roughly when it happened. Then press 导出诊断 (export diagnostics) on the panel's 设置 (settings) tab, zip the folder it creates and attach it; its path is copied to your clipboard.
 
 ## Building from source
 

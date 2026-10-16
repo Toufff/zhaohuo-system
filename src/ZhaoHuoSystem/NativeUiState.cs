@@ -147,6 +147,53 @@ public static class NativeUiState
         }
         return new() { low > 0 ? Cut(segments[0], low) : more };
     }
+    /// <summary>
+    /// Raw dice value per branch. Natural rolls (uniform over min..max) give each branch its first raw value and its
+    /// hit count. A wanted branch the natural range never reaches gets the raw value worked back from the total,
+    /// nearest to the range first and never above <paramref name="upper"/> (the wheel shows two digits); branches still
+    /// missing can only be forced. Null hits when the range is too wide to count.
+    /// </summary>
+    public static Dictionary<int, int> DiceRaws(int min, int max, int upper, IEnumerable<int> wanted, Func<int, int> branchOf, out Dictionary<int, int>? hits)
+    {
+        var raws = new Dictionary<int, int>();
+        hits = null;
+        if ((long)max - min > 10000) return raws;
+        hits = new Dictionary<int, int>();
+        for (long raw = min; raw <= max; raw++)
+        {
+            int branch = branchOf((int)raw);
+            if (!raws.ContainsKey(branch)) raws[branch] = (int)raw;
+            hits[branch] = hits.TryGetValue(branch, out var count) ? count + 1 : 1;
+        }
+        var missing = new HashSet<int>(wanted); missing.ExceptWith(raws.Keys);
+        for (long step = 1; step <= 10000 && missing.Count > 0; step++)
+            foreach (long raw in new[] { (long)min - step, (long)max + step })
+            {
+                if (raw > upper || raw < int.MinValue) continue;
+                int branch = branchOf((int)raw);
+                if (missing.Remove(branch)) raws[branch] = (int)raw;
+            }
+        return raws;
+    }
+    /// <summary><see cref="Tone"/> marks as rich-text colours, or removed when a colour is null. Always balanced, even after a cut.</summary>
+    public static string ToneColors(string text, string? positive, string? negative)
+    {
+        if (text.IndexOf(Tone.Positive) < 0 && text.IndexOf(Tone.Negative) < 0 && text.IndexOf(Tone.End) < 0) return text;
+        var result = new System.Text.StringBuilder(text.Length + 32); bool open = false;
+        foreach (char c in text)
+        {
+            if (c == Tone.Positive || c == Tone.Negative)
+            {
+                if (open) { result.Append("</color>"); open = false; }
+                string? color = c == Tone.Positive ? positive : negative;
+                if (color != null) { result.Append("<color=").Append(color).Append('>'); open = true; }
+            }
+            else if (c == Tone.End) { if (open) { result.Append("</color>"); open = false; } }
+            else result.Append(c);
+        }
+        if (open) result.Append("</color>");
+        return result.ToString();
+    }
     private static KeyValuePair<string, int> Cut(KeyValuePair<string, int> segment, int length)
     {
         // Never split a surrogate pair.

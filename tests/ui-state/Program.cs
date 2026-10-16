@@ -22,6 +22,15 @@ Assert(NativeUiState.ChanceLabel(50 / 100.0) == "50%" && NativeUiState.ChanceLab
 Assert(NativeUiState.ChanceLabel(1 / 1000.0) == "<1%" && NativeUiState.ChanceLabel(999 / 1000.0) == ">99%", "near-certain or near-impossible branches are never rounded to 0% or 100%");
 Assert(NativeUiState.ChanceLabel(null) == "?", "uncounted range is explicit");
 {
+    // Base 0–80 plus +100: the total is always ≥80, so 「<80」 needs a raw value worked back from the total.
+    int Branch(int raw) => raw + 100 >= 80 ? 1 : 2;
+    var raws = NativeUiState.DiceRaws(0, 80, 99, new[] { 1, 2 }, Branch, out var hits);
+    Assert(raws[1] == 0 && hits![1] == 81 && !hits.ContainsKey(2), "natural rolls all land on ≥80 and keep the natural share");
+    Assert(raws[2] == -21 && Branch(raws[2]) == 2, "an unreachable branch gets the raw value nearest the range: −21 + 100 = 79");
+    var high = NativeUiState.DiceRaws(0, 80, 99, new[] { 1, 2 }, raw => raw + 100 >= 200 ? 2 : 1, out _);
+    Assert(raws.Count == 2 && !high.ContainsKey(2), "a branch needing a raw value above the wheel's 99 is left to be forced");
+}
+{
     // Width of "（a；b）" counted in characters stands in for the native text generator.
     float Measure(List<KeyValuePair<string, int>> list) => 2 + list.Sum(s => s.Key.Length) + Math.Max(0, list.Count - 1);
     var segments = new List<KeyValuePair<string, int>> { new("abcd", 1), new("efgh", 0), new("ij", -1) };
@@ -33,6 +42,10 @@ Assert(NativeUiState.ChanceLabel(null) == "?", "uncounted range is explicit");
     Assert(part.Count == 1 && part[0].Key == "ab…" && part[0].Value == 1, "an overlong first segment is shortened by characters");
     var none = NativeUiState.FitSegments(segments, Measure, 2, out bool cutNone);
     Assert(cutNone && none.Count == 1 && none[0].Key == "…", "no room still says more exists");
+    string marked = Tone.Mark(-1, "若…：") + "性情" + Tone.Mark(-1, "-1") + " 嘴力" + Tone.Mark(1, "+1") + " 标记" + Tone.Mark(0, "=0");
+    Assert(NativeUiState.ToneColors(marked, "#0F0", "#F00") == "<color=#F00>若…：</color>性情<color=#F00>-1</color> 嘴力<color=#0F0>+1</color> 标记=0", "one meaning: unmet and losses red, gains green");
+    Assert(NativeUiState.ToneColors(marked, null, null) == "若…：性情-1 嘴力+1 标记=0" && Tone.Plain(marked) == "若…：性情-1 嘴力+1 标记=0", "plain targets lose the marks entirely");
+    Assert(NativeUiState.ToneColors(marked.Substring(0, 2), "#0F0", "#F00") == "<color=#F00>若</color>", "a cut inside a mark still closes its colour");
 }
 Console.WriteLine("UI state tests passed; Unity layout and native input are not exercised.");
 

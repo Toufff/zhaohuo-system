@@ -260,7 +260,7 @@ public static class LuaOptions
         {
             // An offered option already meets its requirement; only a failing one is worth words.
             var needed = requirement(preview.Requirement);
-            if (needed.Value == -1) segments.Add(Plain(format("需 {0}", new object[] { needed.Key }), -1));
+            if (needed.Value == -1) segments.Add(Plain(Tone.Mark(-1, format("需 {0}", new object[] { needed.Key })), -1));
         }
         var certain = EffectParts.Of(preview.Effects, effectText);
         if (!certain.Empty) segments.Add(new HintSegment { Full = certain.Line(" ", format), Summary = certain.Overview(format), Head = certain.Line("、", format) });
@@ -275,11 +275,13 @@ public static class LuaOptions
             if (named.Count == 0 && otherwise != null && !group.When.TrueForAll(when => previous.Contains(when.Key)))
                 named = group.When.ConvertAll(when => otherwise(when.Key)).FindAll(label => label.Length > 0);
             string full = body.Line(" ", format), overview = body.Overview(format), condition = string.Join(" · ", named);
+            // Only the condition lead carries the arm's holds / fails tone; the effects carry their own rises / falls.
+            string Lead(string template, params object[] args) => Tone.Mark(state, format(template, args));
             segments.Add(named.Count == 0
-                ? new HintSegment { Full = format("否则：{0}", new object[] { full }), Summary = format("否则：{0}", new object[] { overview }),
-                    Head = format("否则", Array.Empty<object>()), Body = "→ " + body.Line("、", format), State = state }
-                : new HintSegment { Full = format("若 {0}：{1}", new object[] { condition, full }), Summary = format("若…：{0}", new object[] { overview }),
-                    Head = format("若 {0}", new object[] { condition }), Body = "→ " + body.Line("、", format), State = state });
+                ? new HintSegment { Full = Lead("否则：{0}", "") + full, Summary = Lead("否则：{0}", "") + overview,
+                    Head = Lead("否则"), Body = "→ " + body.Line("、", format), State = state }
+                : new HintSegment { Full = Lead("若 {0}：{1}", condition, "") + full, Summary = Lead("若…：{0}", "") + overview,
+                    Head = Lead("若 {0}", condition), Body = "→ " + body.Line("、", format), State = state });
             previous = new HashSet<string>(group.When.ConvertAll(when => when.Key), StringComparer.Ordinal);
         }
         if (preview.Pool.Length > 0) segments.Add(Plain(format("随机事件", Array.Empty<object>())));

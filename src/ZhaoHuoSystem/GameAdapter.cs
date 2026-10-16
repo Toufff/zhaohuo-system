@@ -39,6 +39,8 @@ public sealed class GameAdapter : IGameAdapter
     private string[] diceOptions = Array.Empty<string>();
     private bool rolling;
     private int? pendingDice;
+    // The branch the player picked: the native result must land there (corrected after the roll if it does not).
+    private int? pendingBranch, intendedBranch;
     private int pendingAddition;
     private string pendingDiceName = "";
     private readonly Dictionary<string, ValueBinding> values = new();
@@ -64,7 +66,7 @@ public sealed class GameAdapter : IGameAdapter
         if (actionWaiting || actionReleased) cancelledLuaTokens.Add(activeLuaToken);
         if (boundary) BoundaryEpoch++;
         if (clearLocation) actualLocation = "";
-        revision++; poolName = ""; pendingEvent = ""; pendingDice = null; rolling = false; previewPool = previewTitle = "";
+        revision++; poolName = ""; pendingEvent = ""; pendingDice = null; pendingBranch = intendedBranch = null; rolling = false; previewPool = previewTitle = "";
         actionWaiting = actionReleased = false;
         diceSessionActive = false;
         diceAwaitingFirstRoll = false;
@@ -252,7 +254,7 @@ public sealed class GameAdapter : IGameAdapter
             var script = R.Field<string>(pool, "_scriptPrefix", "") + "_" + item.ResultType;
             var effects = EffectSummary(script, p);
             var label = !string.IsNullOrWhiteSpace(note) ? note.Trim() : !string.IsNullOrWhiteSpace(mappingKey) ? mappingKey : mappingName;
-            if (string.IsNullOrWhiteSpace(label) || Regex.IsMatch(label, @"^[A-Za-z0-9_]+$")) label = effects.Length > 0 ? effects : L.Text("未命名结果") + " · " + item.ResultType;
+            if (string.IsNullOrWhiteSpace(label) || Regex.IsMatch(label, @"^[A-Za-z0-9_]+$")) label = effects.Length > 0 ? Tone.Plain(effects) : L.Text("未命名结果") + " · " + item.ResultType;
             events.Add(new() { Id = id, Title = L.DisplayText(label), Detail = item.name + "\n" + L.Text("映射") + " " + mappingName + " / " + mappingKey + "\n" + L.Text("结果") + " " + script + (effects.Length > 0 ? "\n" + L.Text("固定数值调用") + " " + effects : "") + "\n" + L.Format("基础权重 {0}；最终权重 {1}", R.Field<int>(item, "_defaultRate"), known ? weight.ToString() : L.Text("未核验")) + (weightDetails.Count > 0 ? "\n" + string.Join("\n", weightDetails) : ""), Eligible = weight > 0, Weight = weight, Conditions = conditions });
         }
         return events;
@@ -268,7 +270,8 @@ public sealed class GameAdapter : IGameAdapter
         {
             var localeKey = stat.GetLocaleKey(); labels[localeKey.Substring(localeKey.LastIndexOf('/') + 1)] = StatName(stat);
         }
-        var changes = LuaGate.FixedEffects(asset.text).Where(pair => labels.ContainsKey(pair.Key)).Select(pair => labels[pair.Key] + " " + pair.Value.ToString("+0;-0;0")).ToList();
+        // Rises and falls carry the mod's one colour meaning wherever the detail is shown.
+        var changes = LuaGate.FixedEffects(asset.text).Where(pair => labels.ContainsKey(pair.Key)).Select(pair => labels[pair.Key] + " " + Tone.Mark(pair.Value, pair.Value.ToString("+0;-0;0"))).ToList();
         return effectSummaries[script] = string.Join(" · ", changes);
     }
     private OperationResult Feedback(bool success, string message, params object[] arguments)
@@ -354,7 +357,7 @@ public sealed class GameAdapter : IGameAdapter
     }
     public void BeginDice(DiceMenuDialog dialog, string name, string[] options)
     {
-        pendingDice = null;
+        pendingDice = null; pendingBranch = intendedBranch = null;
         diceDialog = dialog; diceName = name; diceOptions = options; rolling = false;
         diceSessionActive = true;
         diceAwaitingFirstRoll = true;
@@ -365,22 +368,32 @@ public sealed class GameAdapter : IGameAdapter
     public void BeforeDice(string name, ref int random)
     {
         if (!rolling || name != diceName) { log.LogInfo($"DICE_READ name={name} raw={random} consume=false"); return; }
-        rolling = false;
+        rolling = false; intendedBranch = null;
         var dice = ReadDice();
-        if (pendingDice.HasValue)
+        var target = pendingDice; var branch = pendingBranch; pendingDice = null; pendingBranch = null;
+        if (!target.HasValue && !branch.HasValue) return;
+        if (!Compatible || pendingDiceName != name || pendingAddition != dice.Addition) { status = "骰子条件变化，指定失效"; log.LogWarning("DICE_REJECTED " + name); return; }
+        if (target.HasValue)
         {
-            var target = pendingDice.Value; pendingDice = null;
-            if (Compatible && pendingDiceName == name && pendingAddition == dice.Addition && target >= dice.Min && target <= dice.Max)
-            {
-                random = target;
-                if (diceDialog != null) R.Set(diceDialog, "_currentRandomValue", target);
-                SetStatus("已执行骰子指定：{0}", target);
-                log.LogInfo($"DICE_CONSUMED name={name} raw={target} addition={dice.Addition}");
-            }
-            else { status = "骰子条件变化，指定失效"; log.LogWarning("DICE_REJECTED " + name); }
+            // The game adds its own bonuses to this raw value and picks the branch itself; a raw value outside the
+            // native range (e.g. −21 with +100) keeps the shown arithmetic true. The wheel shows 零零 below zero.
+            random = target.Value;
+            if (diceDialog != null) R.Set(diceDialog, "_currentRandomValue", target.Value);
+            SetStatus("已执行骰子指定：{0}", target.Value);
         }
+        intendedBranch = branch;
+        log.LogInfo($"DICE_CONSUMED name={name} raw={target?.ToString() ?? "native"} branch={branch} addition={dice.Addition}");
     }
-    public void AfterDice(string name, int raw, DiceCheckResult result) { log.LogInfo($"DICE_RESULT name={name} raw={raw} final={result.ResultCount} branch={result.Result}"); }
+    public void AfterDice(string name, int raw, DiceCheckResult result)
+    {
+        if (intendedBranch.HasValue && name == diceName)
+        {
+            // The picked branch wins even if the game's bonuses differ from this mod's reading of them.
+            if (result.Result != intendedBranch.Value) { log.LogWarning($"DICE_FORCED name={name} native={result.Result} picked={intendedBranch}"); result.Result = intendedBranch.Value; }
+            intendedBranch = null;
+        }
+        log.LogInfo($"DICE_RESULT name={name} raw={raw} final={result.ResultCount} branch={result.Result}");
+    }
     private DiceSnapshot ReadDice()
     {
         var active = diceSessionActive && diceDialog != null && diceDialog.gameObject.activeInHierarchy && diceName.Length > 0;
@@ -411,20 +424,13 @@ public sealed class GameAdapter : IGameAdapter
             var rate = R.Property(item, "Rate") is float f ? f : 1f;
             result.Addition += Mathf.RoundToInt(value * (R.Property(item, "Negative") is true ? -1 : 1) * rate);
         }
-        if (pendingDice.HasValue && (pendingAddition != result.Addition || pendingDiceName != diceName || pendingDice < result.Min || pendingDice > result.Max)) { pendingDice = null; result.PendingRawValue = null; status = "骰子加成变化，指定已清除"; }
+        if ((pendingDice.HasValue || pendingBranch.HasValue) && (pendingAddition != result.Addition || pendingDiceName != diceName)) { pendingDice = null; pendingBranch = null; result.PendingRawValue = null; status = "骰子加成变化，指定已清除"; }
         var items = R.Items(R.Field(data, "_resultItems")).Cast<DiceResultItem>().ToList();
-        var reachable = new Dictionary<int, int>();
-        var hits = new Dictionary<int, int>();
-        bool counted = (long)result.Max - result.Min <= 10000;
-        // Native Roll draws Random.Range(min, max + 1): every raw value in the range is equally likely.
-        if (counted) for (var raw = result.Min; raw <= result.Max; raw++)
-        {
-            var branch = items.FindIndex(x => x.Check(raw + result.Addition));
-            branch = branch < 0 ? items.Count + 1 : branch + 1;
-            if (!reachable.ContainsKey(branch)) reachable[branch] = raw;
-            hits[branch] = hits.TryGetValue(branch, out var count) ? count + 1 : 1;
-            if (raw == int.MaxValue) break;
-        }
+        // Native Roll draws Random.Range(min, max + 1) and adds the bonuses; the first matching item is the branch.
+        // Every offered branch stays selectable: a raw value outside the native range is worked back if needed.
+        int addition = result.Addition;
+        var reachable = NativeUiState.DiceRaws(result.Min, result.Max, Math.Max(99, result.Max), Enumerable.Range(1, diceOptions.Length),
+            raw => { int found = items.FindIndex(x => x.Check(raw + addition)); return found < 0 ? items.Count + 1 : found + 1; }, out var hits);
         double span = (long)result.Max - result.Min + 1;
         for (var i = 1; i <= Math.Max(items.Count + 1, diceOptions.Length); i++)
         {
@@ -433,7 +439,7 @@ public sealed class GameAdapter : IGameAdapter
             var key = separator >= 0 ? option.Substring(0, separator) : option;
             var text = key.Length > 0 ? L.GameText("Story/" + key, "") : "";
             var hasOption = i <= diceOptions.Length;
-            result.Branches.Add(new() { Id = i.ToString(), Title = text.Length > 0 && text != key ? Regex.Replace(text, "<[^>]+>", "") : L.Format("结果 {0}", i), Reachable = hasOption && reachable.ContainsKey(i), RawValue = hasOption && reachable.TryGetValue(i, out var raw) ? raw : (int?)null, Chance = counted ? (hits.TryGetValue(i, out var hit) ? hit : 0) / span : (double?)null, Detail = L.Format("分支 {0}", i) + "\n" + option + (!hasOption ? "\n" + L.Text("游戏未提供该选项") : "") });
+            result.Branches.Add(new() { Id = i.ToString(), Title = text.Length > 0 && text != key ? Regex.Replace(text, "<[^>]+>", "") : L.Format("结果 {0}", i), Reachable = hasOption, RawValue = hasOption && reachable.TryGetValue(i, out var raw) ? raw : (int?)null, Chance = hits != null ? (hits.TryGetValue(i, out var hit) ? hit : 0) / span : (double?)null, Detail = L.Format("分支 {0}", i) + "\n" + option + (!hasOption ? "\n" + L.Text("游戏未提供该选项") : "") });
         }
         return result;
     }
@@ -446,16 +452,21 @@ public sealed class GameAdapter : IGameAdapter
         pendingDice = rawValue; pendingAddition = dice.Addition; pendingDiceName = diceName;
         return Feedback(true, "下一次骰子原始值 = {0}", rawValue);
     }
+    /// <summary>Any offered branch can be picked: natural raw value, a worked-back one, or (beyond the wheel) a forced result.</summary>
     public OperationResult SpecifyDiceBranch(string branchId)
     {
-        Refresh(); var branch = Snapshot.Dice.Branches.FirstOrDefault(x => x.Id == branchId);
-        return branch?.RawValue is int raw ? SpecifyDice(raw) : Feedback(false, "该结果不可达");
+        Refresh(); var dice = Snapshot.Dice; var branch = dice.Branches.FirstOrDefault(x => x.Id == branchId);
+        if (branch == null || !branch.Reachable || !int.TryParse(branch.Id, out int index)) return Feedback(false, "该结果不可达");
+        if (!Snapshot.Ready || !dice.Active) return Feedback(false, "当前没有可指定的骰子");
+        if (!dice.CanSpecify) return Feedback(false, "本次骰子已计算，等待游戏继续");
+        pendingDice = branch.RawValue; pendingBranch = index; pendingAddition = dice.Addition; pendingDiceName = diceName;
+        return branch.RawValue is int raw ? Feedback(true, "下一次骰子原始值 = {0}", raw) : Feedback(true, "下一次骰子结果强制为：{0}", branch.Title);
     }
     public OperationResult RollDiceBranch(string branchId)
     {
         var specified = SpecifyDiceBranch(branchId);
-        if (!specified.Success || diceDialog == null || !pendingDice.HasValue) return specified;
-        int raw = pendingDice.Value;
+        if (!specified.Success || diceDialog == null || !pendingBranch.HasValue) return specified;
+        int? raw = pendingDice;
         bool restart = !diceAwaitingFirstRoll;
         try
         {
@@ -473,16 +484,16 @@ public sealed class GameAdapter : IGameAdapter
         catch (Exception ex)
         {
             // Never leave a specification armed for a roll that did not start.
-            pendingDice = null; log.LogWarning("DICE_ROLL_FAILED " + diceName + " " + ex.GetBaseException().Message);
+            pendingDice = null; pendingBranch = null; log.LogWarning("DICE_ROLL_FAILED " + diceName + " " + ex.GetBaseException().Message);
             return Feedback(false, "无法开始掷骰：{0}", ex.GetBaseException().Message);
         }
         diceRollRequested = true;
-        log.LogInfo($"DICE_ROLL_REQUEST name={diceName} raw={raw} manual={SystemSettings.ManualDestiny} restart={restart}");
-        return Feedback(true, "已指定 {0}，开始掷骰", raw);
+        log.LogInfo($"DICE_ROLL_REQUEST name={diceName} raw={raw?.ToString() ?? "forced"} manual={SystemSettings.ManualDestiny} restart={restart}");
+        return raw.HasValue ? Feedback(true, "已指定 {0}，开始掷骰", raw.Value) : Feedback(true, "已指定结果，开始掷骰");
     }
-    public OperationResult CancelDice() { pendingDice = null; return Feedback(true, "骰子恢复随机"); }
+    public OperationResult CancelDice() { pendingDice = null; pendingBranch = null; return Feedback(true, "骰子恢复随机"); }
     public void EndDice(DiceMenuDialog dialog)
     {
-        if (ReferenceEquals(dialog, diceDialog)) { diceSessionActive = false; diceAwaitingFirstRoll = false; diceRollRequested = false; pendingDice = null; rolling = false; }
+        if (ReferenceEquals(dialog, diceDialog)) { diceSessionActive = false; diceAwaitingFirstRoll = false; diceRollRequested = false; pendingDice = null; pendingBranch = intendedBranch = null; rolling = false; }
     }
 }
