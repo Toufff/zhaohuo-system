@@ -1,3 +1,5 @@
+![ZhaoHuo System: in-game trainer for Legend of Mortal](media/banner-en.webp)
+
 # ZhaoHuo System: in-game trainer for Legend of Mortal
 
 [简体中文](README.md) | [繁體中文](README.zh-Hant.md) | English | [한국어](README.ko.md)

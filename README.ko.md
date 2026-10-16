@@ -1,3 +1,5 @@
+![조활 시스템: 《활협전》 게임 내 트레이너](media/banner-ko.webp)
+
 # 조활 시스템: 《활협전》 게임 내 트레이너
 
 [简体中文](README.md) | [繁體中文](README.zh-Hant.md) | [English](README.en.md) | 한국어

@@ -1,3 +1,5 @@
+![趙活系統：《活俠傳》遊戲內修改器](media/banner-zh-Hant.webp)
+
 # 趙活系統：《活俠傳》遊戲內修改器
 
 [简体中文](README.md) | 繁體中文 | [English](README.en.md) | [한국어](README.ko.md)

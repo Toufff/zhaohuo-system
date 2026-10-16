@@ -1,3 +1,5 @@
+![赵活系统：《活侠传》游戏内修改器](media/banner-zh-Hans.webp)
+
 # 赵活系统：《活侠传》游戏内修改器
 
 简体中文 | [繁體中文](README.zh-Hant.md) | [English](README.en.md) | [한국어](README.ko.md)
