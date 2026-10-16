@@ -48,8 +48,6 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/battle-tab.webp" width="560" alt="Combat switches">
 
-  <img src="media/duel.webp" width="720" alt="Turn-based duel with god mode and one-hit kill on">
-
 - **Screenshots**: hide everything the mod draws with one switch or a hotkey of your choice.
 
 ## Install

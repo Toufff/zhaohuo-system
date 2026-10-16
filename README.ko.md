@@ -49,8 +49,6 @@
 
   <img src="media/battle-tab.webp" width="560" alt="전투 탭 스위치">
 
-  <img src="media/duel.webp" width="720" alt="턴제 결투: 무적과 일격필살 켜기">
-
 - **스크린샷**: 모드가 표시하는 화면을 한 번에 숨길 수 있고, 단축키도 지정할 수 있습니다.
 
 ## 설치

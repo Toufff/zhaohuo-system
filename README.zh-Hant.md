@@ -46,8 +46,6 @@
 
   <img src="media/battle-tab.webp" width="560" alt="戰鬥頁開關">
 
-  <img src="media/duel.webp" width="720" alt="回合制決鬥：開啟無敵和一擊必殺">
-
 - **截圖**：可以一鍵隱藏模組的全部介面，也可以為它設定快捷鍵。
 
 ## 安裝
