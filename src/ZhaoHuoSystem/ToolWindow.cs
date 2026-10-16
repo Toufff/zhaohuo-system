@@ -347,8 +347,11 @@ public sealed class ToolWindow : IDisposable
         var source = previewing ? _snapshot.PreviewEvents : _snapshot.Events;
         foreach (var item in source)
             if ((!_eligibleOnly || item.Eligible) && Matches(_eventSearch, item.Title, item.Id, item.Detail)) items.Add(item);
+        // While an action waits, the list itself is the choice: the selected row is what 继续本次行动 triggers, and the
+        // 「随机」 row at the top (the default) leaves it to the game. Outside a wait, selecting only shows details.
+        bool choosing = _snapshot.ActionWaiting && !previewing;
         EventSnapshot? selected = FindEvent(_selectedEvent);
-        if (selected == null)
+        if (selected == null && !choosing)
         {
             selected = items.Count > 0 ? items[0] : null;
             _selectedEvent = selected?.Id ?? "";
@@ -356,7 +359,8 @@ public sealed class ToolWindow : IDisposable
         if (items.Count == 0) Empty(list, source.Count == 0 ? "当前没有待选择的事件。" : "没有匹配的事件。");
         else
         {
-            float viewWidth = list.width - S(18), listHeight = 0;
+            float randomHeight = choosing ? S(52) : 0;
+            float viewWidth = list.width - S(18), listHeight = randomHeight;
             var rowHeights = new List<float>();
             foreach (var item in items)
             {
@@ -368,6 +372,14 @@ public sealed class ToolWindow : IDisposable
             try
             {
                 float y = 0;
+                if (choosing)
+                {
+                    Rect random = new(0, 0, view.width, randomHeight - S(5));
+                    if (Button(random, "", "event.random", _selectedEvent.Length == 0 ? _listSelected : _listItem)) ChooseEvent(null);
+                    Label(new Rect(S(9), random.y + S(5), random.width - S(18), S(24)), "随机", _label);
+                    Label(new Rect(S(9), random.y + S(27), random.width - S(18), S(20)), "按游戏原本的权重", _small);
+                    y = randomHeight;
+                }
                 for (int i = 0; i < items.Count; i++)
                 {
                     var item = items[i];
@@ -375,19 +387,26 @@ public sealed class ToolWindow : IDisposable
                     Rect row = new(0, y, view.width, rowHeights[i] - S(5));
                     if (Button(row, "", "event." + item.Id, item.Id == _selectedEvent ? _listSelected : item.Eligible ? _listReady : _listItem, EventDetail(item)))
                     {
-                        _selectedEvent = item.Id; selected = item; _conditionScroll = Vector2.zero;
+                        selected = item;
+                        if (choosing) ChooseEvent(item); else { _selectedEvent = item.Id; _conditionScroll = Vector2.zero; }
                     }
                     Label(new Rect(S(9), row.y + S(5), row.width - S(18), titleHeight), item.Title, _label, EventDetail(item));
                     // One overview line, cut to the row like the option brackets; the detail pane has everything.
                     if (consequenceHeight > 0) GUI.Label(new Rect(S(9), row.y + S(5) + titleHeight, row.width - S(18), consequenceHeight), EventLine(item, row.width - S(18)), _richLine);
-                    string state = item.Id == _snapshot.PendingEventId ? "已指定" : item.Eligible ? "可触发" : "条件未满足";
+                    string state = item.Id == _snapshot.PendingEventId ? "本次触发" : item.Eligible ? "可触发" : "条件未满足";
                     Label(new Rect(S(9), row.y + S(7) + titleHeight + consequenceHeight, row.width - S(18), S(22)), state, item.Eligible ? _readySmall : _small);
                     y += rowHeights[i];
                 }
             }
             finally { EndScroll(); }
         }
-        if (selected == null) return;
+        if (selected == null)
+        {
+            if (!choosing) return;
+            Label(new Rect(detail.x, detail.y, detail.width, S(36)), "随机", _heading);
+            Label(new Rect(detail.x, detail.y + S(42), detail.width, S(60)), "继续本次行动时由游戏按权重决定触发哪个事件。", _muted);
+            return;
+        }
         float contentWidth = detail.width - S(18);
         float headingHeight = Mathf.Max(S(36), _heading.CalcHeight(new GUIContent(selected.Title), contentWidth) + S(6));
         float contentHeight = headingHeight + S(9) + Consequences(selected, contentWidth, 0, false);
@@ -444,33 +463,40 @@ public sealed class ToolWindow : IDisposable
         return y - top;
     }
 
+    /// <summary>While an action waits: choosing a row makes it this action's event; null (the 「随机」 row) leaves it to the game.
+    /// A row whose conditions are not met can be read, but the action stays random.</summary>
+    private void ChooseEvent(EventSnapshot? item)
+    {
+        _selectedEvent = item?.Id ?? ""; _conditionScroll = Vector2.zero;
+        if (item != null && item.Eligible) { if (_snapshot.PendingEventId != item.Id) Execute(() => _adapter.SpecifyEvent(item.Id)); }
+        else if (_snapshot.PendingEventId.Length > 0) Execute(_adapter.CancelEvent);
+    }
+
     private void DrawEventPending(Rect r)
     {
-        var pending = FindEvent(_snapshot.PendingEventId);
-        string name = string.IsNullOrEmpty(_snapshot.PendingEventId) ? "随机" : pending?.Title ?? _snapshot.PendingEventId;
-        float extra = _snapshot.ActionWaiting ? S(151) : 0;
-        // While an action waits, the event specified last time here can be repeated in one click.
-        var repeat = _snapshot.ActionWaiting && _snapshot.RepeatEventId.Length > 0 ? FindEvent(_snapshot.RepeatEventId) : null;
-        float repeatWidth = repeat != null ? ButtonWidth("重复上次选择", 140) : 0;
-        if (repeat != null) extra += repeatWidth + S(10);
-        Label(new Rect(r.x, r.y, r.width - S(290) - extra, r.height), L.Format("本次指定：{0}", name), _label, name + "\n" + _snapshot.PendingEventId);
-        bool previous = GUI.enabled;
-        GUI.enabled = !string.IsNullOrEmpty(_snapshot.PendingEventId);
-        if (Button(new Rect(r.xMax - S(276) - extra, r.y, S(106), S(33)), "取消指定", "event.cancel")) Execute(_adapter.CancelEvent);
-        if (repeat != null)
+        bool waiting = _snapshot.ActionWaiting && !Previewing;
+        if (!waiting)
         {
-            GUI.enabled = repeat.Eligible && _snapshot.Ready && !Previewing;
-            string tip = repeat.Eligible ? L.Format("上次选择：{0}", repeat.Title) : L.Format("上次选择：{0}（现在条件未满足）", repeat.Title);
-            if (Button(new Rect(r.xMax - S(141) - S(10) - repeatWidth, r.y, repeatWidth, S(33)), "重复上次选择", "event.repeat", _primary, tip))
-                Execute(_adapter.RepeatLastChoice);
+            Label(new Rect(r.x, r.y, r.width, r.height), "行动停下时，在列表中选中事件再继续，就会触发它。", _muted);
+            return;
         }
-        var selected = FindEvent(_selectedEvent);
-        // A hovered row's pool is only a preview; specification belongs to the real checkpoint.
-        GUI.enabled = selected != null && selected.Eligible && _snapshot.Ready && !Previewing;
-        if (Button(new Rect(r.xMax - S(160) - extra, r.y, S(160), S(33)), "指定本次行动", "event.specify", _snapshot.ActionWaiting ? _button : _primary))
-            Execute(() => _adapter.SpecifyEvent(selected!.Id));
+        var pending = FindEvent(_snapshot.PendingEventId);
+        var viewed = FindEvent(_selectedEvent);
+        string name = pending != null ? pending.Title : viewed != null && !viewed.Eligible ? L.Format("随机（{0} 条件未满足）", viewed.Title) : L.Text("随机");
+        float continueWidth = S(141), repeatWidth = ButtonWidth("重复上次选择", 140);
+        Label(new Rect(r.x, r.y, r.width - continueWidth - repeatWidth - S(22), r.height), L.Format("本次触发：{0}", name), _label, name);
+        // The event chosen last time at this same action, chosen again and continued in one click.
+        var repeat = _snapshot.RepeatEventId.Length > 0 ? FindEvent(_snapshot.RepeatEventId) : null;
+        string tip = repeat == null ? L.Text("这个行动还没有选过事件") : repeat.Eligible ? L.Format("上次选择：{0}", repeat.Title) : L.Format("上次选择：{0}（现在条件未满足）", repeat.Title);
+        bool previous = GUI.enabled;
+        GUI.enabled = repeat != null && repeat.Eligible && _snapshot.Ready;
+        if (Button(new Rect(r.xMax - continueWidth - S(10) - repeatWidth, r.y, repeatWidth, S(33)), "重复上次选择", "event.repeat", _button, tip))
+        {
+            var result = Execute(_adapter.RepeatLastChoice);
+            if (result.Success) { GUI.FocusControl(null); Visible = false; }
+        }
         GUI.enabled = previous;
-        if (_snapshot.ActionWaiting && Button(new Rect(r.xMax - S(141), r.y, S(141), S(33)), "继续本次行动", "event.continue", _primary))
+        if (Button(new Rect(r.xMax - continueWidth, r.y, continueWidth, S(33)), "继续本次行动", "event.continue", _primary))
         {
             var result = Execute(_adapter.ContinueAction);
             if (result.Success) { GUI.FocusControl(null); Visible = false; }
@@ -910,7 +936,8 @@ public sealed class ToolWindow : IDisposable
         {
             _snapshot = _adapter.Snapshot ?? new ToolSnapshot();
             if (!_eventViewChosen && _snapshot.Ready) { _mapOverview = _snapshot.MapLocations.Count > 0 && !_snapshot.ActionWaiting; _eventViewChosen = true; }
-            if (_snapshot.ActionWaiting && !_lastActionWaiting) _mapOverview = false;
+            // Each new wait starts on 「随机」, matching the adapter, which clears any earlier choice.
+            if (_snapshot.ActionWaiting && !_lastActionWaiting) { _mapOverview = false; _selectedEvent = ""; }
             if (Previewing && !_lastPreview) _mapOverview = false;
             _lastPreview = Previewing;
             _lastActionWaiting = _snapshot.ActionWaiting;
