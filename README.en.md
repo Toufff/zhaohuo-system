@@ -21,7 +21,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
   - When an action pauses, pick an event in the list and press 继续本次行动 (continue); that event triggers. Pick nothing and it stays random as usual.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
   - When an action stops for you to choose, press 重复上次选择 (repeat last choice) to pick the same event as last time for that action.
-- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list.
+- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list. Places you can only reach through the gate count too: if one of them has a one-time event you can trigger now, the gate's badge turns green.
 
   <img src="media/map-hover.webp" width="420" alt="Event count badges on the map and the hover list">
 
@@ -50,6 +50,10 @@ The in-game panel follows the game's language and is available in Simplified Chi
 - **Combat**: god mode, one-hit kill, no stamina cost and no skill cooldown. They work in both real-time battles and turn-based duels, apply only during a fight, and are not written to your save.
 
   <img src="media/battle-tab.webp" width="560" alt="Combat switches">
+
+- **UI scale**: the mod grows automatically on 4K and other high resolutions; adjust it further with 界面缩放 (UI scale) on the 设置 (Settings) tab.
+
+- **Lift the cap once**: the training, forging and alchemy panels get a 本次取消上限 (lift the cap this time) button next to the per-visit count. It removes the count cap for this visit only (shown as ∞); close and reopen the panel to get the normal cap back. Points and silver are still spent.
 
 - **Screenshots**: hide everything the mod draws with one switch or a hotkey of your choice.
 
