@@ -109,6 +109,8 @@ public sealed class ToolSnapshot
     public string ContextDetail { get; set; } = "";
     public string Status { get; set; } = "";
     public string PendingEventId { get; set; } = "";
+    /// <summary>While an action waits: the event specified last time at this same action, if it is in the pool now.</summary>
+    public string RepeatEventId { get; set; } = "";
     public bool ActionSelectionEnabled { get; set; } = true;
     public bool ActionWaiting { get; set; }
     public List<EventSnapshot> Events { get; set; } = new();
@@ -137,6 +139,8 @@ public interface IGameAdapter
     OperationResult CancelEvent();
     OperationResult SetActionSelection(bool enabled);
     OperationResult ContinueAction();
+    /// <summary>Specify the event chosen last time at this same action, then continue it.</summary>
+    OperationResult RepeatLastChoice();
     OperationResult SpecifyDice(int rawValue);
     OperationResult SpecifyDiceBranch(string branchId);
     /// <summary>Specify a reachable branch, then press the game's own start (or restart) once.</summary>

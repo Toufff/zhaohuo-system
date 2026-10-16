@@ -58,6 +58,18 @@ public sealed class GameAdapter : IGameAdapter
     public GameAdapter(ManualLogSource log, bool selectBeforeAction = true, Action<bool>? selectionChanged = null)
     { this.log = log; selectionEnabled = selectBeforeAction; this.selectionChanged = selectionChanged; }
 
+    // The event last specified and consumed at each action pool, kept across sessions as "pool=eventId|…".
+    private readonly Dictionary<string, string> lastChoices = new(StringComparer.Ordinal);
+    public Action<string>? LastChoicesChanged;
+    public void LoadLastChoices(string saved)
+    {
+        foreach (var pair in (saved ?? "").Split('|'))
+        {
+            int at = pair.IndexOf('=');
+            if (at > 0 && at < pair.Length - 1) lastChoices[pair.Substring(0, at)] = pair.Substring(at + 1);
+        }
+    }
+
     public static string StatName(GameStat stat) => L.StatName(stat);
     private static string Identity()
     {
@@ -215,7 +227,11 @@ public sealed class GameAdapter : IGameAdapter
                 try { next.MapLocations = MapOverview.Read(p, missions); }
                 catch (Exception ex) { log.LogWarning("MAP_READ " + ex.GetBaseException().Message); }
                 var pool = Pool();
-                if (pool != null) next.Events = ReadPoolEvents(pool, p, true);
+                if (pool != null)
+                {
+                    next.Events = ReadPoolEvents(pool, p, true);
+                    if (actionWaiting && lastChoices.TryGetValue(pool.name, out var last) && next.Events.Any(x => x.Id == last)) next.RepeatEventId = last;
+                }
                 // Hovering a menu row previews its pool; real checkpoints always take precedence.
                 else if (previewPool.Length > 0 && FindPool(previewPool) is PositionResultData preview)
                 { next.PreviewEvents = ReadPoolEvents(preview, p, false); next.PreviewTitle = previewTitle; }
@@ -342,6 +358,17 @@ public sealed class GameAdapter : IGameAdapter
         return Feedback(true, "已指定下一次当前行动");
     }
     public OperationResult CancelEvent() { pendingEvent = ""; return Feedback(true, "事件恢复随机"); }
+    public OperationResult RepeatLastChoice()
+    {
+        Refresh();
+        var id = Snapshot.RepeatEventId;
+        if (id.Length == 0) return Feedback(false, "这个行动还没有上次的选择");
+        var specified = SpecifyEvent(id);
+        if (!specified.Success) return specified;
+        string title = Snapshot.Events.FirstOrDefault(x => x.Id == id)?.Title ?? id;
+        ContinueAction();
+        return Feedback(true, "已重复上次选择：{0}", title);
+    }
     public bool TryEvent(PositionResultData pool, out string result)
     {
         result = ""; Refresh();
@@ -350,6 +377,11 @@ public sealed class GameAdapter : IGameAdapter
         if (!Snapshot.Ready || pendingRevision != revision || !ReferenceEquals(Pool(), pool) || !eventObjects.TryGetValue(id, out var item) || item.GetRate() <= 0)
         { Feedback(false, "本次指定失效，使用游戏随机"); return false; }
         result = R.Field<string>(pool, "_scriptPrefix", "") + "_" + item.ResultType;
+        if (!lastChoices.TryGetValue(pool.name, out var previous) || previous != id)
+        {
+            lastChoices[pool.name] = id;
+            LastChoicesChanged?.Invoke(string.Join("|", lastChoices.Select(pair => pair.Key + "=" + pair.Value)));
+        }
         log.LogInfo($"EVENT_CONSUMED rev={revision} id={id} result={result}"); SetStatus("已执行指定：{0}", item.ResultType); Refresh(); return true;
     }
     public void ObservePosition(string name) { log.LogInfo($"POSITION_EXECUTE name={name} context={poolName} rev={revision} pending={pendingEvent}"); }

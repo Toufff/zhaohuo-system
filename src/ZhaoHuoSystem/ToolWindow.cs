@@ -449,10 +449,21 @@ public sealed class ToolWindow : IDisposable
         var pending = FindEvent(_snapshot.PendingEventId);
         string name = string.IsNullOrEmpty(_snapshot.PendingEventId) ? "随机" : pending?.Title ?? _snapshot.PendingEventId;
         float extra = _snapshot.ActionWaiting ? S(151) : 0;
+        // While an action waits, the event specified last time here can be repeated in one click.
+        var repeat = _snapshot.ActionWaiting && _snapshot.RepeatEventId.Length > 0 ? FindEvent(_snapshot.RepeatEventId) : null;
+        float repeatWidth = repeat != null ? ButtonWidth("重复上次选择", 140) : 0;
+        if (repeat != null) extra += repeatWidth + S(10);
         Label(new Rect(r.x, r.y, r.width - S(290) - extra, r.height), L.Format("本次指定：{0}", name), _label, name + "\n" + _snapshot.PendingEventId);
         bool previous = GUI.enabled;
         GUI.enabled = !string.IsNullOrEmpty(_snapshot.PendingEventId);
         if (Button(new Rect(r.xMax - S(276) - extra, r.y, S(106), S(33)), "取消指定", "event.cancel")) Execute(_adapter.CancelEvent);
+        if (repeat != null)
+        {
+            GUI.enabled = repeat.Eligible && _snapshot.Ready && !Previewing;
+            string tip = repeat.Eligible ? L.Format("上次选择：{0}", repeat.Title) : L.Format("上次选择：{0}（现在条件未满足）", repeat.Title);
+            if (Button(new Rect(r.xMax - S(141) - S(10) - repeatWidth, r.y, repeatWidth, S(33)), "重复上次选择", "event.repeat", _primary, tip))
+                Execute(_adapter.RepeatLastChoice);
+        }
         var selected = FindEvent(_selectedEvent);
         // A hovered row's pool is only a preview; specification belongs to the real checkpoint.
         GUI.enabled = selected != null && selected.Eligible && _snapshot.Ready && !Previewing;

@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.14")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.15")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -63,6 +63,9 @@ public sealed class Plugin : BaseUnityPlugin
         var selectBeforeAction = Config.Bind("工具", "行动前选择结果", true, "到达真实地点事件判定前等待选择；收起面板或继续会放行游戏流程。");
         Adapter = new GameAdapter(Logger, selectBeforeAction.Value, enabled => selectBeforeAction.Value = enabled);
         Adapter.RuntimeVersion = ReadRuntimeVersion();
+        var lastChoices = Config.Bind("工具", "上次选择", "", "每个行动上次指定并实际触发的事件（行动=事件），供「重复上次选择」使用。");
+        Adapter.LoadLastChoices(lastChoices.Value);
+        Adapter.LastChoicesChanged = saved => lastChoices.Value = saved;
         var managed = Path.Combine(Paths.GameRootPath, "Mortal_Data", "Managed");
         var expected = new Dictionary<string, string>
         {
