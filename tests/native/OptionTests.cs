@@ -144,6 +144,27 @@ internal static partial class Program
             Require(!LuaOptions.EndsAfterOnce(">=", 1, new[] { Add(1) }) && LuaOptions.EndsAfterOnce(">=", 1, new[] { Set(0) }), "growing counters stay, a reset ends");
             Require(!LuaOptions.EndsAfterOnce("=", 0, new OptionEffect[0]) && LuaOptions.Mirror("<") == ">" && LuaOptions.Mirror("=") == "=", "no change, mirrored sides");
         });
+        Test("an event's own flag set later in its story, inside a choice, still makes it one-shot; a location menu ends the search", () =>
+        {
+            // Shape of 龍之反省: the result script only moves on; the story sets its flag in one choice; then back to the gate menu.
+            var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["ev_503"] = "luamanager.SetNextScript(\"story\")",
+                ["story"] = "local t = {}\nt[1] = \"O_S_1\"\nt[2] = \"O_S_2\"\nlocal c = choose(t)\nif c == 1 then\nluamanager.SetNextScript(\"story_a\")\nelseif c == 2 then\nluamanager.SetNextScript(\"story_b\")\nend",
+                ["story_a"] = "statmodifymanager.SetFlag(\"S1\", 1)\nstatmodifymanager.AddFlag(\"C\", 1)\nluamanager.SetNextScript(\"hub\")",
+                ["story_b"] = "luamanager.SetNextScript(\"hub\")",
+                ["hub"] = "statmodifymanager.SetFlag(\"H\", 1)\nvar1 = checkpointmanager.Position(\"Door_02\")"
+            };
+            var maps = new Dictionary<string, Dictionary<string, OptionPreview>>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, OptionPreview>? Map(string name) => texts.TryGetValue(name, out var t) ? (maps.TryGetValue(name, out var m) ? m : maps[name] = LuaOptions.Analyze(t)) : null;
+            var changes = LuaOptions.EventFlags("ev_503", Map, name => texts.TryGetValue(name, out var t) ? t : null);
+            Require(changes.Certain.Count == 0 && changes.Possible.ContainsKey("S1") && !changes.Possible.ContainsKey("H"), "flag found two scripts on, the gate menu's own flags left out");
+            Require(LuaOptions.Ends("<=", 0, changes, "S1") && LuaOptions.Ends("=", 0, changes, "S1"), "S0023_01 <= 0 ends after one run");
+            // A counter met on one path still has runs left (F40), and nothing ends a flag the story never touches.
+            Require(!LuaOptions.Ends("<", 2, changes, "C") && !LuaOptions.Ends("=", 0, changes, "H"), "counter and untouched flag");
+            var certain = LuaOptions.EventFlags("story_a", Map, name => texts.TryGetValue(name, out var t) ? t : null);
+            Require(certain.Certain.ContainsKey("S1") && !LuaOptions.Ends("<", 2, certain, "C"), "top-level changes still run as one sequence");
+        });
         Test("pools reachable from a location follow scripts, menu options and pool results with their option path", () =>
         {
             // Shape of the gate: own pool -> a result that opens the "where to" menu -> a shop with two pools; one option loops back.
@@ -171,6 +192,13 @@ internal static partial class Program
         // Optional offline audit over a local, untracked dump of the game's scripts.
         string? dump = Environment.GetEnvironmentVariable("ZHAOHUO_LUA_DUMP");
         if (dump == null || !Directory.Exists(dump)) return;
+        if (File.Exists(Path.Combine(dump, "door_02_503.txt")))
+            Test("real 龍之反省 (door_02_503) ends through S0023_01 set inside a later choice", () =>
+            {
+                string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
+                var changes = LuaOptions.EventFlags("door_02_503", name => Text(name) is string t ? LuaOptions.Analyze(t) : null, Text);
+                Require(LuaOptions.Ends("<=", 0, changes, "S0023_01"), "S0023_01 <= 0");
+            });
         int scripts = 0, options = 0, withEffects = 0, unknown = 0, failures = 0;
         foreach (var file in Directory.EnumerateFiles(dump, "*.txt"))
         {

@@ -54,7 +54,7 @@ public sealed class GameAdapter : IGameAdapter
     public bool TestedBuild { get; set; }
     /// <summary>Story script text and the flags an event script changes (the option hints' reading); set by the plugin.</summary>
     public Func<string, string?>? ScriptText { get; set; }
-    public Func<string, Dictionary<string, List<OptionEffect>>>? EventFlagChanges { get; set; }
+    public Func<string, FlagChanges>? EventFlagChanges { get; set; }
     /// <summary>Consequences of an event script by name (the option hints' analysis); set by the plugin.</summary>
     public Func<string, List<HintSegment>?>? EventConsequences { get; set; }
     public string RuntimeVersion { get; set; } = "运行版本待核验";
@@ -258,7 +258,8 @@ public sealed class GameAdapter : IGameAdapter
     private readonly Dictionary<string, List<OneShot>> oneShots = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>
     /// A one-shot event is gone after it runs once: the flag changes its script always makes leave its own trigger
-    /// condition unmet (F40: a counter that allows several runs, like 行商 大失败 under "< 2", is not one). Those whose
+    /// condition unmet (F40: a counter that allows several runs, like 行商 大失败 under "< 2", is not one), or a change
+    /// somewhere along its story does (F47: 龍之反省 sets its flag two scripts later, inside a choice). Those whose
     /// conditions hold now are added, green, to the location that reaches them (F32 the gate, F41 every location).
     /// </summary>
     private void AddOneShots(List<MapLocationSnapshot> locations, PlayerStatManagerData p)

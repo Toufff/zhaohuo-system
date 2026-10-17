@@ -41,7 +41,8 @@ internal sealed class RoundSkip(ManualLogSource log) : IDisposable
             if (font != null) UnityEngine.Object.Destroy(font);
             font = Font.CreateDynamicFontFromOSFont(L.FontNames, 18); revision = L.Revision;
         }
-        InlineButton.Place(button, label, date, font, L.Text(Time.unscaledTime < confirmUntil ? "确定吗？" : "跳过本旬"));
+        // Half the usual inline size (F46): the date line is large, so .8 made the button too big.
+        InlineButton.Place(button, label, date, font, L.Text(Time.unscaledTime < confirmUntil ? "确定吗？" : "跳过本旬"), .4f);
     }
 
     // A new free map scene comes with a new manager; the old button went with the old scene.

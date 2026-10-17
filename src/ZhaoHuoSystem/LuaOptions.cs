@@ -24,6 +24,18 @@ public sealed class OptionCase
 }
 
 /// <summary>Read-only consequences of one menu option or dice result, derived from script text alone.</summary>
+/// <summary>
+/// Story flag changes an event can make. Certain: every run, in order (its top level, then its literal next script's).
+/// Possible: any change along its story chain (branches, choices and later scripts) until the story returns to a menu
+/// that draws an event pool (F47: 龍之反省 sets its own flag two scripts later, inside a choice).
+/// </summary>
+public sealed class FlagChanges
+{
+    public Dictionary<string, List<OptionEffect>> Certain = new(StringComparer.Ordinal);
+    public Dictionary<string, List<OptionEffect>> Possible = new(StringComparer.Ordinal);
+    public bool Empty => Certain.Count == 0 && Possible.Count == 0;
+}
+
 public sealed class OptionPreview
 {
     public string Key = "";
@@ -361,6 +373,53 @@ public static class LuaOptions
         }
         return result;
     }
+
+    private static readonly Regex PositionCall = new("checkpointmanager\\s*\\.\\s*Position\\s*\\(");
+    private static readonly Regex NextScriptCall = new("luamanager\\s*\\.\\s*SetNextScript\\s*\\(\\s*\"([^\"]+)\"");
+    /// <summary>
+    /// What an event's result script can do to story flags (see <see cref="FlagChanges"/>). Bounded: at most
+    /// <paramref name="maxDepth"/> scripts deep and <paramref name="maxScripts"/> scripts in all.
+    /// </summary>
+    public static FlagChanges EventFlags(string script, Func<string, Dictionary<string, OptionPreview>?> map, Func<string, string?> text, int maxDepth = 6, int maxScripts = 40)
+    {
+        var result = new FlagChanges();
+        void Add(Dictionary<string, List<OptionEffect>> into, IEnumerable<OptionEffect> effects)
+        {
+            foreach (var effect in effects)
+                if (effect.Kind == "flag" || effect.Kind == "set-flag")
+                { if (!into.TryGetValue(effect.Key, out var list)) into[effect.Key] = list = new(); list.Add(effect); }
+        }
+        if (map(script) is { } own && own.TryGetValue(ScriptLevel, out var top))
+        {
+            Add(result.Certain, top.Effects);
+            if (top.NextScript.Length > 0 && !top.NextScript.Equals(script, StringComparison.OrdinalIgnoreCase) && map(top.NextScript) is { } next && next.TryGetValue(ScriptLevel, out var nextTop))
+                Add(result.Certain, nextTop.Effects);
+        }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<(string Name, int Depth)>(); queue.Enqueue((script, 0));
+        while (queue.Count > 0 && seen.Count < maxScripts)
+        {
+            var (name, depth) = queue.Dequeue();
+            if (depth > maxDepth || name.Length == 0 || !seen.Add(name) || text(name) is not string source || map(name) is not { } analyzed) continue;
+            // Back at a location's menu: what happens there belongs to that location's own events.
+            if (depth > 0 && PositionCall.IsMatch(source)) continue;
+            foreach (var preview in analyzed.Values)
+            {
+                Add(result.Possible, preview.Effects);
+                foreach (var arm in preview.Cases) Add(result.Possible, arm.Effects);
+                queue.Enqueue((preview.NextScript, depth + 1));
+            }
+            foreach (Match match in NextScriptCall.Matches(source)) queue.Enqueue((match.Groups[1].Value, depth + 1));
+        }
+        return result;
+    }
+    /// <summary>
+    /// Whether the clause "flag op constant" ends after the event runs once: its certain changes as one sequence (so a
+    /// counter with runs left stays, F40), or any single change it can make somewhere along its story (F47).
+    /// </summary>
+    public static bool Ends(string op, int constant, FlagChanges changes, string flag) =>
+        changes.Certain.TryGetValue(flag, out var certain) && EndsAfterOnce(op, constant, certain)
+        || changes.Possible.TryGetValue(flag, out var possible) && possible.Exists(change => EndsAfterOnce(op, constant, new[] { change }));
 
     /// <summary>
     /// Whether a clause "flag op constant" that holds now fails after one run of these changes, whatever count the flag

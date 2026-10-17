@@ -260,23 +260,11 @@ internal sealed class OptionHints : IDisposable
         if (!scriptMaps.TryGetValue(name, out var map)) scriptMaps[name] = map = ScriptText(name) is string text ? LuaOptions.Analyze(text) : null;
         return map;
     }
-    /// <summary>
-    /// Story flag changes an event's script makes every time it runs (its top level, then its literal next script's), in
-    /// order per flag. Changes inside a branch or a choice may not happen, so they are left out.
-    /// </summary>
-    public Dictionary<string, List<OptionEffect>> EventFlagChanges(string script)
+    private readonly Dictionary<string, FlagChanges> flagChanges = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Story flag changes an event's script makes on every run, and those it can make along its story (cached).</summary>
+    public FlagChanges EventFlagChanges(string script)
     {
-        var changes = new Dictionary<string, List<OptionEffect>>(StringComparer.Ordinal);
-        void Add(Dictionary<string, OptionPreview>? map)
-        {
-            if (map == null || !map.TryGetValue(LuaOptions.ScriptLevel, out var level)) return;
-            foreach (var effect in level.Effects)
-                if (effect.Kind == "flag" || effect.Kind == "set-flag")
-                { if (!changes.TryGetValue(effect.Key, out var list)) changes[effect.Key] = list = new(); list.Add(effect); }
-        }
-        var own = ScriptMap(script); Add(own);
-        string next = own != null && own.TryGetValue(LuaOptions.ScriptLevel, out var top) ? top.NextScript : "";
-        if (next.Length > 0 && !next.Equals(script, StringComparison.OrdinalIgnoreCase)) Add(ScriptMap(next));
+        if (!flagChanges.TryGetValue(script, out var changes)) flagChanges[script] = changes = LuaOptions.EventFlags(script, ScriptMap, ScriptText);
         return changes;
     }
     /// <summary>

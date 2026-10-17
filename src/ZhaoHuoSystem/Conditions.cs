@@ -121,21 +121,21 @@ internal static class Conditions
     /// Whether one run of an event with these flag changes leaves this condition unmet: an AND fails when any part
     /// fails, an OR when every part does. Only "flag op constant" parts can fail; anything else is taken to stay.
     /// </summary>
-    internal static bool EndsAfterOnce(object? condition, IReadOnlyDictionary<string, List<OptionEffect>> changes, int depth = 0)
+    internal static bool EndsAfterOnce(object? condition, FlagChanges changes, int depth = 0)
     {
-        if (condition == null || depth > 12 || changes.Count == 0) return false;
+        if (condition == null || depth > 12 || changes.Empty) return false;
         var parts = R.Items(R.Field(condition, "_items")).Select(item => item is StatCompareItem ? ClauseEnds(item, changes) : EndsAfterOnce(item, changes, depth + 1)).ToList();
         if (parts.Count == 0) return false;
         bool or = condition is ConditionResultData || R.Field(condition, "_logicOp") is LogicOperatorType.OR;
         return or ? parts.All(x => x) : parts.Any(x => x);
     }
-    private static bool ClauseEnds(object item, IReadOnlyDictionary<string, List<OptionEffect>> changes)
+    private static bool ClauseEnds(object item, FlagChanges changes)
     {
         string op = Symbol(R.RequiredField<StatCompareType>(item, "_compareOp"));
         var (leftFlag, leftConstant) = Single(R.Field(item, "_value1"));
         var (rightFlag, rightConstant) = Single(R.Field(item, "_value2"));
-        if (leftFlag != null && rightConstant.HasValue && changes.TryGetValue(leftFlag, out var own)) return LuaOptions.EndsAfterOnce(op, rightConstant.Value, own);
-        if (rightFlag != null && leftConstant.HasValue && changes.TryGetValue(rightFlag, out own)) return LuaOptions.EndsAfterOnce(LuaOptions.Mirror(op), leftConstant.Value, own);
+        if (leftFlag != null && rightConstant.HasValue) return LuaOptions.Ends(op, rightConstant.Value, changes, leftFlag);
+        if (rightFlag != null && leftConstant.HasValue) return LuaOptions.Ends(LuaOptions.Mirror(op), leftConstant.Value, changes, rightFlag);
         return false;
     }
     // A value group that is exactly one plain flag or one constant.
