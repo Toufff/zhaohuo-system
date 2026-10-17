@@ -29,7 +29,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Skip the rest of a period**: on the free-action map, and in the free phase's story menus for choosing where to go, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location.
 
-- **Unlimited actions for a period**: next to 跳过本旬 right of the date, 本旬行动点无限 (unlimited action points this period) stops action points from being spent until the next ten-day period.
+- **Unlimited actions for a period**: next to 跳过本旬 right of the date, 本旬行动点无限 (unlimited action points this period) stops action points from being spent until the next ten-day period. Turn off 显示本旬按钮 (show period buttons) on the 设置 (Settings) tab to hide both buttons beside the date.
 
 - **Values**: edit attributes, character affection, sect relations and story flags directly.
 
@@ -55,7 +55,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/shop.webp" width="560" alt="The effect line under an item description">
 
-- **Combat**: god mode, one-hit kill, no stamina cost and no skill cooldown. They work in both real-time battles and turn-based duels, apply only during a fight, and are not written to your save. During fights, 直接胜利 (win now) and 直接失败 (lose now) buttons at the top of the screen (click twice to confirm) end the fight through the game's own result, so you can try a story's other branch quickly. Battles lock the mouse while they run, so there the buttons appear in the pause menu (Esc). In duels, a 2× (original) / 3× / 4× row sits above the game's own speed-up button at the bottom right; when speed-up is on, the duel runs at the chosen speed.
+- **Combat**: god mode, one-hit kill, no stamina cost and no skill cooldown. They work in both real-time battles and turn-based duels, apply only during a fight, and are not written to your save. 双方最低 1 血 (both sides keep 1 HP, duels only) keeps either side's HP from dropping below 1, for duels that must run a number of rounds. During fights, 直接胜利 (win now) and 直接失败 (lose now) buttons at the top of the screen (click twice to confirm) end the fight through the game's own result, so you can try a story's other branch quickly. Battles lock the mouse while they run, so there the buttons appear in the pause menu (Esc). In duels, a 2× (original) / 3× / 4× row sits above the game's own speed-up button at the bottom right; when speed-up is on, the duel runs at the chosen speed.
 
   <img src="media/battle-tab.webp" width="560" alt="Combat switches">
 
