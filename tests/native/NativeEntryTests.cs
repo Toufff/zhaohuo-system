@@ -94,10 +94,9 @@ internal static partial class Program
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slot", "_currentData");
             Signature(mortalCore, "Mortal.Core", "SaveSlotPanel", "SelectButton");
             Has(mortalCore, "Mortal.Core", "GameSave", "TimeTick");
-            // 本旬无限: every spend of the action points, the points row, the round's max and the round itself.
+            // 本旬行动点无限: every spend of the action points, the round's max and the round itself.
             Signature(mortalCore, "Mortal.Core", "GameStat", "AddValue", "value", "totalAdd");
             Has(mortalCore, "Mortal.Core", "GameStat", "StatType");
-            Has(mortalCore, "Mortal.Core", "PlayerActionInfoPanel", "_container");
             Signature(mortalCore, "Mortal.Core", "PlayerStatManagerData", "GetMaxActionCount");
             Has(mortalCore, "Mortal.Core", "GameTime", "Year", "Month", "Stage");
             // 跳过本旬 in the free phase's story menus: the story's date, its scene change, and the menu put away first.

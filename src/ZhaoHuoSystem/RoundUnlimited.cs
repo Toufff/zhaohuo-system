@@ -2,18 +2,20 @@ using System;
 using BepInEx.Logging;
 using HarmonyLib;
 using Mortal.Core;
+using Mortal.Free;
+using Mortal.Story;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace ZhaoHuoSystem;
 
 /// <summary>
-/// 「本旬无限」 under the action points in the top-left panel, wherever the game shows it (the free phase's story menus as
-/// well as the walking map) (F59). A click fills the points up and, for the rest of this round,
+/// 「本旬行动点无限」 right of the date, beside 「跳过本旬」 and the same size (F59, F61), wherever the action points show
+/// (the walking map and the free phase's story menus). A click fills the points up and, for the rest of this round,
 /// nothing spends them; the next round (the game's own change, or 「跳过本旬」, which sets the points to 0) ends it. A
 /// second click ends it at once. Never saved: it belongs to the round it was switched on in.
 /// </summary>
-internal sealed class RoundUnlimited(ManualLogSource log) : IDisposable
+internal sealed class RoundUnlimited(ManualLogSource log, Func<Button?> skip) : IDisposable
 {
     // The game's GameTime changes in place at a round change, so the round is kept by value.
     private static (int Year, int Month, MonthStageType Stage)? round;
@@ -23,9 +25,11 @@ internal sealed class RoundUnlimited(ManualLogSource log) : IDisposable
 
     // The dice buttons' colours; switched on takes the panel's accent.
     private static readonly Color Idle = new(.15f, .18f, .21f, 1), On = new(.22f, .37f, .51f, 1);
+    // FreeManager on the map, StoryManager in the free phase's story menus: both show the date.
+    private MonoBehaviour? host;
+    private Text? date;
     private PlayerActionInfoPanel? panel;
     private float nextLook;
-    private RectTransform? points;
     private Button? button;
     private Text? label;
     private Font? font;
@@ -33,42 +37,39 @@ internal sealed class RoundUnlimited(ManualLogSource log) : IDisposable
 
     public void Update(bool hidden)
     {
-        // The panel leaves with its scene; look for the next one now and then (not every frame).
-        if (panel == null)
-        {
-            button = null; label = null; points = null;
-            if (Time.unscaledTime < nextLook) return;
-            nextLook = Time.unscaledTime + .5f;
-            if (UnityEngine.Object.FindObjectOfType<PlayerActionInfoPanel>() is not PlayerActionInfoPanel found || found == null) return;
-            Attach(found);
-        }
-        if (button == null || label == null || points == null) return;
-        bool show = !hidden && points.gameObject.activeInHierarchy && PlayerStatManagerData.Instance != null;
+        MonoBehaviour? now = FreeManager.Instance != null ? FreeManager.Instance : StoryManager.Instance != null ? StoryManager.Instance : null;
+        if (now == null) { host = null; return; }
+        if (now != host) Attach(now);
+        if (button == null || label == null || date == null) return;
+        // Only where the action points show; the panel is looked for now and then, not every frame.
+        if (panel == null && Time.unscaledTime >= nextLook) { nextLook = Time.unscaledTime + .5f; panel = UnityEngine.Object.FindObjectOfType<PlayerActionInfoPanel>(); }
+        bool show = !hidden && date.isActiveAndEnabled && panel != null && panel.isActiveAndEnabled && PlayerStatManagerData.Instance != null;
         if (button.gameObject.activeSelf != show) button.gameObject.SetActive(show);
         if (!show) return;
         if (font == null || revision != L.Revision)
         {
             if (font != null) UnityEngine.Object.Destroy(font);
-            font = Font.CreateDynamicFontFromOSFont(L.FontNames, 16); revision = L.Revision;
+            font = Font.CreateDynamicFontFromOSFont(L.FontNames, 18); revision = L.Revision;
         }
         bool on = Active;
-        label.font = font; label.fontSize = 15; label.text = L.Text(on ? "本旬无限中" : "本旬无限");
+        // The same size as 「跳过本旬」 (F46's half size), right after it, or in its place when it is not offered.
+        InlineButton.Place(button, label, date, font, L.Text(on ? "本旬行动点无限中" : "本旬行动点无限"), .4f);
+        if (skip() is Button beside && beside != null && beside.gameObject.activeSelf)
+        {
+            var own = (RectTransform)button.transform;
+            own.anchoredPosition += new Vector2(((RectTransform)beside.transform).sizeDelta.x + own.sizeDelta.y * .3f, 0);
+        }
         var colors = button.colors; var want = on ? On : Idle;
         if (colors.normalColor != want) { colors.normalColor = want; button.colors = colors; }
-        // Right under the points, inside the panel's own background.
-        var rect = (RectTransform)button.transform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
-        rect.anchoredPosition = new Vector2(points.anchoredPosition.x, points.anchoredPosition.y - points.rect.height - 2);
-        rect.sizeDelta = new Vector2(label.preferredWidth + 14, 22);
     }
 
-    private void Attach(PlayerActionInfoPanel found)
+    // A new scene comes with a new manager and date; the old button went with the old scene.
+    private void Attach(MonoBehaviour now)
     {
-        panel = found;
-        if (R.Field<Transform>(found, "_container") is not RectTransform container || container.parent == null)
-        { log.LogWarning("ROUND_UNLIMITED no action points"); return; }
-        points = container;
-        button = InlineButton.Create("ZhaoHuo.RoundUnlimited", container.parent, Click, out var created); label = created;
+        host = now; button = null; label = null; panel = null; nextLook = 0;
+        date = R.Field<Text>(R.Field<GameDateTimeText>(now, "_timeText") ?? R.Field<GameDateTimeText>(now, "_gameTime"), "_text");
+        if (date == null) { log.LogWarning("ROUND_UNLIMITED no date text"); return; }
+        button = InlineButton.Create("ZhaoHuo.RoundUnlimited", date.transform, Click, out var created); label = created;
     }
 
     private void Click()

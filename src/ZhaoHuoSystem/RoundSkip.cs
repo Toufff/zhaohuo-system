@@ -25,6 +25,8 @@ internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu) : ID
     private Text? date;
     private Button? button;
     private Text? label;
+    /// <summary>「本旬行动点无限」 lines up right after it while it shows.</summary>
+    public Button? Button => button;
     private Font? font;
     private long revision = -1;
     private float confirmUntil;

@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.26")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.27")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -106,7 +106,7 @@ public sealed class Plugin : BaseUnityPlugin
         LibraryCollections.Log = Logger;
         OptionHints.ReadyOneShots = Adapter.ReadyOneShots;
         roundSkip = new RoundSkip(Logger, () => OptionHints.ActionMenuOpen());
-        unlimited = new RoundUnlimited(Logger);
+        unlimited = new RoundUnlimited(Logger, () => roundSkip.Button);
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
