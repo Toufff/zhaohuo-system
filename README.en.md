@@ -29,7 +29,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Skip the rest of a period**: on the free-action map, and in the free phase's story menus for choosing where to go, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location.
 
-- **Unlimited actions for a period**: under the action points at the top left, 本旬无限 (unlimited this period) stops action points from being spent until the next ten-day period.
+- **Unlimited actions for a period**: next to 跳过本旬 right of the date, 本旬行动点无限 (unlimited action points this period) stops action points from being spent until the next ten-day period.
 
 - **Values**: edit attributes, character affection, sect relations and story flags directly.
 
