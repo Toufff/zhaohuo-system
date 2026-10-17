@@ -17,7 +17,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 ## Features
 
-- **Events**: before each action, the panel lists the events it can trigger and their conditions. Conditions show current values (for example, `Actions 3>=1`), and the ones you already meet are green. Each event also shows what it changes when it triggers (stats, affection and more), gains in green and losses in red.
+- **Events**: before each action, the panel lists the events it can trigger and their conditions. Conditions show current values (for example, `Actions 3>=1`), and the ones you already meet are green. Each event also shows what it changes when it triggers (stats, affection and more), gains in green and losses in red. Events that can trigger now are listed first.
   - When an action pauses, pick an event in the list and press 继续本次行动 (continue); that event triggers. Pick nothing and it stays random as usual.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
   - When an action stops for you to choose, press 重复上次选择 (repeat last choice) to pick the same event as last time for that action.
