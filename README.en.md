@@ -21,13 +21,15 @@ The in-game panel follows the game's language and is available in Simplified Chi
   - When an action pauses, pick an event in the list and press 继续本次行动 (continue); that event triggers. Pick nothing and it stays random as usual.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
   - When an action stops for you to choose, press 重复上次选择 (repeat last choice) to pick the same event as last time for that action.
-- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list.
+- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list. To hide just the counts, turn off 显示地图事件数字 (show map event counts) on the 设置 (Settings) tab; other hints stay.
 
   <img src="media/map-hover.webp" width="420" alt="Event count badges on the map and the hover list">
 
 - **One-time event reminders**: map locations, and dialogue options such as picking a route while travelling, are marked when an event that can happen only once is available behind them right now. The location's badge turns green and the option gets a green ●.
 
-- **Skip the rest of a period**: on the free-action map, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location.
+- **Skip the rest of a period**: on the free-action map, and in the free phase's story menus for choosing where to go, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location.
+
+- **Unlimited actions for a period**: under the action points at the top left, 本旬无限 (unlimited this period) stops action points from being spent until the next ten-day period.
 
 - **Values**: edit attributes, character affection, sect relations and story flags directly.
 
