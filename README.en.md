@@ -21,7 +21,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
   - When an action pauses, pick an event in the list and press 继续本次行动 (continue); that event triggers. Pick nothing and it stays random as usual.
   - If you are just short of a condition, press 设为 N (set to N) next to it to change the value so the condition holds.
   - When an action stops for you to choose, press 重复上次选择 (repeat last choice) to pick the same event as last time for that action.
-- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list. To hide just the counts, turn off 显示地图事件数字 (show map event counts) on the 设置 (Settings) tab; other hints stay.
+- **Map**: locations show how many events they hold, and the badge turns green when one of them can trigger now. Hover a badge to see the list. To hide just the counts, turn off 显示地图事件数字 (show map event counts) on the 设置 (Settings) tab; other hints stay. The panel's 当前地图 (current map) list also has a 不限地点 (no fixed place) group with missions not tied to any location, and their conditions.
 
   <img src="media/map-hover.webp" width="420" alt="Event count badges on the map and the hover list">
 
@@ -35,17 +35,17 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
 
-- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked.
+- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story).
   - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
   - Hover the option to see the full conditions and the flags involved.
 
   <img src="media/options.webp" width="560" alt="Consequence notes after options and the hover details">
 
-- **Story branches**: when the story branches on a flag or condition, a small box appears in the bottom-left corner of the game window. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere or close it; at the next branch it comes back to that corner. If you'd rather not see it, turn off 显示剧情分支小框 (Show story branch box) on the 设置 (Settings) tab; everything else stays on screen.
+- **Story branches**: when the story branches on a flag or condition, a small box appears in the bottom-left corner of the game window. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere and it stays there, or close it; 重置位置 (reset position) on the 设置 (Settings) tab puts it back in the corner. If you'd rather not see it, turn off 显示剧情分支小框 (Show story branch box) on the 设置 (Settings) tab; everything else stays on screen.
 
   <img src="media/branch.webp" width="620" alt="The story branch box">
 
-- **Dice**: each outcome gets a 指定 N% button, where N is its natural chance. Click one to roll that outcome. Outcomes your bonuses make impossible (shown as 0%) can be picked too: the dice face is worked back from the total, so the shown sum still adds up. If you click nothing, the roll stays random as usual.
+- **Dice**: each outcome gets a 指定 N% button, where N is its natural chance. Click one to roll that outcome. Outcomes your bonuses make impossible (shown as 0%) can be picked too: the dice face is worked back from the total, so the shown sum still adds up. If you click nothing, the roll stays random as usual. By default, clicking 指定 gives the result at once, without the wheel or the game's continue prompt; the game still settles it. Turn off 指定后直接出结果 (result right after 指定) on the 设置 (Settings) tab for the old flow.
 
   <img src="media/dice.webp" width="520" alt="Clicking 指定 50% makes the wheel stop on that outcome">
 
