@@ -50,6 +50,7 @@ internal sealed class MapIndicators : IDisposable
             {
                 hovered.Add(new() { Text = "" });
                 hovered.Add(new() { Text = entry.Ready ? L.Text("待触发") + " · " + entry.Title : entry.Title, Ready = entry.Ready });
+                if (entry.Effects.Length > 0) hovered.Add(new() { Text = L.Text("触发后") + "：" + entry.Effects, Color = Palette.Effects });
                 foreach (var condition in entry.Conditions) AppendCondition(hovered, condition, 0);
             }
         }

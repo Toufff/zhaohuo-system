@@ -197,6 +197,22 @@ internal static partial class Program
             Require(plain.Effects.Exists(e => e.Key == "training") && !plain.Effects.Exists(e => e.Key == "fame"), "a direct jump is not followed");
             Require(LuaOptions.NextTop("missing", Text) == null, "unknown script");
         });
+        Test("a locked row is matched by its place in the option table, its locked text and the rows already shown", () =>
+        {
+            const string script = "local Ch_1 = checkpointmanager.Condition(\"Ch_1\")\nlocal Ch_2 = checkpointmanager.Condition(\"Ch_2\")\nlocal t = {}\nt[1] = \"O_A\"\nt[2] = Ch_1 and \"O_B\" or \"~x\"\nt[3] = Ch_2 and \"O_C\" or \"~O_C_Locked\"\nlocal c = choose(t)\nif c == 1 then\nelseif c == 2 then\nstatmodifymanager.Player(\"fame\", 2, \"\", 1)\nend\n"
+                + "local u = {}\nu[1] = \"O_Other\"\nu[2] = Ch_2 and \"O_D\" or \"~x\"\nlocal d = choose(u)\n";
+            var map = LuaOptions.Analyze(script);
+            var menus = map[LuaOptions.ScriptLevel].Menus;
+            Equal(2, menus.Count);
+            Equal("x", menus[0][2].Locked); Equal("Ch_1", menus[0][2].Requirement); Equal("O_C_Locked", menus[0][3].Locked); Equal("", menus[0][1].Locked);
+            var scripts = new[] { (IEnumerable<Dictionary<int, OptionSlot>>)menus };
+            // Two tables lock row 2 behind 「x」: the row above tells them apart.
+            Equal("O_B", LuaOptions.LockedSlot(scripts, 2, "x", new Dictionary<int, string> { [1] = "O_A" })?.Key);
+            Equal("O_D", LuaOptions.LockedSlot(scripts, 2, "x", new Dictionary<int, string> { [1] = "O_Other" })?.Key);
+            Require(LuaOptions.LockedSlot(scripts, 2, "x", new Dictionary<int, string>()) == null, "nothing shown yet: two different answers, none given");
+            Equal("O_C", LuaOptions.LockedSlot(scripts, 3, "O_C_Locked", new Dictionary<int, string>())?.Key);
+            Require(LuaOptions.LockedSlot(scripts, 3, "x", new Dictionary<int, string>()) == null, "locked text must match");
+        });
         Test("pools reachable from a location follow scripts, menu options and pool results with their option path", () =>
         {
             // Shape of the gate: own pool -> a result that opens the "where to" menu -> a shop with two pools; one option loops back.
@@ -230,6 +246,13 @@ internal static partial class Program
                 string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
                 var changes = LuaOptions.EventFlags("section_01_free_08_01", name => Text(name) is string t ? LuaOptions.Analyze(t) : null, Text);
                 Require(changes.Certain.ContainsKey("M20045") || changes.Possible.ContainsKey("M20045"), "M20045 after the fight");
+            });
+        if (File.Exists(Path.Combine(dump, "ch2_4_2.txt")))
+            Test("real ch2_4_2 locked row 「~O_2_4_2_002」 stands for O_2_4_2_001 behind Ch_2_4_2_001", () =>
+            {
+                var menus = LuaOptions.Analyze(File.ReadAllText(Path.Combine(dump, "ch2_4_2.txt")))[LuaOptions.ScriptLevel].Menus;
+                var slot = LuaOptions.LockedSlot(new[] { (IEnumerable<Dictionary<int, OptionSlot>>)menus }, 1, "O_2_4_2_002", new Dictionary<int, string>());
+                Require(slot != null && slot.Key == "O_2_4_2_001" && slot.Requirement == "Ch_2_4_2_001", "slot");
             });
         if (File.Exists(Path.Combine(dump, "s2321_02_03_02.txt")))
             Test("real 「崆峒探险队强袭六道峡！」 battle launcher shows the rewards after the battle", () =>

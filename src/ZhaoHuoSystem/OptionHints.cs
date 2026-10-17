@@ -55,7 +55,7 @@ internal sealed class OptionHints : IDisposable
     {
         Forget(row);
         if (Suppressed || texts == null || texts.Length == 0) return;
-        var detail = Segments(source?.text);
+        var detail = Segments(source?.text) ?? LockedSegments(row, source?.text);
         if (detail == null) return;
         var segments = Inline(detail);
         var own = new HashSet<Component>(texts.Where(text => text != null)); if (source != null) own.Add(source);
@@ -241,6 +241,36 @@ internal sealed class OptionHints : IDisposable
             return segments.Count == 0 ? null : segments;
         }
         catch (Exception ex) { log.LogWarning("OPTION_HINT " + ex.GetBaseException().Message); return null; }
+    }
+
+    /// <summary>
+    /// A locked row (「解锁条件：？？？」, or a named lock like 「银两不足」): the condition that unlocks it, then what the
+    /// option does once open (F57). Its place among the menu's buttons is its row in the script's option table.
+    /// </summary>
+    private List<HintSegment>? LockedSegments(Component row, string? source)
+    {
+        try
+        {
+            if (row.GetComponent<Button>() is not Button button || button.interactable || row.GetComponentInParent<Fungus.MenuDialog>() is not Fungus.MenuDialog menu) return null;
+            var buttons = menu.CachedButtons; int index = Array.IndexOf(buttons, button);
+            if (index < 0) return null;
+            // Rows already filled in (those above it, at least) must agree with the table.
+            var shown = new Dictionary<int, string>();
+            for (int j = 0; j < buttons.Length; j++)
+            {
+                if (j == index || buttons[j] == null || !buttons[j].gameObject.activeInHierarchy || !buttons[j].interactable) continue;
+                string key = LuaOptions.OptionKey(R.Field<Text>(buttons[j].GetComponent(row.GetType()), "_source")?.text ?? "");
+                if (key.Length > 0) shown[j + 1] = key;
+            }
+            var slot = LuaOptions.LockedSlot(recent.Select(pair => (IEnumerable<Dictionary<int, OptionSlot>>)pair.Value[LuaOptions.ScriptLevel].Menus), index + 1, (source ?? "").TrimStart('~'), shown);
+            if (slot == null) return null;
+            var open = Resolve(slot.Key) ?? new OptionPreview();
+            var locked = LuaOptions.Merge(open, new OptionPreview()); locked.Requirement = slot.Requirement; locked.Locked = true;
+            var segments = LuaOptions.Describe(locked, EffectText, SwitchArm, Requirement, Format, Otherwise);
+            if (segments.Count > 0 && logged.Add("locked:" + slot.Key)) log.LogInfo("OPTION_LOCKED " + slot.Key + " " + Tone.Plain(string.Join("；", segments.Select(segment => segment.Full))));
+            return segments.Count == 0 ? null : segments;
+        }
+        catch (Exception ex) { log.LogWarning("OPTION_HINT locked " + ex.GetBaseException().Message); return null; }
     }
 
     private static string Format(string template, object[] args) => args.Length == 0 ? L.Text(template) : L.Format(template, args);

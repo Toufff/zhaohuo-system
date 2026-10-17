@@ -273,9 +273,12 @@ public sealed class GameAdapter : IGameAdapter
                 var ev = ReadPoolEvent(pool, item, p, false);
                 if (!ev.Eligible) continue;
                 string place = string.Join(" · ", shot.Path.Skip(Math.Max(0, shot.Path.Count - 2)).Select(OptionTitle).Where(x => x.Length > 0));
+                // Work outcomes are named like 「其他_002」; what the event changes is what tells it apart (F56).
+                string effects = string.Join("；", ev.Consequences.Select(segment => segment.Summary).Where(summary => summary.Length > 0));
                 location.Entries.Add(new MapEventSnapshot
                 {
                     Id = "oneshot:" + ev.Id, Title = place.Length > 0 ? L.Format("{0} · {1}", place, ev.Title) : ev.Title, Ready = true, Known = true, Conditions = ev.Conditions,
+                    Effects = effects.Length > 80 ? effects.Substring(0, 79) + "…" : effects,
                     Detail = L.Text("一次性事件：触发后条件不再满足") + "\n" + (place.Length > 0 ? place + "\n" : "") + ev.Detail
                 });
             }

@@ -67,6 +67,8 @@ public sealed class MapEventSnapshot
 {
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
+    /// <summary>One line of what the event changes, for events whose title alone says little (「其他_002」).</summary>
+    public string Effects { get; set; } = "";
     public string Detail { get; set; } = "";
     public bool Ready { get; set; }
     public bool Known { get; set; }

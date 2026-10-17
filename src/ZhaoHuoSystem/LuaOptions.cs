@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace ZhaoHuoSystem;
@@ -36,6 +37,9 @@ public sealed class FlagChanges
     public bool Empty => Certain.Count == 0 && Possible.Count == 0;
 }
 
+/// <summary>One row of an option table: its key, the condition that unlocks it, and the text shown while locked ("x", a key).</summary>
+public sealed class OptionSlot { public string Key = "", Requirement = "", Locked = ""; }
+
 public sealed class OptionPreview
 {
     public string Key = "";
@@ -47,6 +51,10 @@ public sealed class OptionPreview
     /// <summary>NextScript is where the story goes on after a scene change (a fight), not a direct jump (F55).</summary>
     public bool AfterScene;
     public bool Menu, Unknown;
+    /// <summary>Shown for a locked row (F57): its requirement is named even when it cannot be checked.</summary>
+    public bool Locked;
+    /// <summary>On the script level only: every option table the script offers, by 1-based row (F57).</summary>
+    public List<Dictionary<int, OptionSlot>> Menus = new();
     public bool Empty => Effects.Count == 0 && Cases.Count == 0 && Pool.Length == 0 && Dice.Length == 0 && NextScript.Length == 0 && !Menu && !Unknown;
 }
 
@@ -66,7 +74,7 @@ public static class LuaOptions
         public Token(T type, string text) { Type = type; Text = text; }
         public bool Is(string text) => (Type == T.Name || Type == T.Symbol) && Text == text;
     }
-    private sealed class Entry { public string Key = "", Requirement = ""; }
+    private sealed class Entry { public string Key = "", Requirement = "", Locked = ""; }
     private sealed class Frame
     {
         public string Kind = "other"; // choice, switch, other
@@ -178,7 +186,12 @@ public static class LuaOptions
             {
                 var entry = new Entry(); int j = i + 5;
                 if (tokens[j].Type == T.Name && j + 2 < tokens.Count && tokens[j + 1].Is("and") && tokens[j + 2].Type == T.String)
-                { entry.Requirement = conditions.TryGetValue(tokens[j].Text, out var name) ? name : ""; entry.Key = OptionKey(tokens[j + 2].Text); j += 3; }
+                {
+                    entry.Requirement = conditions.TryGetValue(tokens[j].Text, out var name) ? name : ""; entry.Key = OptionKey(tokens[j + 2].Text); j += 3;
+                    // 「V and "KEY" or "~LOCKED"」: offered locked, with LOCKED's text (「解锁条件：？？？」), while V fails.
+                    if (j + 1 < tokens.Count && tokens[j].Is("or") && tokens[j + 1].Type == T.String && tokens[j + 1].Text.StartsWith("~", StringComparison.Ordinal))
+                    { entry.Locked = tokens[j + 1].Text.Substring(1); j += 2; }
+                }
                 else if (tokens[j].Type == T.String) { entry.Key = OptionKey(tokens[j].Text); j++; }
                 tables[tokens[i].Text][index] = entry; i = j; continue;
             }
@@ -189,6 +202,7 @@ public static class LuaOptions
                 if (Matches(tokens, j, "choose", "(") && j + 3 < tokens.Count && tokens[j + 2].Type == T.Name && tokens[j + 3].Is(")"))
                 {
                     choices[var] = tables.TryGetValue(tokens[j + 2].Text, out var options) ? new Dictionary<int, Entry>(options) : new Dictionary<int, Entry>();
+                    result[ScriptLevel].Menus.Add(choices[var].ToDictionary(pair => pair.Key, pair => new OptionSlot { Key = pair.Value.Key, Requirement = pair.Value.Requirement, Locked = pair.Value.Locked }));
                     Mark(p => p.Menu = true); i = j + 4; continue;
                 }
                 if (Matches(tokens, j, "dicemenudialog", ".", "ResultSelection"))
@@ -282,7 +296,7 @@ public static class LuaOptions
         {
             // An offered option already meets its requirement; only a failing one is worth words.
             var needed = requirement(preview.Requirement);
-            if (needed.Value == -1) segments.Add(Plain(Tone.Mark(-1, format("需 {0}", new object[] { needed.Key })), -1));
+            if (needed.Value == -1 || preview.Locked && needed.Value == 0) segments.Add(Plain(Tone.Mark(-1, format("需 {0}", new object[] { needed.Key })), -1));
         }
         var certain = EffectParts.Of(preview.Effects, effectText);
         if (!certain.Empty) segments.Add(new HintSegment { Full = certain.Line(" ", format), Summary = certain.Overview(format), Head = certain.Line("、", format) });
@@ -453,6 +467,30 @@ public static class LuaOptions
 
     /// <summary>Merge a literal next script's own top-level consequences into the option that leads to it (one level only).</summary>
     /// <summary>
+    /// The option a locked row stands for (F57). Rows are added in table order, locked ones included, so the row's
+    /// 1-based place picks the slot; its locked text must match, and the rows already shown must agree with the table.
+    /// Scripts are searched most recent first; two different matches in one script are left unanswered.
+    /// </summary>
+    public static OptionSlot? LockedSlot(IEnumerable<IEnumerable<Dictionary<int, OptionSlot>>> scripts, int row, string lockedText, IReadOnlyDictionary<int, string> shown)
+    {
+        foreach (var menus in scripts)
+        {
+            OptionSlot? found = null;
+            foreach (var menu in menus)
+            {
+                if (!menu.TryGetValue(row, out var slot) || slot.Key.Length == 0 || slot.Locked != lockedText) continue;
+                bool agrees = true;
+                foreach (var pair in shown) if (!menu.TryGetValue(pair.Key, out var other) || other.Key != pair.Value) { agrees = false; break; }
+                if (!agrees) continue;
+                if (found != null && (found.Key != slot.Key || found.Requirement != slot.Requirement)) return null;
+                found = slot;
+            }
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// A next script's top level as shown after an option or an event: one level only, except that a script which only
     /// registers where the story goes on and then starts a fight is followed once more, to what happens after the fight
     /// (F55: 「崆峒探险队强袭六道峡！」 jumps to S2321_02_03_02, which only starts the battle; its rewards are in S2321_02_03_02_01).
@@ -470,7 +508,7 @@ public static class LuaOptions
     public static OptionPreview Merge(OptionPreview option, OptionPreview? next)
     {
         if (next == null) return option;
-        var merged = new OptionPreview { Key = option.Key, Requirement = option.Requirement, Pool = option.Pool.Length > 0 ? option.Pool : next.Pool,
+        var merged = new OptionPreview { Key = option.Key, Requirement = option.Requirement, Locked = option.Locked, Pool = option.Pool.Length > 0 ? option.Pool : next.Pool,
             Dice = option.Dice.Length > 0 ? option.Dice : next.Dice, Menu = option.Menu || next.Menu, Unknown = option.Unknown || next.Unknown };
         merged.Effects.AddRange(option.Effects); merged.Effects.AddRange(next.Effects);
         merged.Cases.AddRange(option.Cases); merged.Cases.AddRange(next.Cases);
