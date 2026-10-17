@@ -41,6 +41,7 @@ public sealed class Plugin : BaseUnityPlugin
     internal BranchNotice Branches = null!;
     private CombatResult combatResult = null!;
     private DuelSpeedButtons speedButtons = null!;
+    private RoundUnlimited unlimited = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
     private NativeDicePresenter dicePresenter = null!;
@@ -104,7 +105,8 @@ public sealed class Plugin : BaseUnityPlugin
         Practice = new PracticeButtons(Logger);
         LibraryCollections.Log = Logger;
         OptionHints.ReadyOneShots = Adapter.ReadyOneShots;
-        roundSkip = new RoundSkip(Logger);
+        roundSkip = new RoundSkip(Logger, () => OptionHints.ActionMenuOpen());
+        unlimited = new RoundUnlimited(Logger);
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
@@ -128,16 +130,17 @@ public sealed class Plugin : BaseUnityPlugin
         var uiScale = Config.Bind("界面", "界面缩放", 1f, "在按屏幕高度自动缩放的基础上再乘的倍数（0.5–2.5）。");
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
         var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框；关闭后不再弹出，其他悬浮显示不受影响。");
+        var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
-        window.ShowBranches = showBranches.Value;
+        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
-            uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches;
+            uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -201,6 +204,7 @@ public sealed class Plugin : BaseUnityPlugin
     {
         Diagnostics.Scene = after.name; Logger.LogInfo("SCENE " + before.name + " -> " + after.name);
         inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear(); SaveNotes?.Close();
+        if (after.name == "Title") RoundUnlimited.Reset();
         Adapter.Invalidate("场景已变化，旧指定已清除", true, after.name == "Free" || after.name == "Title");
     }
     private void Update()
@@ -217,6 +221,7 @@ public sealed class Plugin : BaseUnityPlugin
             using (Perf.Time("dice-ui")) dicePresenter.Update(window.Hidden);
             try { Practice.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PRACTICE_CAP " + ex.GetBaseException().Message); }
             try { roundSkip.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("ROUND_SKIP " + ex.GetBaseException().Message); }
+            try { unlimited.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("ROUND_UNLIMITED " + ex.GetBaseException().Message); }
             try { pinball.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PINBALL_SCORE " + ex.GetBaseException().Message); }
             try { SaveSort.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_SORT " + ex.GetBaseException().Message); }
             try { SaveNotes.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_NOTE " + ex.GetBaseException().Message); }
@@ -300,7 +305,7 @@ public sealed class Plugin : BaseUnityPlugin
             try { combatResult.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("combat-result", ex); }
             if (!window.Visible)
             {
-                try { if (!window.Hidden) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
+                try { if (!window.Hidden && window.ShowMapCounts) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
                 if (window.DrawLauncher())
                 {
                     lastToggleFrame = Time.frameCount; lastToggleTime = Time.realtimeSinceStartup;
@@ -337,7 +342,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();

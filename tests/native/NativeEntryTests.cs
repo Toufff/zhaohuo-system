@@ -94,6 +94,18 @@ internal static partial class Program
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slot", "_currentData");
             Signature(mortalCore, "Mortal.Core", "SaveSlotPanel", "SelectButton");
             Has(mortalCore, "Mortal.Core", "GameSave", "TimeTick");
+            // 本旬无限: every spend of the action points, the points row, the round's max and the round itself.
+            Signature(mortalCore, "Mortal.Core", "GameStat", "AddValue", "value", "totalAdd");
+            Has(mortalCore, "Mortal.Core", "GameStat", "StatType");
+            Has(mortalCore, "Mortal.Core", "PlayerActionInfoPanel", "_container");
+            Signature(mortalCore, "Mortal.Core", "PlayerStatManagerData", "GetMaxActionCount");
+            Has(mortalCore, "Mortal.Core", "GameTime", "Year", "Month", "Stage");
+            // 跳过本旬 in the free phase's story menus: the story's date, its scene change, and the menu put away first.
+            string mortalStory = Path.Combine(managed, "Mortal.Story.dll");
+            Has(mortalStory, "Mortal.Story", "StoryManager", "Instance", "_gameTime");
+            Signature(mortalStory, "Mortal.Story", "LuaManager", "ChangeScene", "name", "key", "nextScene");
+            Has(Path.Combine(managed, "Fungus.dll"), "Fungus", "MenuDialog", "ActiveMenuDialog", "CachedButtons");
+            Signature(Path.Combine(managed, "Fungus.dll"), "Fungus", "MenuDialog", "Clear");
             // 存档收藏与备注: each slot's number, save-time line and button; the account folder; the game's own delete.
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slotText", "_timeText", "_button");
             Signature(mortalCore, "Mortal.Core", "SaveSystem", "GetUserFolder");

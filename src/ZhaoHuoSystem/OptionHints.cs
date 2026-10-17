@@ -273,6 +273,23 @@ internal sealed class OptionHints : IDisposable
         catch (Exception ex) { log.LogWarning("OPTION_HINT locked " + ex.GetBaseException().Message); return null; }
     }
 
+    /// <summary>Whether choosing this row spends action points (a free phase's 「where to go」 menu, F60).</summary>
+    public bool SpendsAction(string? source)
+    {
+        string key = LuaOptions.OptionKey(source ?? "");
+        return key.Length > 0 && Find(key, out _) is OptionPreview preview && preview.Effects.Exists(effect => effect.Kind == "stat" && effect.Key == "action" && effect.Value < 0);
+    }
+    /// <summary>A menu waits whose rows spend action points: the free phase's choice of where to go (F60).</summary>
+    public bool ActionMenuOpen()
+    {
+        var menu = Fungus.MenuDialog.ActiveMenuDialog;
+        if (menu == null || !menu.IsActive()) return false;
+        foreach (var button in menu.CachedButtons)
+            if (button != null && button.gameObject.activeInHierarchy && button.interactable && button.GetComponent<IMenuDialogOption>() is Component row
+                && SpendsAction(R.Field<Text>(row, "_source")?.text)) return true;
+        return false;
+    }
+
     private static string Format(string template, object[] args) => args.Length == 0 ? L.Text(template) : L.Format(template, args);
 
     private readonly Dictionary<string, string?> scriptTexts = new(StringComparer.OrdinalIgnoreCase);

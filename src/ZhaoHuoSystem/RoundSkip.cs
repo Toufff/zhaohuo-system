@@ -3,21 +3,25 @@ using System.Collections;
 using BepInEx.Logging;
 using Mortal.Core;
 using Mortal.Free;
+using Mortal.Story;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace ZhaoHuoSystem;
 
 /// <summary>
-/// 「跳过本旬」 right of the free map's date. The first click asks 「确定吗？」 for a few seconds; the second gives up the
-/// round's remaining actions and runs what the game does when a story returns to the map with none left: next round,
-/// shop and income, then any mission that is due. Hidden while a main story waits at a location (the game allows only
-/// that), while the map is busy or a native panel is open, and with 「隐藏全部悬浮窗」.
+/// 「跳过本旬」 right of the date, on the free map and in the free phase's story menus (F60). The first click asks
+/// 「确定吗？」 for a few seconds; the second gives up the round's remaining actions and runs what the game does when a
+/// story returns to the map with none left: next round, shop and income, then any mission that is due. In the story
+/// scene it shows only while a menu whose options spend action points waits (choosing where to go), never mid-story.
+/// Hidden while a main story waits at a location (the game allows only that), while the map is busy or a native panel
+/// is open, and with 「隐藏全部悬浮窗」.
 /// </summary>
-internal sealed class RoundSkip(ManualLogSource log) : IDisposable
+internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu) : IDisposable
 {
     private const float ConfirmSeconds = 3f;
-    private FreeManager? manager;
+    // FreeManager on the map, StoryManager in the free phase's story menus.
+    private MonoBehaviour? host;
     private Text? date;
     private Button? button;
     private Text? label;
@@ -28,11 +32,11 @@ internal sealed class RoundSkip(ManualLogSource log) : IDisposable
 
     public void Update(bool hidden)
     {
-        var free = FreeManager.Instance;
-        if (free == null) { manager = null; return; }
-        if (free != manager) Attach(free);
+        MonoBehaviour? now = FreeManager.Instance != null ? FreeManager.Instance : StoryManager.Instance != null ? StoryManager.Instance : null;
+        if (now == null) { host = null; return; }
+        if (now != host) Attach(now);
         if (button == null || date == null || label == null) return;
-        bool show = !hidden && !running && date.isActiveAndEnabled && Available(free);
+        bool show = !hidden && !running && date.isActiveAndEnabled && Available(now);
         if (!show) confirmUntil = 0;
         if (button.gameObject.activeSelf != show) button.gameObject.SetActive(show);
         if (!show) return;
@@ -45,19 +49,23 @@ internal sealed class RoundSkip(ManualLogSource log) : IDisposable
         InlineButton.Place(button, label, date, font, L.Text(Time.unscaledTime < confirmUntil ? "确定吗？" : "跳过本旬"), .4f);
     }
 
-    // A new free map scene comes with a new manager; the old button went with the old scene.
-    private void Attach(FreeManager free)
+    // A new scene comes with a new manager; the old button went with the old scene.
+    private void Attach(MonoBehaviour now)
     {
-        manager = free; running = false; confirmUntil = 0; button = null; label = null;
-        date = R.Field<Text>(R.Field<GameDateTimeText>(free, "_timeText"), "_text");
+        host = now; running = false; confirmUntil = 0; button = null; label = null;
+        date = R.Field<Text>(R.Field<GameDateTimeText>(now, "_timeText") ?? R.Field<GameDateTimeText>(now, "_gameTime"), "_text");
         if (date == null) { log.LogWarning("ROUND_SKIP no date text"); return; }
         button = InlineButton.Create("ZhaoHuo.SkipRound", date.transform, Click, out var created); label = created;
     }
 
-    private static bool Available(FreeManager free)
+    private bool Available(MonoBehaviour now)
     {
-        if (free.IsProcessing || Time.timeScale == 0f) return false;
-        if (R.Field(free, "_menuOpen") is true || R.Field(free, "_statOpen") is true || R.Field(free, "_saveOpen") is true) return false;
+        if (Time.timeScale == 0f) return false;
+        if (now is FreeManager free)
+        {
+            if (free.IsProcessing || R.Field(free, "_menuOpen") is true || R.Field(free, "_statOpen") is true || R.Field(free, "_saveOpen") is true) return false;
+        }
+        else if (!actionMenu()) return false;
         var scenes = Mortal.Core.SceneController.Instance;
         if (scenes == null || scenes.IsPrepare || scenes.IsLoading) return false;
         var missions = MissionManagerData.Instance;
@@ -67,11 +75,27 @@ internal sealed class RoundSkip(ManualLogSource log) : IDisposable
 
     private void Click()
     {
-        if (manager == null) return;
+        if (host == null) return;
         if (Time.unscaledTime >= confirmUntil) { confirmUntil = Time.unscaledTime + ConfirmSeconds; return; }
-        if (!Available(manager)) return;
+        if (!Available(host)) return;
         confirmUntil = 0; running = true;
-        manager.StartCoroutine(Skip(manager));
+        if (host is FreeManager free) free.StartCoroutine(Skip(free));
+        else SkipStory();
+    }
+
+    /// <summary>
+    /// The free phase's story menu: no points left, the waiting choice put away so it cannot run during the change, then
+    /// what a story does when it ends (LuaManager.ChangeScene("Free")), which with no points left is the round change.
+    /// </summary>
+    private void SkipStory()
+    {
+        var stats = PlayerStatManagerData.Instance;
+        log.LogInfo($"ROUND_SKIP story left={stats.CurrentActionCount} time={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage}");
+        stats.Stats.Set(GameStatType.行動次數, 0);
+        var menu = Fungus.MenuDialog.ActiveMenuDialog;
+        if (menu != null) menu.Clear();
+        LuaManager.Instance.ChangeScene("Free", "", "");
+        log.LogInfo($"ROUND_SKIP story done time={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage} actions={stats.CurrentActionCount}");
     }
 
     private IEnumerator Skip(FreeManager free)

@@ -94,6 +94,8 @@ public sealed class ToolWindow : IDisposable
     public bool Hidden { get; private set; }
     /// <summary>The story-branch box alone (F45); every other overlay is unaffected.</summary>
     public bool ShowBranches { get; set; } = true;
+    /// <summary>The map's event counts and their hover lists alone (F58).</summary>
+    public bool ShowMapCounts { get; set; } = true;
     public Action? SettingsChanged;
     /// <summary>Battle-tab toggles live in CombatCheats; this only reports a change so it can be saved.</summary>
     public Action? CombatChanged;
@@ -596,6 +598,14 @@ public sealed class ToolWindow : IDisposable
             ShowBranches = !ShowBranches; SettingsChanged?.Invoke();
         }
         Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "剧情按条件分支时在左下角弹出；关闭后不再弹出，其他悬浮显示照常。", _muted);
+        y += S(52);
+        // Only the map's counts (贴吧 36 楼); 隐藏全部悬浮窗 below still hides everything.
+        Label(new Rect(r.x, y, labelWidth, S(32)), "显示地图事件数字", _label);
+        if (Button(new Rect(x, y, S(110), S(30)), ShowMapCounts ? "开启" : "关闭", "settings.mapcounts", ShowMapCounts ? _tabSelected : _button))
+        {
+            ShowMapCounts = !ShowMapCounts; SettingsChanged?.Invoke();
+        }
+        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示照常。", _muted);
         y += S(52);
         KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
         Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
