@@ -39,7 +39,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/options.webp" width="560" alt="Consequence notes after options and the hover details">
 
-- **Story branches**: when the story branches on a flag or condition, a small box appears in the bottom-left corner of the game window. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere or close it; at the next branch it comes back to that corner.
+- **Story branches**: when the story branches on a flag or condition, a small box appears in the bottom-left corner of the game window. It lists each branch's condition with current values and marks the branch taken, and it pops and flashes its title whenever it appears or updates. Drag it anywhere or close it; at the next branch it comes back to that corner. If you'd rather not see it, turn off 显示剧情分支小框 (Show story branch box) on the 设置 (Settings) tab; everything else stays on screen.
 
   <img src="media/branch.webp" width="620" alt="The story branch box">
 
