@@ -33,7 +33,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
 
-- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls.
+- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked.
   - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
   - Hover the option to see the full conditions and the flags involved.
 
