@@ -96,6 +96,8 @@ public sealed class ToolWindow : IDisposable
     public bool ShowBranches { get; set; } = true;
     /// <summary>The map's event counts and their hover lists alone (F58).</summary>
     public bool ShowMapCounts { get; set; } = true;
+    /// <summary>「跳过本旬」 and 「本旬行动点无限」 beside the date, together (F62).</summary>
+    public bool ShowRoundButtons { get; set; } = true;
     public Action? SettingsChanged;
     /// <summary>Battle-tab toggles live in CombatCheats; this only reports a change so it can be saved.</summary>
     public Action? CombatChanged;
@@ -182,7 +184,8 @@ public sealed class ToolWindow : IDisposable
         if (Visible || Hidden) return false;
         ReadSnapshot();
         IsPointerOver = false; HasKeyboardFocus = HasTextFocus = false;
-        if (!_snapshot.Ready) return false;
+        // Story and map scenes, and the fights too (F64: their 战斗 tab is what the panel is for there), not the title.
+        if (!_snapshot.Ready && CombatCheats.Current == CombatCheats.Mode.None) return false;
 
         float scale = UiScale.Current;
         if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision) BuildStyles(scale);
@@ -607,6 +610,13 @@ public sealed class ToolWindow : IDisposable
         }
         Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示照常。", _muted);
         y += S(52);
+        Label(new Rect(r.x, y, labelWidth, S(32)), "显示本旬按钮", _label);
+        if (Button(new Rect(x, y, S(110), S(30)), ShowRoundButtons ? "开启" : "关闭", "settings.roundbuttons", ShowRoundButtons ? _tabSelected : _button))
+        {
+            ShowRoundButtons = !ShowRoundButtons; SettingsChanged?.Invoke();
+        }
+        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示照常。", _muted);
+        y += S(52);
         KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
         Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
         if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
@@ -695,6 +705,7 @@ public sealed class ToolWindow : IDisposable
         CombatRow(r, ref y, labelWidth, x, detailX, "一击必杀", ref CombatCheats.OneHit, "敌人受到伤害即倒下");
         CombatRow(r, ref y, labelWidth, x, detailX, "气力不减", ref CombatCheats.KeepStamina, "主角的气不会被消耗");
         CombatRow(r, ref y, labelWidth, x, detailX, "技能无冷却", ref CombatCheats.NoCooldown, "战役技能用后立刻可再用");
+        CombatRow(r, ref y, labelWidth, x, detailX, "双方最低 1 血", ref CombatCheats.KeepAlive, "仅决斗：双方的血都不会低于 1，谁都不会被打死，适合要拖回合的决斗");
         string note = L.Text("开关立即生效，只改战斗中的伤害与消耗，不写存档。") + "\n"
             + L.Text("剧情安排的扣血和保底血量照常生效；个别决斗要等主角掉血才推进，若迟迟不结束，打倒对手或关掉无敌即可。") + "\n"
             + L.Text("战役中鼠标被锁定时，先暂停游戏再点面板。");

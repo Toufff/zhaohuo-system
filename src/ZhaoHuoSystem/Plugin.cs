@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.27")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.28")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -131,30 +131,32 @@ public sealed class Plugin : BaseUnityPlugin
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
         var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框；关闭后不再弹出，其他悬浮显示不受影响。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
+        var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
-        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value;
+        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
-            uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts;
+            uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
         var keepStamina = Config.Bind("战斗", "气力不减", false, "战役与决斗中主角的气不被消耗；决斗剧情改动仍生效。");
         var noCooldown = Config.Bind("战斗", "技能无冷却", false, "战役技能用后立刻可再用。");
+        var keepAlive = Config.Bind("战斗", "双方最低一血", false, "仅决斗：双方的血都不会低于 1，谁都不会被打死。");
         CombatCheats.Invincible = invincible.Value; CombatCheats.OneHit = oneHit.Value;
-        CombatCheats.KeepStamina = keepStamina.Value; CombatCheats.NoCooldown = noCooldown.Value;
+        CombatCheats.KeepStamina = keepStamina.Value; CombatCheats.NoCooldown = noCooldown.Value; CombatCheats.KeepAlive = keepAlive.Value;
         var duelSpeed = Config.Bind("战斗", "决斗加速倍数", 2, "决斗（回合制）里游戏自带的加速开关打开时的倍数：2（原版）、3、4。");
         CombatCheats.DuelSpeed = Array.IndexOf(CombatCheats.DuelSpeeds, duelSpeed.Value) >= 0 ? duelSpeed.Value : 2;
         window.CombatChanged = () =>
         {
             invincible.Value = CombatCheats.Invincible; oneHit.Value = CombatCheats.OneHit;
-            keepStamina.Value = CombatCheats.KeepStamina; noCooldown.Value = CombatCheats.NoCooldown; duelSpeed.Value = CombatCheats.DuelSpeed;
-            Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown} duelSpeed={CombatCheats.DuelSpeed}");
+            keepStamina.Value = CombatCheats.KeepStamina; noCooldown.Value = CombatCheats.NoCooldown; keepAlive.Value = CombatCheats.KeepAlive; duelSpeed.Value = CombatCheats.DuelSpeed;
+            Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown} keepAlive={CombatCheats.KeepAlive} duelSpeed={CombatCheats.DuelSpeed}");
         };
         Branches = new BranchNotice();
         // The note editor is modal: the whole screen's pointer and the keyboard are its own while it is open.
@@ -220,8 +222,8 @@ public sealed class Plugin : BaseUnityPlugin
             if (wasVisible && !window.Visible) Adapter.ContinueAction();
             using (Perf.Time("dice-ui")) dicePresenter.Update(window.Hidden);
             try { Practice.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PRACTICE_CAP " + ex.GetBaseException().Message); }
-            try { roundSkip.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("ROUND_SKIP " + ex.GetBaseException().Message); }
-            try { unlimited.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("ROUND_UNLIMITED " + ex.GetBaseException().Message); }
+            try { roundSkip.Update(window.Hidden || !window.ShowRoundButtons); } catch (Exception ex) { Logger.LogWarning("ROUND_SKIP " + ex.GetBaseException().Message); }
+            try { unlimited.Update(window.Hidden || !window.ShowRoundButtons); } catch (Exception ex) { Logger.LogWarning("ROUND_UNLIMITED " + ex.GetBaseException().Message); }
             try { pinball.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PINBALL_SCORE " + ex.GetBaseException().Message); }
             try { SaveSort.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_SORT " + ex.GetBaseException().Message); }
             try { SaveNotes.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_NOTE " + ex.GetBaseException().Message); }

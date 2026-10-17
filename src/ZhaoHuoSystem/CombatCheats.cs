@@ -15,6 +15,8 @@ namespace ZhaoHuoSystem;
 internal static class CombatCheats
 {
     internal static bool Invincible, OneHit, KeepStamina, NoCooldown;
+    /// <summary>决斗 only: neither side's HP drops below 1, so a duel can be dragged out for its rounds (F63).</summary>
+    internal static bool KeepAlive;
     /// <summary>The duel's own speed-up toggle runs at this multiplier instead of its fixed 2× (F53).</summary>
     internal static int DuelSpeed = 2;
     internal static readonly int[] DuelSpeeds = { 2, 3, 4 };
@@ -81,7 +83,7 @@ internal static class CombatCheats
         }
         foreach (var missing in Missing) logger.LogWarning("COMBAT missing " + missing);
         Installed = true;
-        logger.LogInfo($"COMBAT ready missing={Missing.Count} invincible={Invincible} oneHit={OneHit} keepStamina={KeepStamina} noCooldown={NoCooldown} duelSpeed={DuelSpeed}");
+        logger.LogInfo($"COMBAT ready missing={Missing.Count} invincible={Invincible} oneHit={OneHit} keepStamina={KeepStamina} noCooldown={NoCooldown} keepAlive={KeepAlive} duelSpeed={DuelSpeed}");
     }
 
     // The toggle (and its remembered state at the duel's start) goes through EnableSpeedTime, which copies _speedTime.
@@ -173,7 +175,7 @@ internal static class CombatCheats
     {
         try
         {
-            if (value >= 0 || !Invincible && !OneHit) return;
+            if (value >= 0 || !Invincible && !OneHit && !KeepAlive) return;
             var manager = combatInstance?.GetValue(null, null);
             if (manager == null) return;
             if (Invincible && ReferenceEquals(__instance, playerAction!.GetValue(manager, null)))
@@ -181,6 +183,9 @@ internal static class CombatCheats
                 value = scripted > 0 ? Math.Min(0, Math.Max(value, 1 - CombatHealthOf(__instance))) : 0;
             else if (OneHit && scripted == 0 && ReferenceEquals(__instance, enemyAction!.GetValue(manager, null)))
                 value = Math.Min(value, -CombatHealthOf(__instance)); // native minimum-HP floors still clamp
+            // Last, over 一击必杀 too: down to 1 HP and no further, for either side, scripted or not.
+            if (KeepAlive && (ReferenceEquals(__instance, playerAction!.GetValue(manager, null)) || ReferenceEquals(__instance, enemyAction!.GetValue(manager, null))))
+                value = Math.Min(0, Math.Max(value, 1 - CombatHealthOf(__instance)));
         }
         catch (Exception ex) { Fail("ModifyHealth", ex); }
     }
