@@ -53,13 +53,17 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/shop.webp" width="560" alt="The effect line under an item description">
 
-- **Combat**: god mode, one-hit kill, no stamina cost and no skill cooldown. They work in both real-time battles and turn-based duels, apply only during a fight, and are not written to your save.
+- **Combat**: god mode, one-hit kill, no stamina cost and no skill cooldown. They work in both real-time battles and turn-based duels, apply only during a fight, and are not written to your save. During fights, 直接胜利 (win now) and 直接失败 (lose now) buttons at the top of the screen (click twice to confirm) end the fight through the game's own result, so you can try a story's other branch quickly. Battles lock the mouse while they run, so there the buttons appear in the pause menu (Esc). In duels, a 2× (original) / 3× / 4× row sits above the game's own speed-up button at the bottom right; when speed-up is on, the duel runs at the chosen speed.
 
   <img src="media/battle-tab.webp" width="560" alt="Combat switches">
 
 - **Collection**: the 收集 (Collection) tab lists the records kept in the 讲经堂 hall: achievements (风云史), deaths (生死簿) and endings (汗青书). Unlock them one at a time, or a whole list at once with 全部解锁 (unlock all). Unlocking an achievement also unlocks the matching Steam achievement, the same way the game does, and cannot be undone.
 
-- **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last.
+- **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last. The load and save pages each remember the order you last used.
+
+- **Save stars and notes**: manual saves on the load and save pages can be starred and given a short note to tell them apart; stars and notes live in the mod's own file, never in your saves. Uninstalling the mod deletes them too.
+
+- **50 manual save slots**: manual saves go from 20 to 50 slots (configurable from 20 to 99). After uninstalling, saves in slot 21 and above no longer appear in the game's list, but the files stay and show up again when you reinstall.
 
 - **UI scale**: the mod grows automatically on 4K and other high resolutions; adjust it further with 界面缩放 (UI scale) on the 设置 (Settings) tab.
 
