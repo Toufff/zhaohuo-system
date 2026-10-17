@@ -368,6 +368,8 @@ public sealed class ToolWindow : IDisposable
         var source = previewing ? _snapshot.PreviewEvents : _snapshot.Events;
         foreach (var item in source)
             if ((!_eligibleOnly || item.Eligible) && Matches(_eventSearch, item.Title, item.Id, item.Detail)) items.Add(item);
+        // Events that can trigger now come first, each group in the pool's own order; 「随机」 stays above them all (F70).
+        items = items.Where(item => item.Eligible).Concat(items.Where(item => !item.Eligible)).ToList();
         // While an action waits, the list itself is the choice: the selected row is what 继续本次行动 triggers, and the
         // 「随机」 row at the top (the default) leaves it to the game. Outside a wait, selecting only shows details.
         bool choosing = _snapshot.ActionWaiting && !previewing;

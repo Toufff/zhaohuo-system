@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.29")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.30")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
