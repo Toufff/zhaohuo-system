@@ -87,7 +87,45 @@ internal static class MapOverview
             }
             catch (Exception) { /* One unreadable controller cannot invalidate the active action/value snapshots. */ }
         }
+        try { if (missions != null && Unplaced(player, missions) is MapLocationSnapshot unplaced) result.Add(unplaced); }
+        catch (Exception) { /* The located entries above stand on their own. */ }
         return result.OrderBy(x => x.Id, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Missions tied to no location (position 無), such as 上官's visit (S2002_01: E11000 = 0, 门派资产 >= -9000, 1年8月上旬
+    /// to 2年4月下旬). The game checks them when a round changes or the story returns to the map and plays them at once,
+    /// so no map location ever listed them (F66). Shown together in the panel's map list, never as a map marker.
+    /// </summary>
+    private static MapLocationSnapshot? Unplaced(PlayerStatManagerData player, MissionManagerData missions)
+    {
+        var location = new MapLocationSnapshot
+        {
+            Id = "~unplaced", Name = L.Text("不限地点"), Visible = true, HasScreenPosition = false,
+            Detail = L.Text("不挂在地点上的任务：换旬或回到地图时由游戏检查，条件满足就直接触发剧情。")
+        };
+        var seen = new HashSet<MissionCheckData>();
+        var main = missions.MainCheckData;
+        if (main != null && main.Position == PositionType.無 && !string.IsNullOrWhiteSpace(main.StartScript))
+        { seen.Add(main); location.Entries.Add(Entry("main:" + main.Key, main, L.Text("原生已判定主线"), player, missions.MainMissionStart, 0, false)); }
+        if (missions.ActiveSubMissions != null) foreach (var pair in missions.ActiveSubMissions)
+        {
+            var check = pair.Value;
+            if (check == null || check.Position != PositionType.無 || string.IsNullOrWhiteSpace(check.StartScript) || !seen.Add(check)) continue;
+            location.Entries.Add(Entry("active:" + pair.Key + ":" + check.Key, check, L.Text("原生已判定支线"), player, true, 0, false));
+        }
+        foreach (var mission in CurrentMissions(missions))
+        {
+            if (string.IsNullOrWhiteSpace(mission.CurrentKey) || mission.CurrentKey == "clear") continue;
+            var check = R.Items(R.Field(mission, "_missions")).OfType<MissionCheckData>().FirstOrDefault(x => x.Key == mission.CurrentKey);
+            if (check == null || seen.Contains(check) || check.Position != PositionType.無
+                || !MapSemantics.IsCurrentCandidate(mission.CurrentKey, check.Key, !string.IsNullOrWhiteSpace(check.StartScript), InDateWindow(check, player.GameTime))) continue;
+            seen.Add(check);
+            var entry = Entry("candidate:" + mission.Name + ":" + check.Key, check, L.Text("当前阶段候选"), player, false, 0, false);
+            entry.Detail += "\n" + L.Text("候选条件预览，未进入当前原生任务集合");
+            location.Entries.Add(entry);
+        }
+        return location.Entries.Count > 0 ? location : null;
     }
 
     private static IEnumerable<MissionData> CurrentMissions(MissionManagerData manager)

@@ -44,6 +44,13 @@ internal static partial class Program
             Signature(combat, "Mortal.Combat", "CombatManager", "EnableSpeedTime", "active");
             Has(combat, "Mortal.Combat", "CombatManager", "_speedTime", "_currentSpeedTime");
             Has(combat, "Mortal.Combat", "CombatUIManager", "_speedButtonToggle");
+            // 指定后直接出结果: the spin and the continue check it stands in for, and what the spin's end sets.
+            string story = Path.Combine(managed, "Mortal.Story.dll");
+            Signature(story, "Mortal.Story", "DiceMenuDialog", "StartSpin", "duration");
+            Signature(story, "Mortal.Story", "DiceMenuDialog", "GetNextInput");
+            Signature(story, "Mortal.Story", "DiceMenuDialog", "UpdateSelection");
+            Has(story, "Mortal.Story", "DiceMenuDialog", "_diceWheel", "_resultCount", "ResultSelection");
+            Signature(story, "Mortal.Story", "DiceWheel", "UpdateResult", "result");
             Has(combat, "Mortal.Combat", "CombatManager", "Instance", "PlayerAction", "EnemyAction");
             Has(combat, "Mortal.Combat", "CombatActionController", "Stat");
             Has(combat, "Mortal.Combat", "CombatStatController", "CurrentHealth");
@@ -94,6 +101,8 @@ internal static partial class Program
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slot", "_currentData");
             Signature(mortalCore, "Mortal.Core", "SaveSlotPanel", "SelectButton");
             Has(mortalCore, "Mortal.Core", "GameSave", "TimeTick");
+            // 天命点 after a 收集 unlock: the panel that shows the total and its own recount.
+            Signature(mortalCore, "Mortal.Core", "FateAwardPanel", "UpdateData");
             // 本旬行动点无限: every spend of the action points, the round's max and the round itself.
             Signature(mortalCore, "Mortal.Core", "GameStat", "AddValue", "value", "totalAdd");
             Has(mortalCore, "Mortal.Core", "GameStat", "StatType");

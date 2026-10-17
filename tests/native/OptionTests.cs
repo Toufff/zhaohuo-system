@@ -197,6 +197,17 @@ internal static partial class Program
             Require(plain.Effects.Exists(e => e.Key == "training") && !plain.Effects.Exists(e => e.Key == "fame"), "a direct jump is not followed");
             Require(LuaOptions.NextTop("missing", Text) == null, "unknown script");
         });
+        Test("a conditional arm that jumps into a story is kept and named; the default arm's jump is not", () =>
+        {
+            // Shape of 飞天门's 修炼: a switch whose first arm leads into a story, whose default arm is the ordinary training.
+            const string script = "local t = {}\nt[1] = \"immortal+free+immortal\"\nt[2] = \"training2+free+training2\"\nlocal c = choose(t)\nif c == 1 then\nelseif c == 2 then\n"
+                + "local s = checkpointmanager.Switch(\"Story_Gate\")\nif s == 1 then\nluamanager.SetNextScript(\"S2600_01\")\nelseif s == 2 then\nluamanager.SetNextScript(\"training_02\")\nend\nend\n";
+            var preview = LuaOptions.Analyze(script)["training2+free+training2"];
+            Equal("S2600_01", preview.Cases.Find(c => c.When.Count == 1 && c.When[0].Value == 1)?.Story);
+            var segments = LuaOptions.Describe(preview, _ => "", (name, arm) => arm == 1 ? new KeyValuePair<string, int>("拜码头", 1) : new KeyValuePair<string, int>("", -1),
+                _ => new KeyValuePair<string, int>("", 1), (template, args) => args.Length == 0 ? template : string.Format(template.Replace("{0}", "{0}"), args));
+            Require(segments.Count == 1 && segments[0].Full.Contains("触发剧情") && segments[0].Head.Contains("拜码头") && segments[0].State == 1, "story arm shown once, with its condition");
+        });
         Test("a locked row is matched by its place in the option table, its locked text and the rows already shown", () =>
         {
             const string script = "local Ch_1 = checkpointmanager.Condition(\"Ch_1\")\nlocal Ch_2 = checkpointmanager.Condition(\"Ch_2\")\nlocal t = {}\nt[1] = \"O_A\"\nt[2] = Ch_1 and \"O_B\" or \"~x\"\nt[3] = Ch_2 and \"O_C\" or \"~O_C_Locked\"\nlocal c = choose(t)\nif c == 1 then\nelseif c == 2 then\nstatmodifymanager.Player(\"fame\", 2, \"\", 1)\nend\n"
@@ -246,6 +257,12 @@ internal static partial class Program
                 string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
                 var changes = LuaOptions.EventFlags("section_01_free_08_01", name => Text(name) is string t ? LuaOptions.Analyze(t) : null, Text);
                 Require(changes.Certain.ContainsKey("M20045") || changes.Possible.ContainsKey("M20045"), "M20045 after the fight");
+            });
+        if (File.Exists(Path.Combine(dump, "section_01_free_01.txt")))
+            Test("real 飞天门 修炼 (section_01_free_01) arm leads into S2600_01", () =>
+            {
+                var map = LuaOptions.Analyze(File.ReadAllText(Path.Combine(dump, "section_01_free_01.txt")));
+                Require(map.Values.Any(p => p.Cases.Exists(c => c.Story == "S2600_01")), "story arm");
             });
         if (File.Exists(Path.Combine(dump, "ch2_4_2.txt")))
             Test("real ch2_4_2 locked row 「~O_2_4_2_002」 stands for O_2_4_2_001 behind Ch_2_4_2_001", () =>

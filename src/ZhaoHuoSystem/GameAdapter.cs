@@ -617,12 +617,34 @@ public sealed class GameAdapter : IGameAdapter
             return Feedback(false, "无法开始掷骰：{0}", ex.GetBaseException().Message);
         }
         diceRollRequested = true;
-        log.LogInfo($"DICE_ROLL_REQUEST name={diceName} raw={raw?.ToString() ?? "forced"} manual={SystemSettings.ManualDestiny} restart={restart}");
+        if (DirectDiceResult) { fastDialog = diceDialog; fastRolled = false; }
+        log.LogInfo($"DICE_ROLL_REQUEST name={diceName} raw={raw?.ToString() ?? "forced"} manual={SystemSettings.ManualDestiny} restart={restart} direct={DirectDiceResult}");
         return raw.HasValue ? Feedback(true, "已指定 {0}，开始掷骰", raw.Value) : Feedback(true, "已指定结果，开始掷骰");
     }
     public OperationResult CancelDice() { pendingDice = null; pendingBranch = null; return Feedback(true, "骰子恢复随机"); }
     public void EndDice(DiceMenuDialog dialog)
     {
-        if (ReferenceEquals(dialog, diceDialog)) { diceSessionActive = false; diceAwaitingFirstRoll = false; diceRollRequested = false; pendingDice = null; pendingBranch = intendedBranch = null; rolling = false; }
+        if (ReferenceEquals(dialog, diceDialog)) { diceSessionActive = false; diceAwaitingFirstRoll = false; diceRollRequested = false; pendingDice = null; pendingBranch = intendedBranch = null; rolling = false; fastDialog = null; fastRolled = false; }
+    }
+
+    /// <summary>「指定后直接出结果」 (F67, on by default): a specified roll skips the wheel's spin and the continue prompts.</summary>
+    public bool DirectDiceResult { get; set; } = true;
+    private DiceMenuDialog? fastDialog;
+    private bool fastRolled;
+    /// <summary>This dialog's coming spin is the one the player specified, to be shown at once.</summary>
+    public bool FastRoll(DiceMenuDialog dialog) => DirectDiceResult && fastDialog != null && ReferenceEquals(dialog, fastDialog);
+    /// <summary>The specified roll has its result on the wheel; the dialog goes on without waiting for 继续.</summary>
+    public bool FastRolled(DiceMenuDialog dialog) => fastRolled && ReferenceEquals(dialog, fastDialog);
+    /// <summary>
+    /// In place of the wheel's spin: the result the game already decided (CheckPointManager.Dice ran in Roll) goes straight
+    /// onto the wheel and its option is selected, as the spin's end does. Nothing about the result changes.
+    /// </summary>
+    public System.Collections.IEnumerator FastSpin(DiceMenuDialog dialog)
+    {
+        R.Field<DiceWheel>(dialog, "_diceWheel")?.UpdateResult(R.Field<int>(dialog, "_resultCount").ToString(CultureInfo.InvariantCulture));
+        dialog.UpdateSelection();
+        fastRolled = true;
+        log.LogInfo($"DICE_FAST name={diceName} result={dialog.ResultSelection}");
+        yield return null;
     }
 }

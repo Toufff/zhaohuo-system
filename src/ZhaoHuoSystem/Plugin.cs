@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.28")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.29")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -130,18 +130,21 @@ public sealed class Plugin : BaseUnityPlugin
         var uiScale = Config.Bind("界面", "界面缩放", 1f, "在按屏幕高度自动缩放的基础上再乘的倍数（0.5–2.5）。");
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
         var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框；关闭后不再弹出，其他悬浮显示不受影响。");
+        var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
+        var directDice = Config.Bind("工具", "指定后直接出结果", true, "骰子界面点「指定」后不播转盘、不等「继续」，直接给出结果；结果仍由游戏自己结算。");
+        Adapter.DirectDiceResult = directDice.Value;
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
         window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
-            uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons;
+            uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons; directDice.Value = Adapter.DirectDiceResult;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -159,6 +162,10 @@ public sealed class Plugin : BaseUnityPlugin
             Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown} keepAlive={CombatCheats.KeepAlive} duelSpeed={CombatCheats.DuelSpeed}");
         };
         Branches = new BranchNotice();
+        // The branch box keeps the place the player dragged it to (F68).
+        if (NativeUiState.TryParseAnchor(branchPlace.Value, out var branchX, out var branchY)) Branches.Anchor = new Vector2(branchX, branchY);
+        Branches.Moved = anchor => { branchPlace.Value = anchor is Vector2 a ? NativeUiState.FormatAnchor(a.x, a.y) : ""; Logger.LogInfo("BRANCH_PLACE " + (branchPlace.Value.Length > 0 ? branchPlace.Value : "corner")); };
+        window.BranchPlaceReset = () => Branches.ResetPlace();
         // The note editor is modal: the whole screen's pointer and the keyboard are its own while it is open.
         combatResult = new CombatResult(Logger);
         speedButtons = new DuelSpeedButtons(Logger) { Changed = () => window.CombatChanged?.Invoke() };
@@ -579,6 +586,22 @@ internal static class DiceOpenPatch
         plugin.Adapter.BeginDice(__instance, checkName, options);
         plugin.BeginDicePresentation(__instance);
     }
+}
+// 「指定后直接出结果」 (F67): the specified roll shows its result without the wheel's spin and goes on without 继续 (or
+// the fate-point 重掷 prompt). The result is still CheckPointManager.Dice's, which Roll called before the spin.
+[HarmonyPatch(typeof(DiceMenuDialog), "StartSpin")]
+internal static class DiceFastSpinPatch
+{
+    private static bool Prefix(DiceMenuDialog __instance, ref IEnumerator __result)
+    {
+        if (Plugin.Instance?.Adapter is not GameAdapter adapter || !adapter.FastRoll(__instance)) return true;
+        __result = adapter.FastSpin(__instance); return false;
+    }
+}
+[HarmonyPatch(typeof(DiceMenuDialog), "GetNextInput")]
+internal static class DiceFastContinuePatch
+{
+    private static void Postfix(DiceMenuDialog __instance, ref bool __result) { if (!__result && Plugin.Instance?.Adapter.FastRolled(__instance) == true) __result = true; }
 }
 [HarmonyPatch(typeof(DiceMenuDialog), "Roll")]
 internal static class DiceRollPatch { private static void Prefix(DiceMenuDialog __instance, string checkName) => Plugin.Instance?.Adapter.BeginRoll(__instance, checkName); }

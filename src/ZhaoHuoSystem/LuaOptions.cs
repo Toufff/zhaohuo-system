@@ -22,6 +22,8 @@ public sealed class OptionCase
 {
     public List<KeyValuePair<string, int>> When = new();
     public List<OptionEffect> Effects = new();
+    /// <summary>The script this arm jumps to, if any: a story the condition leads into (F65: 飞天门 修炼 → S2600_01).</summary>
+    public string Story = "";
 }
 
 /// <summary>Read-only consequences of one menu option or dice result, derived from script text alone.</summary>
@@ -124,6 +126,15 @@ public static class LuaOptions
             group.Effects.Add(effect);
         }
         void Mark(Action<OptionPreview> action) { var preview = Current(out _); if (preview != null) action(preview); }
+        // Inside a switch arm, a jump is that arm's own story; the first one in the arm is where it goes.
+        void Jump(string next)
+        {
+            var preview = Current(out var when);
+            if (preview == null || when.Count == 0) return;
+            var group = preview.Cases.Find(c => SameWhen(c.When, when));
+            if (group == null) preview.Cases.Add(group = new OptionCase { When = when });
+            if (group.Story.Length == 0) group.Story = next;
+        }
         // Reads "V == N" between if/elseif and then; anything else is an ordinary block.
         (string Var, int Arm, int Next) ReadTest(int start)
         {
@@ -224,14 +235,14 @@ public static class LuaOptions
             { lastRoll = tables.TryGetValue(tokens[i + 4].Text, out var rows) ? new Dictionary<int, Entry>(rows) : null; i += 5; continue; }
             if (Matches(tokens, i, "luamanager", ".", "SetNextScript", "("))
             {
-                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { p.NextScript = next; p.AfterScene = false; }); }
+                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { p.NextScript = next; p.AfterScene = false; }); Jump(next); }
                 i += 4; continue;
             }
             // Before a fight (or another scene change) the story registers where it goes on afterwards, win or lose (F55).
             // A literal next script in the same block still decides what runs next.
             if (Matches(tokens, i, "luamanager", ".", "SetCurrentStoryScript", "("))
             {
-                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { if (p.NextScript.Length == 0) { p.NextScript = next; p.AfterScene = true; } }); }
+                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { if (p.NextScript.Length == 0) { p.NextScript = next; p.AfterScene = true; } }); Jump(next); }
                 i += 4; continue;
             }
             if (Matches(tokens, i, "statmodifymanager", ".") && i + 3 < tokens.Count && tokens[i + 2].Type == T.Name && tokens[i + 3].Is("("))
@@ -305,19 +316,24 @@ public static class LuaOptions
         {
             var arms = group.When.ConvertAll(when => switchArm(when.Key, when.Value));
             var body = EffectParts.Of(group.Effects, effectText);
-            if (body.Empty) continue;
+            // A conditional arm that leads into a story is worth naming even with no effects; a default arm's jump is
+            // just the ordinary way on.
+            bool story = group.Story.Length > 0 && arms.Exists(arm => arm.Key.Length > 0);
+            if (body.Empty && !story) continue;
             int state = arms.TrueForAll(arm => arm.Value == 1) ? 1 : arms.Exists(arm => arm.Value == -1) ? -1 : 0;
             var named = arms.FindAll(arm => arm.Key.Length > 0).ConvertAll(arm => arm.Key);
             if (named.Count == 0 && otherwise != null && !group.When.TrueForAll(when => previous.Contains(when.Key)))
                 named = group.When.ConvertAll(when => otherwise(when.Key)).FindAll(label => label.Length > 0);
-            string full = body.Line(" ", format), overview = body.Overview(format), condition = string.Join(" · ", named);
+            string storyText = story ? format("触发剧情", Array.Empty<object>()) : "";
+            string Join(string separator, string effects) => effects.Length == 0 ? storyText : storyText.Length == 0 ? effects : effects + separator + storyText;
+            string full = Join(" ", body.Line(" ", format)), overview = Join(" ", body.Overview(format)), condition = string.Join(" · ", named);
             // Only the condition lead carries the arm's holds / fails tone; the effects carry their own rises / falls.
             string Lead(string template, params object[] args) => Tone.Mark(state, format(template, args));
             segments.Add(named.Count == 0
                 ? new HintSegment { Full = Lead("否则：{0}", "") + full, Summary = Lead("否则：{0}", "") + overview,
-                    Head = Lead("否则"), Body = "→ " + body.Line("、", format), State = state }
+                    Head = Lead("否则"), Body = "→ " + Join("、", body.Line("、", format)), State = state }
                 : new HintSegment { Full = Lead("若 {0}：{1}", condition, "") + full, Summary = Lead("若…：{0}", "") + overview,
-                    Head = Lead("若 {0}", condition), Body = "→ " + body.Line("、", format), State = state });
+                    Head = Lead("若 {0}", condition), Body = "→ " + Join("、", body.Line("、", format)), State = state });
             previous = new HashSet<string>(group.When.ConvertAll(when => when.Key), StringComparer.Ordinal);
         }
         if (preview.Pool.Length > 0) segments.Add(Plain(format("随机事件", Array.Empty<object>())));

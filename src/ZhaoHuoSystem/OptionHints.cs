@@ -236,6 +236,13 @@ internal sealed class OptionHints : IDisposable
                 string all = Tone.Mark(1, L.Format("一次性事件：{0}", string.Join(L.Text("、"), ready)));
                 segments.Insert(0, new HintSegment { OneShot = true, State = 1, Summary = Tone.Mark(1, L.Format("一次性事件×{0}", ready.Count)), Full = all, Head = all });
             }
+            // One menu further on, an option whose condition for a story holds now (F65: 飞天门, then 修炼 → 大牢 story).
+            int stories = own == null || own.NextScript.Length == 0 ? 0 : ReadyStories(own.NextScript);
+            if (stories > 0)
+            {
+                string text = Tone.Mark(1, L.Format("可触发剧情×{0}", stories));
+                segments.Insert(0, new HintSegment { OneShot = true, State = 1, Summary = text, Full = text, Head = text });
+            }
             if (logged.Count > 500) logged.Clear();
             if (segments.Count > 0 && logged.Add(key)) log.LogInfo("OPTION " + key + " " + Tone.Plain(string.Join("；", segments.Select(segment => segment.Full))));
             return segments.Count == 0 ? null : segments;
@@ -301,6 +308,19 @@ internal sealed class OptionHints : IDisposable
         var prefix = R.Field<string>(LuaManager.Instance, "_scriptPrefix", "Story");
         var asset = Resources.Load<TextAsset>(prefix + "/ChineseTraditional/" + name.ToLowerInvariant());
         return scriptTexts[name] = asset == null ? null : asset.text;
+    }
+    /// <summary>Options of the next script's menu with a conditional story arm whose conditions all hold now.</summary>
+    private int ReadyStories(string script)
+    {
+        if (ScriptMap(script) is not { } map) return 0;
+        int count = 0;
+        foreach (var pair in map)
+        {
+            if (pair.Key == LuaOptions.ScriptLevel) continue;
+            if (pair.Value.Cases.Exists(group => group.Story.Length > 0 && group.When.ConvertAll(when => SwitchArm(when.Key, when.Value)) is var arms
+                && arms.Exists(arm => arm.Key.Length > 0) && arms.TrueForAll(arm => arm.Value == 1))) count++;
+        }
+        return count;
     }
     private Dictionary<string, OptionPreview>? ScriptMap(string name)
     {

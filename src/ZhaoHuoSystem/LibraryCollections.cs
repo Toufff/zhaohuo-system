@@ -52,7 +52,12 @@ internal static class LibraryCollections
             if (id == "achievement") SaveSystem.Instance.SetAchivement(item.name);
         }
         SaveSystem.Instance.SaveUniverseData();
-        Log?.LogInfo($"LIBRARY_UNLOCK section={id} count={targets.Count} items={string.Join(",", targets.Select(x => x.name))}");
+        // The 天命点 total (FateAwardPanel) is counted only when its panel starts; the game's own unlocks happen in
+        // stories, after which the scene and the panel are rebuilt. Here the panel is already up, so it counts again (F69).
+        int refreshed = 0;
+        foreach (var panel in UnityEngine.Resources.FindObjectsOfTypeAll<FateAwardPanel>())
+            if (panel != null && panel.gameObject.scene.IsValid()) { panel.UpdateData(); refreshed++; }
+        Log?.LogInfo($"LIBRARY_UNLOCK section={id} count={targets.Count} fatePanels={refreshed} items={string.Join(",", targets.Select(x => x.name))}");
         return OperationResult.Ok(L.Format("已解锁 {0} 项", targets.Count));
     }
 

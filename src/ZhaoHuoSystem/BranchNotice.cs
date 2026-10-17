@@ -10,8 +10,9 @@ namespace ZhaoHuoSystem;
 /// Floating reminder of the story's recent condition branches: every arm's condition with current values (red / green)
 /// and the arm the game actually took. Fed only by the native Switch result; nothing is evaluated for the game.
 /// Each new branch places it in the game window's bottom-left corner (its own bottom-left on the window's, growing
-/// upwards) and announces itself with a short pop and a flashing title. Drag by the title (until the next branch),
-/// close with ×; the next branch brings it back. Cleared when a choice menu opens or the scene changes.
+/// upwards), or where the player last dragged it (F68: kept across branches and restarts, 「重置位置」 in settings), and
+/// announces itself with a short pop and a flashing title. Drag by the title, close with ×; the next branch brings it
+/// back. Cleared when a choice menu opens or the scene changes.
 /// </summary>
 internal sealed class BranchNotice : IDisposable
 {
@@ -29,6 +30,10 @@ internal sealed class BranchNotice : IDisposable
     private readonly List<List<Row>> judgments = new(); // newest first
     private bool closed = true, dragging, follow;
     private Vector2? position;
+    /// <summary>The player's own place, as fractions of the screen left free by the box; null for the bottom-left corner.</summary>
+    public Vector2? Anchor;
+    /// <summary>After a drag ends (the new place) or a reset (null).</summary>
+    public Action<Vector2?>? Moved;
     private Vector2 grab;
     private float pulse = -10;
     private Font? font;
@@ -66,11 +71,13 @@ internal sealed class BranchNotice : IDisposable
         rows.Add(new Row { Text = L.Text("否则"), State = fallback ? 1 : 0, Taken = fallback });
         judgments.Insert(0, rows);
         if (judgments.Count > Kept) judgments.RemoveRange(Kept, judgments.Count - Kept);
-        // A new branch always returns to the corner, even after a drag, and announces itself.
+        // A new branch returns to the player's place (or the corner) and announces itself.
         closed = false; follow = true; dragging = false; pulse = Time.unscaledTime;
     }
 
     public void Clear() { judgments.Clear(); closed = true; dragging = false; Rect = default; }
+    /// <summary>Back to the bottom-left corner, now and for the next branches.</summary>
+    public void ResetPlace() { Anchor = null; follow = true; position = null; Moved?.Invoke(null); }
 
     /// <summary>Layout and input; call before other mod surfaces so the box wins its own clicks.</summary>
     public void Draw(bool hidden)
@@ -85,8 +92,9 @@ internal sealed class BranchNotice : IDisposable
             foreach (var row in judgments[j]) { row.Height = Mathf.Max(20 * K, text!.CalcHeight(new GUIContent(row.Text), inner)); height += row.Height; }
         }
         height = Mathf.Min(height, Screen.height - 8);
-        // Until the player drags it, the box sits in the bottom-left corner.
-        var origin = !follow && position.HasValue ? position.Value : new Vector2(0, Screen.height - height);
+        // Mid-drag it follows the pointer; otherwise the player's place, or the bottom-left corner.
+        var free = new Vector2(Mathf.Max(0, Screen.width - Width), Mathf.Max(0, Screen.height - height));
+        var origin = !follow && position.HasValue ? position.Value : Anchor is Vector2 anchor ? Vector2.Scale(anchor, free) : new Vector2(0, Screen.height - height);
         origin.x = Mathf.Clamp(origin.x, 0, Mathf.Max(0, Screen.width - Width));
         origin.y = Mathf.Clamp(origin.y, 0, Mathf.Max(0, Screen.height - height));
         position = origin;
@@ -100,7 +108,12 @@ internal sealed class BranchNotice : IDisposable
             e.Use();
         }
         else if (dragging && e.type == EventType.MouseDrag) { position = e.mousePosition - grab; e.Use(); }
-        else if (dragging && e.rawType == EventType.MouseUp) { dragging = false; e.Use(); }
+        else if (dragging && e.rawType == EventType.MouseUp)
+        {
+            dragging = false; e.Use();
+            Anchor = new Vector2(free.x > 0 ? Mathf.Clamp01(origin.x / free.x) : 0, free.y > 0 ? Mathf.Clamp01(origin.y / free.y) : 1);
+            Moved?.Invoke(Anchor);
+        }
         else if (Rect.Contains(e.mousePosition) && (e.type == EventType.MouseUp || e.type == EventType.ScrollWheel)) e.Use();
     }
 

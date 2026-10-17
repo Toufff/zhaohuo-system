@@ -150,6 +150,8 @@ public interface IGameAdapter
     /// <summary>Specify a reachable branch, then press the game's own start (or restart) once.</summary>
     OperationResult RollDiceBranch(string branchId);
     OperationResult CancelDice();
+    /// <summary>A specified roll shows its result at once, without the wheel's spin or 继续 (F67).</summary>
+    bool DirectDiceResult { get; set; }
 }
 
 /// <summary>
