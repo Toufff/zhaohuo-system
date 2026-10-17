@@ -90,6 +90,8 @@ public sealed class ToolWindow : IDisposable
     public KeyCode PanelKey { get; private set; } = KeyCode.F8;
     public KeyCode HideKey { get; private set; } = KeyCode.None;
     public bool Hidden { get; private set; }
+    /// <summary>The story-branch box alone (F45); every other overlay is unaffected.</summary>
+    public bool ShowBranches { get; set; } = true;
     public Action? SettingsChanged;
     /// <summary>Battle-tab toggles live in CombatCheats; this only reports a change so it can be saved.</summary>
     public Action? CombatChanged;
@@ -585,6 +587,14 @@ public sealed class ToolWindow : IDisposable
         if (Button(new Rect(x + step + S(84), y, step, S(30)), "+", "settings.scale.up")) SetScale(UiScale.User + .1f);
         if (Button(new Rect(x + step * 2 + S(94), y, ButtonWidth("恢复", 70), S(30)), "恢复", "settings.scale.reset")) SetScale(1f);
         y += S(44);
+        // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
+        Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);
+        if (Button(new Rect(x, y, S(110), S(30)), ShowBranches ? "开启" : "关闭", "settings.branches", ShowBranches ? _tabSelected : _button))
+        {
+            ShowBranches = !ShowBranches; SettingsChanged?.Invoke();
+        }
+        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "剧情按条件分支时在左下角弹出；关闭后不再弹出，其他悬浮显示照常。", _muted);
+        y += S(52);
         KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
         Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
         if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
