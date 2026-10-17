@@ -15,6 +15,7 @@ internal static partial class Program
         FixedEffectTests();
         ValueTests();
         OptionTests();
+        SaveNoteTests();
         string gameDir = args.Length > 0 ? args[0] : @"F:\SteamLibrary\steamapps\common\LegendOfMortal";
         string managed = Path.Combine(gameDir, "Mortal_Data", "Managed");
         try

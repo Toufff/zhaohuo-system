@@ -13,12 +13,15 @@ namespace ZhaoHuoSystem;
 /// Order of the manual save slots on the native load and save pages: the game's slot numbers, newest first or
 /// oldest first; empty slots always last. Only the displayed order and pad navigation change, never a save file.
 /// The button sits right of the page's 「手动存档」 (load) or 「储存游戏」 (save) heading and steps through the three.
+/// Each page keeps its own order, saved on every change, so it reopens the way it was last left (F48).
 /// </summary>
 internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
 {
     public static readonly string[] Modes = { "排序：编号", "排序：最新在前", "排序：最早在前" };
-    public int Mode;
-    public Action<int>? Changed;
+    public int LoadMode, SaveMode;
+    /// <summary>(save page?, new mode) after the player steps a page's order.</summary>
+    public Action<bool, int>? Changed;
+    private int ModeOf(MonoBehaviour panel) => panel is SaveGamePanel ? SaveMode : LoadMode;
     private sealed class Entry { public MonoBehaviour Panel = null!; public Text Heading = null!; public Button Button = null!; public Text Label = null!; }
     private readonly List<Entry> entries = new();
     private Font? font;
@@ -36,7 +39,7 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
         var list = slots.Cast<MonoBehaviour>().Where(slot => slot != null).ToList();
         int Number(MonoBehaviour slot) => int.TryParse(R.Field<string>(slot, "_slot", ""), out int n) ? n : int.MaxValue;
         long Saved(MonoBehaviour slot) => R.Field(slot, "_currentData") is GameSave data ? data.TimeTick : long.MinValue;
-        var ordered = Mode switch
+        var ordered = ModeOf(panel) switch
         {
             1 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenByDescending(Saved).ThenBy(Number).ToList(),
             2 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(Saved).ThenBy(Number).ToList(),
@@ -55,7 +58,7 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
     {
         try
         {
-            if (Mode == 0 || R.Field(panel, "_saveSlots") is not Array slots || slots.Length == 0 || slots.GetValue(0) is not MonoBehaviour first) return;
+            if (ModeOf(panel) == 0 || R.Field(panel, "_saveSlots") is not Array slots || slots.Length == 0 || slots.GetValue(0) is not MonoBehaviour first) return;
             AccessTools.Method(first.GetType(), "SelectButton")?.Invoke(first, null);
         }
         catch (Exception ex) { log.LogWarning("SAVE_SORT " + ex.GetBaseException().Message); }
@@ -72,9 +75,11 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
 
     private void Step(MonoBehaviour panel)
     {
-        Mode = (Mode + 1) % Modes.Length;
-        Changed?.Invoke(Mode);
-        log.LogInfo("SAVE_SORT mode=" + Mode);
+        bool save = panel is SaveGamePanel;
+        int mode = (ModeOf(panel) + 1) % Modes.Length;
+        if (save) SaveMode = mode; else LoadMode = mode;
+        Changed?.Invoke(save, mode);
+        log.LogInfo($"SAVE_SORT page={(save ? "save" : "load")} mode={mode}");
         Refreshed(panel);
     }
 
@@ -92,7 +97,7 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
             bool show = !hidden && entry.Heading.isActiveAndEnabled;
             if (entry.Button.gameObject.activeSelf != show) entry.Button.gameObject.SetActive(show);
             // Headings are 50–69 units; the button reads at about the slot dates' size.
-            if (show) InlineButton.Place(entry.Button, entry.Label, entry.Heading, font, L.Text(Modes[Mode]), 26f / entry.Heading.fontSize);
+            if (show) InlineButton.Place(entry.Button, entry.Label, entry.Heading, font, L.Text(Modes[ModeOf(entry.Panel)]), 26f / entry.Heading.fontSize);
         }
     }
 

@@ -44,6 +44,8 @@ public sealed class OptionPreview
     public List<OptionEffect> Effects = new();
     public List<OptionCase> Cases = new();
     public string Pool = "", Dice = "", NextScript = "";
+    /// <summary>NextScript is where the story goes on after a scene change (a fight), not a direct jump (F55).</summary>
+    public bool AfterScene;
     public bool Menu, Unknown;
     public bool Empty => Effects.Count == 0 && Cases.Count == 0 && Pool.Length == 0 && Dice.Length == 0 && NextScript.Length == 0 && !Menu && !Unknown;
 }
@@ -208,7 +210,14 @@ public static class LuaOptions
             { lastRoll = tables.TryGetValue(tokens[i + 4].Text, out var rows) ? new Dictionary<int, Entry>(rows) : null; i += 5; continue; }
             if (Matches(tokens, i, "luamanager", ".", "SetNextScript", "("))
             {
-                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => p.NextScript = next); }
+                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { p.NextScript = next; p.AfterScene = false; }); }
+                i += 4; continue;
+            }
+            // Before a fight (or another scene change) the story registers where it goes on afterwards, win or lose (F55).
+            // A literal next script in the same block still decides what runs next.
+            if (Matches(tokens, i, "luamanager", ".", "SetCurrentStoryScript", "("))
+            {
+                if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { if (p.NextScript.Length == 0) { p.NextScript = next; p.AfterScene = true; } }); }
                 i += 4; continue;
             }
             if (Matches(tokens, i, "statmodifymanager", ".") && i + 3 < tokens.Count && tokens[i + 2].Type == T.Name && tokens[i + 3].Is("("))
@@ -339,8 +348,8 @@ public static class LuaOptions
     /// <summary>A pool reached from an entry script, with the option keys passed on the way there.</summary>
     public sealed class Reached { public string Pool = ""; public List<string> Path = new(); }
     /// <summary>
-    /// Pools reachable from an entry script through literal next scripts, literal Position calls, menu options and the
-    /// pools' own result scripts, nearest first, each with the shortest option path. Nothing is executed; unknown
+    /// Pools reachable from an entry script through literal next scripts (and the scripts a fight goes on to), literal
+    /// Position calls, menu options and the pools' own result scripts, nearest first, each with the shortest option path. Nothing is executed; unknown
     /// scripts (null text) end their branch.
     /// </summary>
     public static List<Reached> Reach(string entry, Func<string, string?> scriptText, Func<string, IEnumerable<string>> poolScripts, int maxSteps = 8, bool entryIsPool = false)
@@ -369,13 +378,14 @@ public static class LuaOptions
             }
             // A branch may draw more than one pool; any literal call not already reached keeps this script's path.
             foreach (Match match in Regex.Matches(text, "checkpointmanager\\s*\\.\\s*Position\\s*\\(\\s*\"([^\"]+)\"")) queue.Enqueue((true, match.Groups[1].Value, path, steps + 1));
-            foreach (Match match in Regex.Matches(text, "luamanager\\s*\\.\\s*SetNextScript\\s*\\(\\s*\"([^\"]+)\"")) queue.Enqueue((false, match.Groups[1].Value, path, steps + 1));
+            foreach (Match match in NextScriptCall.Matches(text)) queue.Enqueue((false, match.Groups[1].Value, path, steps + 1));
         }
         return result;
     }
 
     private static readonly Regex PositionCall = new("checkpointmanager\\s*\\.\\s*Position\\s*\\(");
-    private static readonly Regex NextScriptCall = new("luamanager\\s*\\.\\s*SetNextScript\\s*\\(\\s*\"([^\"]+)\"");
+    // SetCurrentStoryScript: where the story goes on after a fight or another scene change (F55).
+    private static readonly Regex NextScriptCall = new("luamanager\\s*\\.\\s*(?:SetNextScript|SetCurrentStoryScript)\\s*\\(\\s*\"([^\"]+)\"");
     /// <summary>
     /// What an event's result script can do to story flags (see <see cref="FlagChanges"/>). Bounded: at most
     /// <paramref name="maxDepth"/> scripts deep and <paramref name="maxScripts"/> scripts in all.
@@ -442,6 +452,21 @@ public static class LuaOptions
     };
 
     /// <summary>Merge a literal next script's own top-level consequences into the option that leads to it (one level only).</summary>
+    /// <summary>
+    /// A next script's top level as shown after an option or an event: one level only, except that a script which only
+    /// registers where the story goes on and then starts a fight is followed once more, to what happens after the fight
+    /// (F55: 「崆峒探险队强袭六道峡！」 jumps to S2321_02_03_02, which only starts the battle; its rewards are in S2321_02_03_02_01).
+    /// </summary>
+    public static OptionPreview? NextTop(string name, Func<string, string?> text)
+    {
+        if (text(name) is not string source) return null;
+        var top = Analyze(source)[ScriptLevel];
+        if (top.AfterScene && top.NextScript.Length > 0 && !top.NextScript.Equals(name, StringComparison.OrdinalIgnoreCase) && text(top.NextScript) is string after)
+            top = Merge(top, Analyze(after)[ScriptLevel]);
+        top.NextScript = ""; top.AfterScene = false;
+        return top;
+    }
+
     public static OptionPreview Merge(OptionPreview option, OptionPreview? next)
     {
         if (next == null) return option;

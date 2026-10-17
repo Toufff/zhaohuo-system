@@ -39,6 +39,8 @@ public sealed class ToolWindow : IDisposable
     private List<ValueSnapshot>? _valueSource;
     private readonly List<ValueSnapshot> _filteredValues = new();
     private string _filteredSearch = "", _filteredGroup = "";
+    // Groups that do match the search when the selected one is empty (F49).
+    private readonly List<string> _searchElsewhere = new();
     private float _lastValueContentHeight, _lastValueViewportHeight;
     private string _message = "";
     private bool _messageError;
@@ -849,12 +851,24 @@ public sealed class ToolWindow : IDisposable
             _filteredValues.Clear();
             foreach (var value in _snapshot.Values)
                 if (NativeUiState.MatchesValue(value, _valueGroup, _valueSearch)) _filteredValues.Add(value);
+            _searchElsewhere.Clear();
+            if (_filteredValues.Count == 0 && _valueSearch.Trim().Length > 0)
+                foreach (string group in groups)
+                    if (group != "all" && group != _valueGroup && _snapshot.Values.Exists(value => NativeUiState.MatchesValue(value, group, _valueSearch))) _searchElsewhere.Add(group);
         }
         var values = _filteredValues;
         _valueRowWidth = rows.width - S(18);
         float totalHeight = 0;
         foreach (var value in values) totalHeight += ValueHeight(value);
-        if (values.Count == 0) { Empty(rows, _snapshot.Values.Count == 0 ? "进入存档后读取数值。" : "没有匹配的数值。"); return; }
+        if (values.Count == 0)
+        {
+            // A forgotten search word is the usual reason a group looks empty: say so, and where it does match.
+            string empty = _snapshot.Values.Count == 0 ? L.Text("进入存档后读取数值。")
+                : _valueSearch.Trim().Length == 0 ? L.Text("没有匹配的数值。")
+                : L.Format("没有名称或 ID 含「{0}」的数值。", _valueSearch.Trim())
+                    + (_searchElsewhere.Count > 0 ? "\n" + L.Format("这些分组里有：{0}", string.Join(L.Text("、"), _searchElsewhere.Select(L.GroupName))) : "");
+            Empty(rows, empty); return;
+        }
         float contentWidth = rows.width - S(18);
         Vector2 scrollBefore = _valueScroll;
         _valueScroll = BeginScroll(rows, _valueScroll, new Rect(0, 0, contentWidth, Mathf.Max(rows.height, totalHeight)));
@@ -1067,8 +1081,12 @@ public sealed class ToolWindow : IDisposable
 
     private string Search(Rect r, string value, string placeholder, string name)
     {
+        // A filled box offers × to clear it; the word otherwise keeps filtering across groups and is easy to forget.
+        float clear = string.IsNullOrEmpty(value) ? 0 : S(34);
+        if (clear > 0 && Button(new Rect(r.xMax - clear + S(4), r.y, clear - S(4), r.height), "×", name + ".clear", tooltip: L.Text("清除搜索")))
+        { GUI.FocusControl(null); return ""; }
         GUI.SetNextControlName(name);
-        string next = GUI.TextField(r, value, _input);
+        string next = GUI.TextField(new Rect(r.x, r.y, r.width - clear, r.height), value, _input);
         if (string.IsNullOrEmpty(next) && GUI.GetNameOfFocusedControl() != name)
             Label(new Rect(r.x + S(9), r.y + S(3), r.width - S(18), r.height - S(6)), placeholder, _muted);
         return next;

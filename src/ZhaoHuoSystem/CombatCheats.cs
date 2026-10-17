@@ -15,12 +15,15 @@ namespace ZhaoHuoSystem;
 internal static class CombatCheats
 {
     internal static bool Invincible, OneHit, KeepStamina, NoCooldown;
+    /// <summary>The duel's own speed-up toggle runs at this multiplier instead of its fixed 2× (F53).</summary>
+    internal static int DuelSpeed = 2;
+    internal static readonly int[] DuelSpeeds = { 2, 3, 4 };
     internal static bool Installed { get; private set; }
     internal static readonly List<string> Missing = new();
     private const int PlayerSide = 0, FriendSide = 1, EnemySide = 2; // Mortal.Battle.EntityType
     private static ManualLogSource? log;
     private static int scripted; // inside a level script's own HP/气 change (CombatEventActionModifyStat)
-    private static FieldInfo? entityField, originField, cooldownField;
+    private static FieldInfo? entityField, originField, cooldownField, speedField, currentSpeedField;
     private static PropertyInfo? battleHealth, combatInstance, playerAction, enemyAction, combatStat, combatHealth, battleInstance;
     private static Type? battleCharacter;
 
@@ -56,6 +59,9 @@ internal static class CombatCheats
         cooldownField = skillButton == null ? null : AccessTools.Field(skillButton, "_currentCooldownTime");
         if (entityField == null || originField == null || battleHealth == null) Missing.Add("Mortal.Battle side/health");
         if (combatInstance == null || playerAction == null || enemyAction == null || combatStat == null || combatHealth == null) Missing.Add("Mortal.Combat controllers");
+        speedField = combatManager == null ? null : AccessTools.Field(combatManager, "_speedTime");
+        currentSpeedField = combatManager == null ? null : AccessTools.Field(combatManager, "_currentSpeedTime");
+        if (speedField == null || currentSpeedField == null) Missing.Add("Mortal.Combat speed");
 
         Patch(harmony, "Mortal.Battle.Character:TakeDamage", prefix: nameof(BattleDamage));
         Patch(harmony, "Mortal.Battle.CharacterMana:Modify", prefix: nameof(BattleMana));
@@ -63,6 +69,7 @@ internal static class CombatCheats
         Patch(harmony, "Mortal.Combat.CombatManager:GetTotalDamage", postfix: nameof(CombatDamage));
         Patch(harmony, "Mortal.Combat.CombatActionController:ModifyHealth", prefix: nameof(CombatHealth));
         Patch(harmony, "Mortal.Combat.CombatActionController:ModifyStamina", prefix: nameof(CombatStamina));
+        Patch(harmony, "Mortal.Combat.CombatManager:EnableSpeedTime", prefix: nameof(CombatSpeed));
         // Script-driven HP/气 changes must still land so HP-threshold story exits keep working.
         var scriptAction = AccessTools.Method(AccessTools.TypeByName("Mortal.Combat.CombatEventActionModifyStat"), "Action");
         var moveNext = scriptAction == null ? null : AccessTools.EnumeratorMoveNext(scriptAction);
@@ -74,7 +81,24 @@ internal static class CombatCheats
         }
         foreach (var missing in Missing) logger.LogWarning("COMBAT missing " + missing);
         Installed = true;
-        logger.LogInfo($"COMBAT ready missing={Missing.Count} invincible={Invincible} oneHit={OneHit} keepStamina={KeepStamina} noCooldown={NoCooldown}");
+        logger.LogInfo($"COMBAT ready missing={Missing.Count} invincible={Invincible} oneHit={OneHit} keepStamina={KeepStamina} noCooldown={NoCooldown} duelSpeed={DuelSpeed}");
+    }
+
+    // The toggle (and its remembered state at the duel's start) goes through EnableSpeedTime, which copies _speedTime.
+    private static void CombatSpeed(object __instance)
+    {
+        try { speedField?.SetValue(__instance, (float)DuelSpeed); }
+        catch (Exception ex) { Fail("CombatSpeed", ex); }
+    }
+
+    /// <summary>A multiplier picked mid-duel applies at once while the speed-up is on (not while a game panel holds time at 0).</summary>
+    internal static void ApplyDuelSpeed()
+    {
+        if (combatInstance?.GetValue(null, null) is not UnityEngine.Object manager || manager == null || speedField == null || currentSpeedField == null) return;
+        speedField.SetValue(manager, (float)DuelSpeed);
+        if (currentSpeedField.GetValue(manager) is not float current || current <= 1f) return;
+        currentSpeedField.SetValue(manager, (float)DuelSpeed);
+        if (Time.timeScale > 0) Time.timeScale = DuelSpeed;
     }
 
     private static void Patch(Harmony harmony, string target, string? prefix = null, string? postfix = null)

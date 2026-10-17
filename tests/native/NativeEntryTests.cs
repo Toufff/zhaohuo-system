@@ -27,6 +27,23 @@ internal static partial class Program
             Has(battle, "Mortal.Battle", "Entity", "_originType");
             Has(battle, "Mortal.Battle", "SkillButton", "_currentCooldownTime");
             Has(battle, "Mortal.Battle", "GameLevelManager", "Instance");
+            // 直接胜利 / 直接失败: each fight's own result entry, its guards, and what tells a story loss from a death.
+            Has(battle, "Mortal.Battle", "GameLevelManager", "IsReady", "IsGameOver", "IsPause", "_levelData");
+            Signature(battle, "Mortal.Battle", "GameLevelManager", "ShowGameOver", "type", "finish");
+            Signature(battle, "Mortal.Battle", "GameLevelManager", "PauseGame", "isPause");
+            var overTypes = Members(battle, "Mortal.Battle", "GameOverType").Constants;
+            Require(overTypes.TryGetValue("PlayerDie", out int die) && die == 1 && overTypes.TryGetValue("FriendWin", out int friend) && friend == 2 && overTypes.TryGetValue("EnemyWin", out int enemy) && enemy == 3, "GameOverType values");
+            Require(Members(battle, "Mortal.Battle", "BattleForceResult").Constants.TryGetValue("EnemyWin", out int forced) && forced == 1, "BattleForceResult.EnemyWin");
+            Has(battle, "Mortal.Battle", "BattleLevel", "_victoryDefeat", "_victoryTimeout", "_events");
+            Has(battle, "Mortal.Battle", "BattleEventData", "_actions");
+            Has(battle, "Mortal.Battle", "BattleEventActionFlashGameOver", "_result");
+            Has(combat, "Mortal.Combat", "CombatManager", "EnableHotKey", "_combatLevel", "_uiManager");
+            Signature(combat, "Mortal.Combat", "CombatManager", "GameOver", "win");
+            Signature(combat, "Mortal.Combat", "CombatUIManager", "HideAction");
+            // 决斗加速: the toggle's entry and the two speeds it copies between.
+            Signature(combat, "Mortal.Combat", "CombatManager", "EnableSpeedTime", "active");
+            Has(combat, "Mortal.Combat", "CombatManager", "_speedTime", "_currentSpeedTime");
+            Has(combat, "Mortal.Combat", "CombatUIManager", "_speedButtonToggle");
             Has(combat, "Mortal.Combat", "CombatManager", "Instance", "PlayerAction", "EnemyAction");
             Has(combat, "Mortal.Combat", "CombatActionController", "Stat");
             Has(combat, "Mortal.Combat", "CombatStatController", "CurrentHealth");
@@ -77,6 +94,12 @@ internal static partial class Program
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slot", "_currentData");
             Signature(mortalCore, "Mortal.Core", "SaveSlotPanel", "SelectButton");
             Has(mortalCore, "Mortal.Core", "GameSave", "TimeTick");
+            // 存档收藏与备注: each slot's number, save-time line and button; the account folder; the game's own delete.
+            foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slotText", "_timeText", "_button");
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "GetUserFolder");
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "DeleteSaveData", "slot");
+            // 手动存档数: both pages build their slots in Awake from _slotCount.
+            foreach (string page in new[] { "LoadGamePanel", "SaveGamePanel" }) { Has(mortalCore, "Mortal.Core", page, "_slotCount"); Signature(mortalCore, "Mortal.Core", page, "Awake"); }
         });
     }
 

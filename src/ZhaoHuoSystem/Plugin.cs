@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.22")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.25")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -36,7 +36,11 @@ public sealed class Plugin : BaseUnityPlugin
     private RoundSkip roundSkip = null!;
     private PinballScore pinball = null!;
     internal SaveSlotSort SaveSort = null!;
+    internal SaveNotes SaveNotes = null!;
+    internal int SaveSlots = 20;
     internal BranchNotice Branches = null!;
+    private CombatResult combatResult = null!;
+    private DuelSpeedButtons speedButtons = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
     private NativeDicePresenter dicePresenter = null!;
@@ -103,9 +107,19 @@ public sealed class Plugin : BaseUnityPlugin
         roundSkip = new RoundSkip(Logger);
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
-        var saveSort = Config.Bind("界面", "存档排序", 0, "读档、存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前。");
-        SaveSort.Mode = Mathf.Clamp(saveSort.Value, 0, SaveSlotSort.Modes.Length - 1);
-        SaveSort.Changed = mode => saveSort.Value = mode;
+        // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
+        var saveSort = Config.Bind("界面", "存档排序", 0, "存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前；记住上次的选择。");
+        var loadSort = Config.Bind("界面", "读档排序", saveSort.Value, "读档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前；记住上次的选择。");
+        SaveSort.SaveMode = Mathf.Clamp(saveSort.Value, 0, SaveSlotSort.Modes.Length - 1);
+        SaveSort.LoadMode = Mathf.Clamp(loadSort.Value, 0, SaveSlotSort.Modes.Length - 1);
+        SaveSort.Changed = (save, mode) => { if (save) saveSort.Value = mode; else loadSort.Value = mode; };
+        var saveSlots = Config.Bind("界面", "手动存档数", 50, "读档、存档页的手动存档格数，20–99（游戏原为 20）。超过 20 号的存档在卸载模组后不在游戏的存档列表里显示，文件仍在，「最近存档」照常可读。改后重进标题画面或场景生效。");
+        SaveSlots = Mathf.Clamp(saveSlots.Value, 20, 99);
+        // Stars and notes live beside the logs, never in a save (F50). A file that cannot be read is left alone, not overwritten.
+        SaveNoteStore notes;
+        try { notes = new SaveNoteStore(Path.Combine(diagnostics, "save-notes.txt")); }
+        catch (Exception ex) { notes = new SaveNoteStore(null); Logger.LogWarning("SAVE_NOTE not loaded, changes this session are not kept: " + ex.GetBaseException().Message); }
+        SaveNotes = new SaveNotes(Logger, notes);
         Adapter.EventConsequences = OptionHints.EventConsequences;
         Adapter.ScriptText = OptionHints.ScriptText; Adapter.EventFlagChanges = OptionHints.EventFlagChanges;
         var panelKey = Config.Bind("界面", "面板快捷键", "F8", "打开/收起面板的按键（UnityEngine.KeyCode 名称，None 为不绑定）。");
@@ -131,14 +145,20 @@ public sealed class Plugin : BaseUnityPlugin
         var noCooldown = Config.Bind("战斗", "技能无冷却", false, "战役技能用后立刻可再用。");
         CombatCheats.Invincible = invincible.Value; CombatCheats.OneHit = oneHit.Value;
         CombatCheats.KeepStamina = keepStamina.Value; CombatCheats.NoCooldown = noCooldown.Value;
+        var duelSpeed = Config.Bind("战斗", "决斗加速倍数", 2, "决斗（回合制）里游戏自带的加速开关打开时的倍数：2（原版）、3、4。");
+        CombatCheats.DuelSpeed = Array.IndexOf(CombatCheats.DuelSpeeds, duelSpeed.Value) >= 0 ? duelSpeed.Value : 2;
         window.CombatChanged = () =>
         {
             invincible.Value = CombatCheats.Invincible; oneHit.Value = CombatCheats.OneHit;
-            keepStamina.Value = CombatCheats.KeepStamina; noCooldown.Value = CombatCheats.NoCooldown;
-            Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown}");
+            keepStamina.Value = CombatCheats.KeepStamina; noCooldown.Value = CombatCheats.NoCooldown; duelSpeed.Value = CombatCheats.DuelSpeed;
+            Logger.LogInfo($"COMBAT invincible={CombatCheats.Invincible} oneHit={CombatCheats.OneHit} keepStamina={CombatCheats.KeepStamina} noCooldown={CombatCheats.NoCooldown} duelSpeed={CombatCheats.DuelSpeed}");
         };
         Branches = new BranchNotice();
-        inputGuard = new NativeInputGuard(window, Logger, () => Branches.Rect);
+        // The note editor is modal: the whole screen's pointer and the keyboard are its own while it is open.
+        combatResult = new CombatResult(Logger);
+        speedButtons = new DuelSpeedButtons(Logger) { Changed = () => window.CombatChanged?.Invoke() };
+        inputGuard = new NativeInputGuard(window, Logger, () => SaveNotes.Editing,
+            () => SaveNotes.Editing ? new Rect(0, 0, Screen.width, Screen.height) : Branches.Rect, () => combatResult.Rect);
         LocalizationManager.OnLanguageChanged += LanguageChanged;
         window.ExportDiagnostics = ExportDiagnostics;
         harmony = new Harmony("local.zhaohuo.system");
@@ -180,7 +200,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void SceneChanged(Scene before, Scene after)
     {
         Diagnostics.Scene = after.name; Logger.LogInfo("SCENE " + before.name + " -> " + after.name);
-        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear();
+        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear(); SaveNotes?.Close();
         Adapter.Invalidate("场景已变化，旧指定已清除", true, after.name == "Free" || after.name == "Title");
     }
     private void Update()
@@ -190,7 +210,7 @@ public sealed class Plugin : BaseUnityPlugin
         try
         {
             // Typing in a mod field or binding a new key never fires a hotkey.
-            bool typing = window.CapturingKey || window.HasTextFocus;
+            bool typing = window.CapturingKey || window.HasTextFocus || SaveNotes.Editing;
             if (Pressed(window.PanelKey) && !typing) TogglePanel();
             if (Pressed(window.HideKey) && !typing) ToggleHidden();
             if (wasVisible && !window.Visible) Adapter.ContinueAction();
@@ -199,6 +219,8 @@ public sealed class Plugin : BaseUnityPlugin
             try { roundSkip.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("ROUND_SKIP " + ex.GetBaseException().Message); }
             try { pinball.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PINBALL_SCORE " + ex.GetBaseException().Message); }
             try { SaveSort.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_SORT " + ex.GetBaseException().Message); }
+            try { SaveNotes.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_NOTE " + ex.GetBaseException().Message); }
+            try { speedButtons.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("DUEL_SPEED " + ex.GetBaseException().Message); }
             wasVisible = window.Visible; inputGuard.Tick();
             if (Time.unscaledTime >= nextRefresh)
             {
@@ -256,7 +278,7 @@ public sealed class Plugin : BaseUnityPlugin
         if (window == null) return;
         using var timing = Perf.Time("gui");
         var key = Event.current;
-        if (key.type == EventType.KeyDown && key.keyCode != KeyCode.None && !window.CapturingKey && !window.HasTextFocus)
+        if (key.type == EventType.KeyDown && key.keyCode != KeyCode.None && !window.CapturingKey && !window.HasTextFocus && !SaveNotes.Editing)
         {
             if (key.keyCode == window.PanelKey) { TogglePanel(); key.Use(); }
             else if (key.keyCode == window.HideKey) { ToggleHidden(); key.Use(); }
@@ -265,9 +287,17 @@ public sealed class Plugin : BaseUnityPlugin
         {
             inputGuard.ObserveGui(Event.current);
             bool mouseDown = Event.current.type == EventType.MouseDown;
+            // The note editor is drawn alone, so no other surface can take its clicks or keys.
+            if (SaveNotes.Editing)
+            {
+                try { SaveNotes.Draw(); } catch (Exception ex) { OverlayFailed("note", ex); SaveNotes.Close(); }
+                if (mouseDown) inputGuard.FocusResolved(); else inputGuard.Tick();
+                return;
+            }
             // Passive overlays are guarded one by one: a failure in any of them must never keep the panel from drawing,
             // because a paused action waits for the panel. The branch notice handles its clicks first, paints last.
             try { Branches.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
+            try { combatResult.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("combat-result", ex); }
             if (!window.Visible)
             {
                 try { if (!window.Hidden) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
@@ -292,6 +322,13 @@ public sealed class Plugin : BaseUnityPlugin
             if (Adapter.Snapshot.ActionWaiting) { Adapter.ContinueAction(); Logger.LogWarning("PANEL_FAILED paused action released"); }
         }
     }
+    /// <summary>Before a load or save page builds its slots: never fewer than the game's own.</summary>
+    internal void ExpandSaveSlots(MonoBehaviour panel)
+    {
+        if (R.Field(panel, "_slotCount") is not int count || count >= SaveSlots) return;
+        R.Set(panel, "_slotCount", SaveSlots);
+        Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} {count}->{SaveSlots}");
+    }
     private readonly HashSet<string> overlayFailures = new(StringComparer.Ordinal);
     private void OverlayFailed(string overlay, Exception ex)
     {
@@ -300,7 +337,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose();
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();
@@ -577,23 +614,35 @@ internal static class DiceOptionHintPatch
     private static void Postfix(DiceOption __instance)
     { using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_sourceText"), R.Field<TMP_Text>(__instance, "_normalText"), R.Field<TMP_Text>(__instance, "_highText")); }
 }
-// Manual save slots in the chosen order each time the load or save page refreshes them from disk (F44).
+// Manual save slots in the chosen order each time the load or save page refreshes them from disk (F44), with their
+// stars and notes (F50).
 [HarmonyPatch(typeof(LoadGamePanel), "UpdateSlot")]
 internal static class LoadSlotSortPatch
 {
     private static void Postfix(LoadGamePanel __instance)
-    => Plugin.Instance?.SaveSort.Refreshed(__instance);
+    { Plugin.Instance?.SaveSort.Refreshed(__instance); Plugin.Instance?.SaveNotes.Refreshed(__instance); }
 }
 [HarmonyPatch(typeof(SaveGamePanel))]
 internal static class SaveSlotSortPatch
 {
     [HarmonyPostfix, HarmonyPatch("UpdateSlot")]
     private static void Refreshed(SaveGamePanel __instance)
-    => Plugin.Instance?.SaveSort.Refreshed(__instance);
+    { Plugin.Instance?.SaveSort.Refreshed(__instance); Plugin.Instance?.SaveNotes.Refreshed(__instance); }
     [HarmonyPostfix, HarmonyPatch(nameof(SaveGamePanel.OnPanelOpen))]
     private static void Opened(SaveGamePanel __instance)
     => Plugin.Instance?.SaveSort.Opened(__instance);
 }
+// More manual save slots (F51): both pages build theirs in Awake from _slotCount. A slot is just its number in the save
+// file's name (Save_021.dat), read and written by the game's own SaveSystem like the first twenty.
+[HarmonyPatch]
+internal static class SaveSlotCountPatch
+{
+    [HarmonyPrefix, HarmonyPatch(typeof(LoadGamePanel), "Awake")] private static void Load(LoadGamePanel __instance) => Plugin.Instance?.ExpandSaveSlots(__instance);
+    [HarmonyPrefix, HarmonyPatch(typeof(SaveGamePanel), "Awake")] private static void Save(SaveGamePanel __instance) => Plugin.Instance?.ExpandSaveSlots(__instance);
+}
+// A save deleted in game takes its star and note with it.
+[HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.DeleteSaveData))]
+internal static class SaveNoteDeletePatch { private static void Postfix(string slot) => Plugin.Instance?.SaveNotes.Deleted(slot); }
 // 「本次取消上限」 is offered whenever a martial (修炼) or upgrade (锻造 / 炼丹) panel opens.
 [HarmonyPatch(typeof(MartialPanel), nameof(MartialPanel.Open))]
 internal static class MartialOpenPatch { private static void Prefix(MartialPanel __instance) => Plugin.Instance?.Practice.Opened(__instance); }

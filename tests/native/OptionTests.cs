@@ -165,6 +165,38 @@ internal static partial class Program
             var certain = LuaOptions.EventFlags("story_a", Map, name => texts.TryGetValue(name, out var t) ? t : null);
             Require(certain.Certain.ContainsKey("S1") && !LuaOptions.Ends("<", 2, certain, "C"), "top-level changes still run as one sequence");
         });
+        Test("the script a fight goes on to is followed like a next script; a literal next script in the same block wins", () =>
+        {
+            // Shape of ch3_8_2_3: register the continuation, then change to the fight; the continuation sets a flag and draws a pool.
+            var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["before"] = "statmodifymanager.SetFlag(\"A\", 1)\nluamanager.SetCurrentStoryScript(\"after\")\nluamanager.ChangeScene(\"Combat\", \"1309_01\", \"Story\")",
+                ["after"] = "statmodifymanager.SetFlag(\"S1\", 1)\nvar1 = checkpointmanager.Position(\"Pool_After\")",
+                ["both"] = "luamanager.SetCurrentStoryScript(\"later\")\nluamanager.SetNextScript(\"now\")"
+            };
+            Dictionary<string, OptionPreview>? Map(string name) => texts.TryGetValue(name, out var t) ? LuaOptions.Analyze(t) : null;
+            string? Text(string name) => texts.TryGetValue(name, out var t) ? t : null;
+            Equal("after", LuaOptions.Analyze(texts["before"])[LuaOptions.ScriptLevel].NextScript);
+            Equal("now", LuaOptions.Analyze(texts["both"])[LuaOptions.ScriptLevel].NextScript);
+            Require(LuaOptions.Reach("before", Text, _ => Array.Empty<string>()).Exists(r => r.Pool == "Pool_After"), "pool drawn after the fight is reachable");
+            var changes = LuaOptions.EventFlags("before", Map, Text);
+            Require(changes.Certain.ContainsKey("A") && changes.Certain.ContainsKey("S1"), "the continuation's own flags count");
+        });
+        Test("an option's next script that only starts a fight shows what happens after the fight; a plain jump stays one level", () =>
+        {
+            var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["launch"] = "luamanager.SetCurrentStoryScript(\"after\")\nluamanager.ChangeScene(\"Battle\", \"S2321_01\", \"Story\")",
+                ["after"] = "statmodifymanager.Player(\"fame\", 2, \"\", 1)\nluamanager.SetNextScript(\"later\")",
+                ["plain"] = "statmodifymanager.Player(\"training\", 1, \"\", 1)\nluamanager.SetNextScript(\"after\")"
+            };
+            string? Text(string name) => texts.TryGetValue(name, out var t) ? t : null;
+            var launch = LuaOptions.NextTop("launch", Text)!;
+            Require(launch.Effects.Exists(e => e.Key == "fame") && launch.NextScript.Length == 0, "rewards after the fight, nothing further");
+            var plain = LuaOptions.NextTop("plain", Text)!;
+            Require(plain.Effects.Exists(e => e.Key == "training") && !plain.Effects.Exists(e => e.Key == "fame"), "a direct jump is not followed");
+            Require(LuaOptions.NextTop("missing", Text) == null, "unknown script");
+        });
         Test("pools reachable from a location follow scripts, menu options and pool results with their option path", () =>
         {
             // Shape of the gate: own pool -> a result that opens the "where to" menu -> a shop with two pools; one option loops back.
@@ -192,6 +224,20 @@ internal static partial class Program
         // Optional offline audit over a local, untracked dump of the game's scripts.
         string? dump = Environment.GetEnvironmentVariable("ZHAOHUO_LUA_DUMP");
         if (dump == null || !Directory.Exists(dump)) return;
+        if (File.Exists(Path.Combine(dump, "section_01_free_08_01.txt")))
+            Test("real 火闪电 fight (section_01_free_08_01) reaches M20045, set in the script after the fight", () =>
+            {
+                string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
+                var changes = LuaOptions.EventFlags("section_01_free_08_01", name => Text(name) is string t ? LuaOptions.Analyze(t) : null, Text);
+                Require(changes.Certain.ContainsKey("M20045") || changes.Possible.ContainsKey("M20045"), "M20045 after the fight");
+            });
+        if (File.Exists(Path.Combine(dump, "s2321_02_03_02.txt")))
+            Test("real 「崆峒探险队强袭六道峡！」 battle launcher shows the rewards after the battle", () =>
+            {
+                string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
+                var top = LuaOptions.NextTop("S2321_02_03_02", Text)!;
+                Require(top.Effects.Exists(e => e.Key == "martial-point") && top.Effects.Exists(e => e.Key == "fame"), "martial-point and fame after the battle");
+            });
         if (File.Exists(Path.Combine(dump, "door_02_503.txt")))
             Test("real 龍之反省 (door_02_503) ends through S0023_01 set inside a later choice", () =>
             {

@@ -398,9 +398,8 @@ internal sealed class OptionHints : IDisposable
         try
         {
             var prefix = R.Field<string>(LuaManager.Instance, "_scriptPrefix", "Story");
-            var asset = Resources.Load<TextAsset>(prefix + "/ChineseTraditional/" + name.ToLowerInvariant());
-            // One level only: the next script's own next script is not followed.
-            if (asset != null) { result = LuaOptions.Analyze(asset.text)[LuaOptions.ScriptLevel]; result.NextScript = ""; }
+            // One level only, except through a script that just starts a fight (see LuaOptions.NextTop).
+            result = LuaOptions.NextTop(name, script => Resources.Load<TextAsset>(prefix + "/ChineseTraditional/" + script.ToLowerInvariant()) is TextAsset asset && asset != null ? asset.text : null);
         }
         catch (Exception ex) { log.LogWarning("OPTION_HINT next " + name + " " + ex.GetBaseException().Message); }
         return nextScripts[name] = result;

@@ -16,6 +16,7 @@
     <Compile Include="../../src/ZhaoHuoSystem/MapSemantics.cs" Link="MapSemantics.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/Contracts.cs" Link="Contracts.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/FlagDictionary.cs" Link="FlagDictionary.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/SaveNoteStore.cs" Link="SaveNoteStore.cs" />
     <Reference Include="Fungus">
       <HintPath>$(GameDir)\Mortal_Data\Managed\Fungus.dll</HintPath>
       <Private>false</Private>
