@@ -249,9 +249,37 @@ internal static partial class Program
             Require(merged.Effects.Count == 1 && merged.Effects[0].Value == 1000, "one level merged");
         });
 
+        Test("an option that sets the main mission is marked; a story-scene loop is told from the map side (F80)", () =>
+        {
+            var m = LuaOptions.Analyze("local t = {}\nt[1] = \"O_M1\"\nt[2] = \"O_M2\"\nlocal c = choose(t)\nif c == 1 then\nstatmodifymanager.Player(\"action\", -2, \"\", 1)\nstatmodifymanager.Mission(\"Main\", \"M1\")\nelseif c == 2 then\nstatmodifymanager.Mission(\"Sub\", \"M2\")\nend");
+            Require(m["O_M1"].SetsMain && !m["O_M2"].SetsMain, "main only");
+            string? Entry(string name) => name switch
+            {
+                "loop_entry" => "luamanager.SetCurrentStoryScript(\"loop_menu\")\nluamanager.ChangeScene(\"Story\", \"\", \"\")",
+                "map_entry" => "luamanager.SetCurrentStoryScript(\"loop_menu\")\nluamanager.ChangeScene(\"Free\", \"\", \"\")",
+                _ => null
+            };
+            Require(LuaOptions.StoryLoop("loop_entry", "loop_menu", Entry), "entry sets the menu and the story scene");
+            Require(LuaOptions.StoryLoop("Loop_Menu", "loop_menu", Entry), "the menu is its own travel script");
+            Require(!LuaOptions.StoryLoop("map_entry", "loop_menu", Entry) && !LuaOptions.StoryLoop("loop_entry", "other", Entry) && !LuaOptions.StoryLoop("", "loop_menu", Entry), "not a loop");
+        });
+
         // Optional offline audit over a local, untracked dump of the game's scripts.
         string? dump = Environment.GetEnvironmentVariable("ZHAOHUO_LUA_DUMP");
         if (dump == null || !Directory.Exists(dump)) return;
+        if (File.Exists(Path.Combine(dump, "ch2_4_3_break_start_01.txt")))
+            Test("real story-scene loops (破庙, opening sections, …) and 客栈夜晚「出门散心」 setting the main mission (F80)", () =>
+            {
+                string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
+                foreach (var (travel, menu) in new[] { ("ch2_4_3_break_start_01", "ch2_4_3_break_start_01"), ("ch3_6_1_break_01", "ch3_6_1_break_start_01"), ("ch6_4_3_break_01", "ch6_4_3_break_start_01"),
+                    ("S2503_break_01", "S2503_break_start_01"), ("section_01_free_start_01", "section_01_free_start_02"), ("section_02_free_start_01", "section_02_free_start_02") })
+                    Require(LuaOptions.StoryLoop(travel, menu, Text), travel + " loop");
+                Require(!LuaOptions.StoryLoop("ch2_2_3_1_travel_02", "ch2_4_3_break_start_01", Text), "a stale travel script is not this loop");
+                var night = LuaOptions.Analyze(Text("ch3_1_7_6_break_start_01")!);
+                Require(night["O_3_1_7_6_Break_01_001"].SetsMain && !night["O_3_1_7_6_Break_01_002"].SetsMain, "出门散心 sets the main mission");
+                var temple = LuaOptions.Analyze(Text("ch2_4_3_break_start_01")!);
+                Require(!temple.Any(pair => pair.Key.Length > 0 && pair.Value.SetsMain), "破庙 menu rows leave the main mission alone");
+            });
         if (File.Exists(Path.Combine(dump, "section_01_free_08_01.txt")))
             Test("real 火闪电 fight (section_01_free_08_01) reaches M20045, set in the script after the fight", () =>
             {

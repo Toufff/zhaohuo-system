@@ -342,21 +342,25 @@ internal sealed class OptionHints : IDisposable
         return R.Items(R.Field(config, "_list")).FirstOrDefault(item => item is UnityEngine.Object asset && asset != null && asset.name == name);
     }
 
-    /// <summary>Whether choosing this row spends action points (a free phase's 「where to go」 menu, F60).</summary>
-    public bool SpendsAction(string? source)
-    {
-        string key = LuaOptions.OptionKey(source ?? "");
-        return key.Length > 0 && Find(key, out _) is OptionPreview preview && preview.Effects.Exists(effect => effect.Kind == "stat" && effect.Key == "action" && effect.Value < 0);
-    }
-    /// <summary>A menu waits whose rows spend action points: the free phase's choice of where to go (F60).</summary>
+    /// <summary>
+    /// A menu waits whose rows spend action points: the free phase's choice of where to go (F60). Not while a row would
+    /// set the main mission (F80, e.g. 第三章客栈夜晚「出门散心」): that choice moves the story on, and skipping the
+    /// round there would leave the main mission unset.
+    /// </summary>
     public bool ActionMenuOpen()
     {
         var menu = Fungus.MenuDialog.ActiveMenuDialog;
         if (menu == null || !menu.IsActive()) return false;
+        bool spends = false;
         foreach (var button in menu.CachedButtons)
-            if (button != null && button.gameObject.activeInHierarchy && button.interactable && button.GetComponent<IMenuDialogOption>() is Component row
-                && SpendsAction(R.Field<Text>(row, "_source")?.text)) return true;
-        return false;
+        {
+            if (button == null || !button.gameObject.activeInHierarchy || !button.interactable || button.GetComponent<IMenuDialogOption>() is not Component row) continue;
+            string key = LuaOptions.OptionKey(R.Field<Text>(row, "_source")?.text ?? "");
+            if (key.Length == 0 || Find(key, out _) is not OptionPreview preview) continue;
+            if (preview.SetsMain) return false;
+            if (preview.Effects.Exists(effect => effect.Kind == "stat" && effect.Key == "action" && effect.Value < 0)) spends = true;
+        }
+        return spends;
     }
 
     private static string Format(string template, object[] args) => args.Length == 0 ? L.Text(template) : L.Format(template, args);

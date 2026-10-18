@@ -106,6 +106,8 @@ internal static partial class Program
             // 跳过本旬 one point at a time: the check a story's return to the map runs, and the story scene steps around it.
             Signature(mortalCore, "Mortal.Core", "MissionManagerData", "UpdateCheckMissions");
             Signature(mortalCore, "Mortal.Core", "MissionManagerData", "HasAnyMissionTrigger");
+            // ...and inside a story-scene loop, its entry script (F80).
+            Has(mortalCore, "Mortal.Core", "PlayerStatManagerData", "CurrentTravelScript");
             Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryMainUI", "Hide");
             Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryManager", "SetHotKey", "active");
             // 剧情中随时存档: the save built and written, the load, the script a save starts from, and the story's own save button.

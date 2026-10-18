@@ -15,11 +15,13 @@ namespace ZhaoHuoSystem;
 /// after each exactly as the game does when a location's story returns to the map (F72): a story due at that point
 /// (main missions such as 4-3 唐门内战 need a set round with 2 or 1 actions left) plays there and the rest of the
 /// round is kept; with none due, the last one is the round change (next round, shop and income). In the story
-/// scene it shows only while a menu whose options spend action points waits (choosing where to go), never mid-story.
+/// scene it shows only while a menu whose options spend action points waits (choosing where to go), never mid-story;
+/// a free phase that runs inside the story scene (破庙 on 云裳线, …) comes back to its menu after the round change
+/// as the game's own does, instead of going to the map (F80).
 /// Hidden while a main story waits at a location (the game allows only that), while the map is busy or a native panel
 /// is open, and with 「隐藏全部悬浮窗」.
 /// </summary>
-internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu) : IDisposable
+internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu, Func<string, string?> scriptText) : IDisposable
 {
     private const float ConfirmSeconds = 3f;
     // FreeManager on the map, StoryManager in the free phase's story menus.
@@ -88,29 +90,35 @@ internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu) : ID
     }
 
     /// <summary>
-    /// The free phase's story menu: no points left, the waiting choice put away so it cannot run during the change, then
-    /// what a story does when it ends (LuaManager.ChangeScene("Free")), which with no points left is the round change.
+    /// The free phase's story menu: the waiting choice put away so it cannot run during the change, then the points
+    /// given up one at a time. A free phase on the map side goes on as a story ending with LuaManager.ChangeScene("Free"):
+    /// the map unless a story is due. One that runs inside the story scene goes on as its own actions do, with
+    /// ChangeScene("Story"): the story scene, which plays the story due or else this menu again.
     /// </summary>
     private void SkipStory()
     {
         var stats = PlayerStatManagerData.Instance;
-        var menu = Fungus.MenuDialog.ActiveMenuDialog;
-        if (menu != null) menu.Clear();
-        // LuaManager.ChangeScene("Free") runs the mission check itself; here each step has run it once already, and a
-        // second run would advance a main mission twice. So its other steps, then the scene the steps decided.
+        string menu = stats.CurrentStoryScript ?? "";
+        bool loop = LuaOptions.StoryLoop(stats.CurrentTravelScript ?? "", menu, scriptText);
+        var dialog = Fungus.MenuDialog.ActiveMenuDialog;
+        if (dialog != null) dialog.Clear();
+        // ChangeScene runs the mission check itself; here each step has run it once already, and a second run would
+        // advance a main mission twice. So its other steps, then the scene the steps decided.
         SaveSystem.Instance.SaveUniverseData();
-        bool story = SpendStepwise(stats, "story");
+        bool story = SpendStepwise(stats, loop ? "story-loop" : "story", loop ? menu : null);
         StoryMainUI.Instance.Hide();
         StoryManager.Instance.SetHotKey(active: false);
-        if (story) Mortal.Core.SceneController.Instance.LoadStory(); else Mortal.Core.SceneController.Instance.LoadFree();
+        if (story || loop) Mortal.Core.SceneController.Instance.LoadStory(); else Mortal.Core.SceneController.Instance.LoadFree();
     }
 
     /// <summary>
-    /// One action point at a time, each followed by what LuaManager.ChangeScene("Free") checks after a location's story:
+    /// One action point at a time, each followed by what LuaManager.ChangeScene checks after an action's story:
     /// UpdateCheckMissions (at 0 it is the round change), then HasAnyMissionTrigger. Each check runs once per step: it
-    /// moves a main mission on when it starts. Stops at the first story due; true when one is.
+    /// moves a main mission on when it starts. Stops at the first story due; true when one is. Inside a story-scene
+    /// loop (<paramref name="menu"/>), also when the check set another story script: the story scene plays it wherever
+    /// the player is.
     /// </summary>
-    private bool SpendStepwise(PlayerStatManagerData stats, string where)
+    private bool SpendStepwise(PlayerStatManagerData stats, string where, string? menu = null)
     {
         int left = stats.CurrentActionCount;
         string start = $"{stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage}";
@@ -120,11 +128,12 @@ internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu) : ID
             // Set, not spent: 「本旬行动点无限」 holds back spending, and the points still have to go down here.
             stats.Stats.Set(GameStatType.行動次數, value);
             missions.UpdateCheckMissions();
-            if (!missions.HasAnyMissionTrigger()) continue;
+            bool due = missions.HasAnyMissionTrigger();
+            if (!due && (menu == null || string.Equals(stats.CurrentStoryScript, menu, StringComparison.OrdinalIgnoreCase))) continue;
             log.LogInfo($"ROUND_SKIP {where} left={left} time={start} stopped={value} story={stats.CurrentStoryScript}");
             return true;
         }
-        log.LogInfo($"ROUND_SKIP {where} left={left} time={start} done={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage} actions={stats.CurrentActionCount} next=Free");
+        log.LogInfo($"ROUND_SKIP {where} left={left} time={start} done={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage} actions={stats.CurrentActionCount} next={(menu == null ? "Free" : menu)}");
         return false;
     }
 

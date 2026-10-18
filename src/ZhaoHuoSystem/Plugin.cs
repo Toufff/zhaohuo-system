@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.33")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.34")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -106,7 +106,7 @@ public sealed class Plugin : BaseUnityPlugin
         Practice = new PracticeButtons(Logger);
         LibraryCollections.Log = Logger;
         OptionHints.ReadyOneShots = Adapter.ReadyOneShots;
-        roundSkip = new RoundSkip(Logger, () => OptionHints.ActionMenuOpen());
+        roundSkip = new RoundSkip(Logger, () => OptionHints.ActionMenuOpen(), name => OptionHints.ScriptText(name));
         unlimited = new RoundUnlimited(Logger, () => roundSkip.Button);
         // Saving anywhere in stories (F71); on by default, with no settings row, only this entry to switch it off.
         var storySaves = Config.Bind("工具", "剧情中随时存档", true, "剧情中任何时候都能用游戏自带的存档；存下的是当前这段剧情开头的状态，读档从这段开头重播。");

@@ -55,6 +55,8 @@ public sealed class OptionPreview
     public bool Menu, Unknown;
     /// <summary>Shown for a locked row (F57): its requirement is named even when it cannot be checked.</summary>
     public bool Locked;
+    /// <summary>The option's branch sets the main mission (F80): choosing it moves the main story on.</summary>
+    public bool SetsMain;
     /// <summary>On the script level only: every option table the script offers, by 1-based row (F57).</summary>
     public List<Dictionary<int, OptionSlot>> Menus = new();
     public bool Empty => Effects.Count == 0 && Cases.Count == 0 && Pool.Length == 0 && Dice.Length == 0 && NextScript.Length == 0 && !Menu && !Unknown;
@@ -245,6 +247,8 @@ public static class LuaOptions
                 if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { if (p.NextScript.Length == 0) { p.NextScript = next; p.AfterScene = true; } }); Jump(next); }
                 i += 4; continue;
             }
+            if (Matches(tokens, i, "statmodifymanager", ".", "Mission", "(") && i + 4 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 4].Text == "Main")
+                Mark(p => p.SetsMain = true);
             if (Matches(tokens, i, "statmodifymanager", ".") && i + 3 < tokens.Count && tokens[i + 2].Type == T.Name && tokens[i + 3].Is("("))
             {
                 var args = new List<Token>(); int j = i + 4, depth = 0;
@@ -415,6 +419,19 @@ public static class LuaOptions
 
     private static readonly Regex PositionCall = new("checkpointmanager\\s*\\.\\s*Position\\s*\\(");
     // SetCurrentStoryScript: where the story goes on after a fight or another scene change (F55).
+    /// <summary>
+    /// Whether a free phase runs inside the story scene (F80: 破庙 on 云裳线, the opening sections, …): its entry, the
+    /// travel script, is the menu itself, or set the menu as the story script and changed to the story scene. Each
+    /// action there comes back to the menu, and a round change with no story due shows the menu again, not the map.
+    /// </summary>
+    public static bool StoryLoop(string travel, string menu, Func<string, string?> text)
+    {
+        if (travel.Length == 0 || menu.Length == 0) return false;
+        if (travel.Equals(menu, StringComparison.OrdinalIgnoreCase)) return true;
+        return text(travel) is string entry && StorySceneCall.IsMatch(entry)
+            && Regex.IsMatch(entry, "luamanager\\s*\\.\\s*SetCurrentStoryScript\\s*\\(\\s*\"" + Regex.Escape(menu) + "\"\\s*\\)", RegexOptions.IgnoreCase);
+    }
+    private static readonly Regex StorySceneCall = new("luamanager\\s*\\.\\s*ChangeScene\\s*\\(\\s*\"Story\"");
     private static readonly Regex NextScriptCall = new("luamanager\\s*\\.\\s*(?:SetNextScript|SetCurrentStoryScript)\\s*\\(\\s*\"([^\"]+)\"");
     /// <summary>
     /// What an event's result script can do to story flags (see <see cref="FlagChanges"/>). Bounded: at most
