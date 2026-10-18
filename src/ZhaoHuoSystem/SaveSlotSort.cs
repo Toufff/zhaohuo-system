@@ -17,7 +17,9 @@ namespace ZhaoHuoSystem;
 /// </summary>
 internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
 {
-    public static readonly string[] Modes = { "排序：编号", "排序：最新在前", "排序：最早在前" };
+    public static readonly string[] Modes = { "排序：编号", "排序：最新在前", "排序：最早在前", "排序：收藏优先" };
+    /// <summary>Whether a slot number is starred (F76: 收藏优先 puts those first, each group by number).</summary>
+    public Func<string, bool>? IsFavourite;
     public int LoadMode, SaveMode;
     /// <summary>(save page?, new mode) after the player steps a page's order.</summary>
     public Action<bool, int>? Changed;
@@ -43,6 +45,7 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
         {
             1 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenByDescending(Saved).ThenBy(Number).ToList(),
             2 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(Saved).ThenBy(Number).ToList(),
+            3 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(slot => IsFavourite?.Invoke(R.Field<string>(slot, "_slot", "")) == true ? 0 : 1).ThenBy(Number).ToList(),
             _ => list.OrderBy(Number).ToList()
         };
         if (ordered.SequenceEqual(list)) return;
@@ -71,6 +74,13 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
         if (heading == null) { log.LogWarning("SAVE_SORT no heading on " + panel.GetType().Name); return; }
         var button = InlineButton.Create("ZhaoHuo.SaveSort", heading.transform, () => Step(panel), out var label);
         entries.Add(new Entry { Panel = panel, Heading = heading, Button = button, Label = label });
+    }
+
+    /// <summary>A star changed: pages sorted with 收藏优先 put the slots in order again.</summary>
+    public void StarsChanged()
+    {
+        foreach (var entry in entries)
+            if (entry.Panel != null && entry.Panel.isActiveAndEnabled && ModeOf(entry.Panel) == 3) Refreshed(entry.Panel);
     }
 
     private void Step(MonoBehaviour panel)

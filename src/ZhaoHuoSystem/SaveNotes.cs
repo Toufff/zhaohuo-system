@@ -236,9 +236,13 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     {
         string key = KeyOf(row);
         bool favourite = !store.Favourite(key);
-        try { store.SetFavourite(key, favourite); log.LogInfo($"SAVE_NOTE star slot={R.Field<string>(row.Slot, "_slot", "")} on={favourite}"); }
+        try { store.SetFavourite(key, favourite); log.LogInfo($"SAVE_NOTE star slot={R.Field<string>(row.Slot, "_slot", "")} on={favourite}"); StarChanged?.Invoke(); }
         catch (Exception ex) { log.LogWarning("SAVE_NOTE " + ex.GetBaseException().Message); }
     }
+    /// <summary>After a star is set or taken away.</summary>
+    public Action? StarChanged;
+    /// <summary>Whether this account's slot is starred.</summary>
+    public bool IsFavourite(string slot) => store.Favourite(SaveNoteStore.Key(Account(), slot));
 
     private void Open(Row row)
     {

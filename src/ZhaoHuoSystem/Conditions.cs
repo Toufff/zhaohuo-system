@@ -19,6 +19,8 @@ internal static class Conditions
         public string TimeText = "";
         // Constants and fixed dates show only themselves; nested conditions show only their expression.
         public bool Literal, Nested;
+        /// <summary>The values a sum adds up (F77: 一键设置 puts the gap on one of them).</summary>
+        public List<Variable>? Parts;
         public string Operand() => NativeUiState.ConditionOperand(Literal && TimeText.Length > 0 ? TimeText : Text,
             Nested ? null : !Known ? "" : TimeText.Length > 0 ? TimeText : (Value * Sign).ToString(CultureInfo.InvariantCulture), Literal);
     }
@@ -65,7 +67,7 @@ internal static class Conditions
         var op = R.RequiredField<StatGroupType>(group, "_groupType").ToString();
         if (op != "Sum" && op != "Max" && op != "Min" && op != "Multiply") throw new InvalidOperationException("未核验的数值组运算 " + op);
         var total = op switch { "Max" => values.Max(x => x.Value), "Min" => values.Min(x => x.Value), "Multiply" => values.Aggregate(1, (a, b) => unchecked(a * b.Value)), _ => values.Sum(x => x.Value) };
-        return new() { Text = "(" + string.Join(op == "Sum" ? " + " : op == "Multiply" ? " × " : ", ", values.Select(x => x.Text)) + ")", Value = total, Known = values.All(x => x.Known) };
+        return new() { Text = "(" + string.Join(op == "Sum" ? " + " : op == "Multiply" ? " × " : ", ", values.Select(x => x.Text)) + ")", Value = total, Known = values.All(x => x.Known), Parts = op == "Sum" ? values : null };
     }
     private static Variable Reference(object reference, int depth)
     {
@@ -152,8 +154,9 @@ internal static class Conditions
     }
     /// <summary>
     /// The writes that make this condition hold (F74): each unmet "value op constant" part sets that value to the nearest
-    /// one that passes. An AND needs every part, an OR (and a condition list) the part with the fewest writes. Null when
-    /// a part cannot be met by writing one value (time, random, nested conditions, sums of values); empty when it holds.
+    /// one that passes; a sum of values takes the gap on one of them. An AND needs every part, an OR (and a condition
+    /// list) the part with the fewest writes. Null when a part cannot be met by writing one value (time, random, nested
+    /// conditions, max/min of values); empty when it holds.
     /// </summary>
     internal static List<KeyValuePair<string, int>>? Satisfy(object? condition, int depth = 0)
     {
@@ -183,11 +186,26 @@ internal static class Conditions
         var op = R.RequiredField<StatCompareType>(item, "_compareOp");
         if (!left.Known || !right.Known) return null;
         if (GameStatUtils.StatCompare(left.Value, right.Value, op)) return new();
-        bool Field(Variable v) => v.FieldId.Length > 0 && v.Sign == 1 && !v.Nested && v.TimeText.Length == 0;
         bool Constant(Variable v) => v.Literal && v.FieldId.Length == 0 && v.TimeText.Length == 0;
-        if (Field(left) && Constant(right) && ValueSemantics.Suggested(right.Value, Symbol(op)) is int target) return new() { new(left.FieldId, target) };
-        if (Field(right) && Constant(left) && ValueSemantics.Suggested(left.Value, LuaOptions.Mirror(Symbol(op))) is int mirrored) return new() { new(right.FieldId, mirrored) };
+        if (Constant(right) && ValueSemantics.Suggested(right.Value, Symbol(op)) is int target) return Field(left) ? new() { new(left.FieldId, target) } : Share(left, target);
+        if (Constant(left) && ValueSemantics.Suggested(left.Value, LuaOptions.Mirror(Symbol(op))) is int mirrored) return Field(right) ? new() { new(right.FieldId, mirrored) } : Share(right, mirrored);
         return null;
+    }
+    private static bool Field(Variable v) => v.FieldId.Length > 0 && v.Sign == 1 && !v.Nested && v.TimeText.Length == 0;
+    /// <summary>
+    /// A sum short of its target (F77, e.g. the 六道 counters 天道 + 饿鬼道 + … > 1): the whole gap goes on one value
+    /// in it; going up, the first still at 0 (as play would add a new one), else the first; coming down, the largest,
+    /// never below 0.
+    /// </summary>
+    private static List<KeyValuePair<string, int>>? Share(Variable sum, int target)
+    {
+        var fields = sum.Parts?.Where(Field).ToList();
+        if (fields == null || fields.Count == 0) return null;
+        long gap = (long)target - sum.Value;
+        var part = gap > 0 ? fields.FirstOrDefault(x => x.Value == 0) ?? fields[0] : fields.OrderByDescending(x => x.Value).First();
+        long value = part.Value + gap;
+        if (value > int.MaxValue || gap < 0 && value < 0) return null;
+        return new() { new(part.FieldId, (int)value) };
     }
     internal static string TimeName(GameTime time) => L.Format("{0}年{1}月{2}", time.Year, time.Month, L.GameText(time.StageText, time.Stage.ToString()));
     private static string AssetName(object? asset, string type) => asset switch

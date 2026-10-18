@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.31")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.32")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -114,8 +114,8 @@ public sealed class Plugin : BaseUnityPlugin
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
-        var saveSort = Config.Bind("界面", "存档排序", 0, "存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前；记住上次的选择。");
-        var loadSort = Config.Bind("界面", "读档排序", saveSort.Value, "读档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前；记住上次的选择。");
+        var saveSort = Config.Bind("界面", "存档排序", 0, "存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前，3 收藏优先；记住上次的选择。");
+        var loadSort = Config.Bind("界面", "读档排序", saveSort.Value, "读档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前，3 收藏优先；记住上次的选择。");
         SaveSort.SaveMode = Mathf.Clamp(saveSort.Value, 0, SaveSlotSort.Modes.Length - 1);
         SaveSort.LoadMode = Mathf.Clamp(loadSort.Value, 0, SaveSlotSort.Modes.Length - 1);
         SaveSort.Changed = (save, mode) => { if (save) saveSort.Value = mode; else loadSort.Value = mode; };
@@ -126,6 +126,8 @@ public sealed class Plugin : BaseUnityPlugin
         try { notes = new SaveNoteStore(Path.Combine(diagnostics, "save-notes.txt")); }
         catch (Exception ex) { notes = new SaveNoteStore(null); Logger.LogWarning("SAVE_NOTE not loaded, changes this session are not kept: " + ex.GetBaseException().Message); }
         SaveNotes = new SaveNotes(Logger, notes);
+        SaveSort.IsFavourite = slot => SaveNotes.IsFavourite(slot);
+        SaveNotes.StarChanged = () => SaveSort.StarsChanged();
         // After an overwrite the player allowed, an open save page reads its slots again.
         SaveNotes.Overwritten = () =>
         {
