@@ -41,8 +41,48 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     private float styleScale = -1;
     private const string DraftControl = "zh.note.draft";
 
-    /// <summary>The note editor is open: it takes the whole screen's pointer and the keyboard until it closes.</summary>
-    public bool Editing => editing != null;
+    /// <summary>The note editor or the overwrite question is open: it takes the whole screen's pointer and the keyboard.</summary>
+    public bool Editing => editing != null || overwrite != null;
+    // A favourite's overwrite waits for the player's answer (F73); the slot the answer allowed, while it is written.
+    private string? overwrite, allowed;
+    private string overwriteText = "";
+    /// <summary>After an allowed overwrite: the open save page shows the new save.</summary>
+    public Action? Overwritten;
+
+    /// <summary>
+    /// Before the game writes a save to this slot: a starred slot that already holds a save is held back and the
+    /// player is asked once more (F73), whichever way the save came (the save page, the story menu, the map). True
+    /// while held: nothing is written unless the answer is 覆盖, which writes it then.
+    /// </summary>
+    public bool HoldOverwrite(string slot)
+    {
+        try
+        {
+            if (slot == allowed) return false;
+            string key = SaveNoteStore.Key(Account(), slot);
+            if (!store.Favourite(key) || SaveSystem.Instance == null || SaveSystem.Instance.GetSaveData(slot) == null) return false;
+            overwrite = slot;
+            string note = store.Note(key);
+            overwriteText = L.Format("{0} 是收藏的存档", SlotName(slot)) + (note.Length > 0 ? L.Format("（{0}）", note) : "") + L.Text("，覆盖后原来的进度就没有了。");
+            log.LogInfo("SAVE_NOTE overwrite asked slot=" + slot);
+            return true;
+        }
+        catch (Exception ex) { log.LogWarning("SAVE_NOTE overwrite " + ex.GetBaseException().Message); return false; }
+    }
+    private static string SlotName(string slot)
+    {
+        string format = L.GameText("System/SaveSlotText", "");
+        return format.Contains("{0}") ? string.Format(format, slot) : slot;
+    }
+    private void AnswerOverwrite(bool yes)
+    {
+        string? slot = overwrite; overwrite = null;
+        if (!yes || slot == null) { log.LogInfo("SAVE_NOTE overwrite cancelled slot=" + slot); return; }
+        try { allowed = slot; SaveSystem.Instance.SaveGameData(slot); log.LogInfo("SAVE_NOTE overwrite done slot=" + slot); }
+        catch (Exception ex) { log.LogWarning("SAVE_NOTE overwrite " + ex.GetBaseException().Message); }
+        finally { allowed = null; }
+        Overwritten?.Invoke();
+    }
 
     /// <summary>After a page refreshed its slots from disk.</summary>
     public void Refreshed(MonoBehaviour panel)
@@ -208,8 +248,8 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         log.LogInfo("SAVE_NOTE edit slot=" + editingSlot);
     }
 
-    /// <summary>Also on a scene change, outside OnGUI, so focus is left to the next draw.</summary>
-    public void Close() { editing = null; draft = ""; }
+    /// <summary>Also on a scene change, outside OnGUI, so focus is left to the next draw. A held overwrite is dropped.</summary>
+    public void Close() { editing = null; draft = ""; overwrite = null; }
 
     private void Commit()
     {
@@ -226,6 +266,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     /// </summary>
     public void Draw()
     {
+        if (overwrite != null) { DrawOverwrite(); return; }
         if (editing == null) return;
         EnsureStyles();
         float k = UiScale.Current, width = Mathf.Min(520 * k, Screen.width - 16), height = 176 * k;
@@ -246,6 +287,27 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         float bw = 96 * k, bh = 32 * k, by = box.yMax - pad - bh;
         if (GUI.Button(new Rect(box.xMax - pad - bw, by, bw, bh), L.Text("保存"), accent)) { Finish(true); return; }
         if (GUI.Button(new Rect(box.xMax - pad - bw * 2 - 10 * k, by, bw, bh), L.Text("取消"), plain)) { Finish(false); return; }
+        if (e.isMouse || e.type == EventType.ScrollWheel) e.Use();
+    }
+    /// <summary>The overwrite question, laid out like the editor: 覆盖 writes the held save, 取消 (or Esc) drops it.</summary>
+    private void DrawOverwrite()
+    {
+        EnsureStyles();
+        float k = UiScale.Current, width = Mathf.Min(520 * k, Screen.width - 16), pad = 16 * k, inner = width - pad * 2;
+        float textHeight = Mathf.Max(24 * k, hint!.CalcHeight(new GUIContent(overwriteText), inner)), height = pad * 2 + 34 * k + textHeight + 50 * k;
+        var e = Event.current;
+        var box = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
+        if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape) { e.Use(); AnswerOverwrite(false); return; }
+        if (e.type == EventType.Repaint) { GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), dim!); GUI.DrawTexture(box, background!); }
+        float x = box.x + pad, y = box.y + pad;
+        GUI.Label(new Rect(x, y, inner, 26 * k), L.Text("覆盖收藏的存档？"), title);
+        y += 34 * k;
+        var wrap = new GUIStyle(hint) { wordWrap = true, fontSize = title!.fontSize - Mathf.RoundToInt(2 * k) };
+        wrap.normal.textColor = Palette.Text;
+        GUI.Label(new Rect(x, y, inner, textHeight), overwriteText, wrap);
+        float bw = 96 * k, bh = 32 * k, by = box.yMax - pad - bh;
+        if (GUI.Button(new Rect(box.xMax - pad - bw, by, bw, bh), L.Text("覆盖"), accent)) { AnswerOverwrite(true); return; }
+        if (GUI.Button(new Rect(box.xMax - pad - bw * 2 - 10 * k, by, bw, bh), L.Text("取消"), plain)) { AnswerOverwrite(false); return; }
         if (e.isMouse || e.type == EventType.ScrollWheel) e.Use();
     }
     private void Finish(bool save)

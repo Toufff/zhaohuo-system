@@ -40,7 +40,7 @@ public sealed class FlagChanges
 }
 
 /// <summary>One row of an option table: its key, the condition that unlocks it, and the text shown while locked ("x", a key).</summary>
-public sealed class OptionSlot { public string Key = "", Requirement = "", Locked = ""; }
+public sealed class OptionSlot { public string Key = "", Requirement = "", Locked = "", Text = ""; }
 
 public sealed class OptionPreview
 {
@@ -76,7 +76,7 @@ public static class LuaOptions
         public Token(T type, string text) { Type = type; Text = text; }
         public bool Is(string text) => (Type == T.Name || Type == T.Symbol) && Text == text;
     }
-    private sealed class Entry { public string Key = "", Requirement = "", Locked = ""; }
+    private sealed class Entry { public string Key = "", Requirement = "", Locked = "", Text = ""; }
     private sealed class Frame
     {
         public string Kind = "other"; // choice, switch, other
@@ -198,12 +198,12 @@ public static class LuaOptions
                 var entry = new Entry(); int j = i + 5;
                 if (tokens[j].Type == T.Name && j + 2 < tokens.Count && tokens[j + 1].Is("and") && tokens[j + 2].Type == T.String)
                 {
-                    entry.Requirement = conditions.TryGetValue(tokens[j].Text, out var name) ? name : ""; entry.Key = OptionKey(tokens[j + 2].Text); j += 3;
+                    entry.Requirement = conditions.TryGetValue(tokens[j].Text, out var name) ? name : ""; entry.Key = OptionKey(tokens[j + 2].Text); entry.Text = tokens[j + 2].Text; j += 3;
                     // 「V and "KEY" or "~LOCKED"」: offered locked, with LOCKED's text (「解锁条件：？？？」), while V fails.
                     if (j + 1 < tokens.Count && tokens[j].Is("or") && tokens[j + 1].Type == T.String && tokens[j + 1].Text.StartsWith("~", StringComparison.Ordinal))
                     { entry.Locked = tokens[j + 1].Text.Substring(1); j += 2; }
                 }
-                else if (tokens[j].Type == T.String) { entry.Key = OptionKey(tokens[j].Text); j++; }
+                else if (tokens[j].Type == T.String) { entry.Key = OptionKey(tokens[j].Text); entry.Text = tokens[j].Text; j++; }
                 tables[tokens[i].Text][index] = entry; i = j; continue;
             }
             // V = choose(T) | checkpointmanager.Switch/Condition/Position("x") | dicemenudialog.ResultSelection
@@ -213,7 +213,7 @@ public static class LuaOptions
                 if (Matches(tokens, j, "choose", "(") && j + 3 < tokens.Count && tokens[j + 2].Type == T.Name && tokens[j + 3].Is(")"))
                 {
                     choices[var] = tables.TryGetValue(tokens[j + 2].Text, out var options) ? new Dictionary<int, Entry>(options) : new Dictionary<int, Entry>();
-                    result[ScriptLevel].Menus.Add(choices[var].ToDictionary(pair => pair.Key, pair => new OptionSlot { Key = pair.Value.Key, Requirement = pair.Value.Requirement, Locked = pair.Value.Locked }));
+                    result[ScriptLevel].Menus.Add(choices[var].ToDictionary(pair => pair.Key, pair => new OptionSlot { Key = pair.Value.Key, Requirement = pair.Value.Requirement, Locked = pair.Value.Locked, Text = pair.Value.Text }));
                     Mark(p => p.Menu = true); i = j + 4; continue;
                 }
                 if (Matches(tokens, j, "dicemenudialog", ".", "ResultSelection"))

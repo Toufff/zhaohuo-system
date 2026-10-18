@@ -216,6 +216,7 @@ internal static partial class Program
             var menus = map[LuaOptions.ScriptLevel].Menus;
             Equal(2, menus.Count);
             Equal("x", menus[0][2].Locked); Equal("Ch_1", menus[0][2].Requirement); Equal("O_C_Locked", menus[0][3].Locked); Equal("", menus[0][1].Locked);
+            Equal("O_B", menus[0][2].Text); Equal("O_A", menus[0][1].Text); // what the row shows once opened (F74)
             var scripts = new[] { (IEnumerable<Dictionary<int, OptionSlot>>)menus };
             // Two tables lock row 2 behind 「x」: the row above tells them apart.
             Equal("O_B", LuaOptions.LockedSlot(scripts, 2, "x", new Dictionary<int, string> { [1] = "O_A" })?.Key);

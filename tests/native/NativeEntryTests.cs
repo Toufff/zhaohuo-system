@@ -103,6 +103,29 @@ internal static partial class Program
             Has(mortalCore, "Mortal.Core", "GameSave", "TimeTick");
             // 天命点 after a 收集 unlock: the panel that shows the total and its own recount.
             Signature(mortalCore, "Mortal.Core", "FateAwardPanel", "UpdateData");
+            // 跳过本旬 one point at a time: the check a story's return to the map runs, and the story scene steps around it.
+            Signature(mortalCore, "Mortal.Core", "MissionManagerData", "UpdateCheckMissions");
+            Signature(mortalCore, "Mortal.Core", "MissionManagerData", "HasAnyMissionTrigger");
+            Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryMainUI", "Hide");
+            Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryManager", "SetHotKey", "active");
+            // 剧情中随时存档: the save built and written, the load, the script a save starts from, and the story's own save button.
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "CreateSaveData");
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "LoadGameData");
+            Has(mortalCore, "Mortal.Core", "SaveSystem", "CurrentSlot");
+            // 覆盖收藏的存档 asks once more: an existing save in the slot, and the save page's own refresh afterwards.
+            Require(Members(mortalCore, "Mortal.Core", "SaveSystem").Methods.TryGetValue("GetSaveData", out var readOverloads) && readOverloads.Exists(p => p.Length == 1 && p[0] == "slot"), "SaveSystem.GetSaveData(slot)");
+            Signature(mortalCore, "Mortal.Core", "SaveGamePanel", "UpdateSlot");
+            // 一键设置 on a locked row: the row's own text source and its redraw.
+            Has(mortalCore, "Mortal.Core", "NormalOptionButton", "_source");
+            Signature(mortalCore, "Mortal.Core", "IMenuDialogOption", "UpdateContent");
+            Require(Members(mortalCore, "Mortal.Core", "SaveSystem").Methods.TryGetValue("SaveGameData", out var saveOverloads) && saveOverloads.Exists(p => p.Length == 1 && p[0] == "slot"), "SaveSystem.SaveGameData(slot)");
+            Has(mortalCore, "Mortal.Core", "GameSave", "StartStoryScript");
+            Has(mortalCore, "Mortal.Core", "PlayerStatManagerData", "CurrentStoryScript");
+            Has(mortalCore, "Mortal.Core", "MenuPanel", "_saveButton");
+            string storyDll = Path.Combine(managed, "Mortal.Story.dll");
+            Has(storyDll, "Mortal.Story", "StoryManager", "_menuPanelController");
+            Signature(storyDll, "Mortal.Story", "StoryManager", "ToggleSaveButton", "active");
+            Signature(storyDll, "Mortal.Story", "LuaManager", "ToggleSaveButton", "active");
             // 本旬行动点无限: every spend of the action points, the round's max and the round itself.
             Signature(mortalCore, "Mortal.Core", "GameStat", "AddValue", "value", "totalAdd");
             Has(mortalCore, "Mortal.Core", "GameStat", "StatType");

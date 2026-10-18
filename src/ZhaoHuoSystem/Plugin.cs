@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.30")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.31")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -42,6 +42,7 @@ public sealed class Plugin : BaseUnityPlugin
     private CombatResult combatResult = null!;
     private DuelSpeedButtons speedButtons = null!;
     private RoundUnlimited unlimited = null!;
+    internal SegmentSaves Segments = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
     private NativeDicePresenter dicePresenter = null!;
@@ -78,7 +79,7 @@ public sealed class Plugin : BaseUnityPlugin
         var managed = Path.Combine(Paths.GameRootPath, "Mortal_Data", "Managed");
         var expected = new Dictionary<string, string>
         {
-            ["Mortal.Core.dll"] = "C0CF84F41F110DD475D62AFFB58681BA4A1E5B3DEEC7698B8349D85876EA8A9C",
+            ["Mortal.Core.dll"] = "0C20EE36782666F3AB70EC8889068BDF230ACC2D630446EA1DB551836866E8FA",
             ["Mortal.Story.dll"] = "EE9139A5E4631DC275B80CC3FF6A81A4959F3C908A3FE751E778A42350372249",
             ["Mortal.Free.dll"] = "0ABC19100F216515BCA88975E52051AFCE11955A8439FFACF4FF02118FD27920"
             ,["Fungus.dll"] = "BCB6D47EB31DEDC5D23D0DA281E0835AF0F939F30B64A39AAE7D5F6DAB96CAD2"
@@ -107,6 +108,9 @@ public sealed class Plugin : BaseUnityPlugin
         OptionHints.ReadyOneShots = Adapter.ReadyOneShots;
         roundSkip = new RoundSkip(Logger, () => OptionHints.ActionMenuOpen());
         unlimited = new RoundUnlimited(Logger, () => roundSkip.Button);
+        // Saving anywhere in stories (F71); on by default, with no settings row, only this entry to switch it off.
+        var storySaves = Config.Bind("工具", "剧情中随时存档", true, "剧情中任何时候都能用游戏自带的存档；存下的是当前这段剧情开头的状态，读档从这段开头重播。");
+        Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt")) { Enabled = storySaves.Value };
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
@@ -122,7 +126,15 @@ public sealed class Plugin : BaseUnityPlugin
         try { notes = new SaveNoteStore(Path.Combine(diagnostics, "save-notes.txt")); }
         catch (Exception ex) { notes = new SaveNoteStore(null); Logger.LogWarning("SAVE_NOTE not loaded, changes this session are not kept: " + ex.GetBaseException().Message); }
         SaveNotes = new SaveNotes(Logger, notes);
+        // After an overwrite the player allowed, an open save page reads its slots again.
+        SaveNotes.Overwritten = () =>
+        {
+            foreach (var page in Resources.FindObjectsOfTypeAll<SaveGamePanel>())
+                if (page != null && page.isActiveAndEnabled) AccessTools.Method(typeof(SaveGamePanel), "UpdateSlot")?.Invoke(page, null);
+        };
         Adapter.EventConsequences = OptionHints.EventConsequences;
+        OptionHints.SetValue = Adapter.SetValue;
+        OptionHints.CanWrite = id => Adapter.Snapshot.Values.Exists(value => value.Id == id && value.Writable);
         Adapter.ScriptText = OptionHints.ScriptText; Adapter.EventFlagChanges = OptionHints.EventFlagChanges;
         var panelKey = Config.Bind("界面", "面板快捷键", "F8", "打开/收起面板的按键（UnityEngine.KeyCode 名称，None 为不绑定）。");
         var hideKey = Config.Bind("界面", "隐藏快捷键", "None", "切换「隐藏全部悬浮窗」的按键；默认不绑定。");
@@ -212,7 +224,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void SceneChanged(Scene before, Scene after)
     {
         Diagnostics.Scene = after.name; Logger.LogInfo("SCENE " + before.name + " -> " + after.name);
-        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear(); SaveNotes?.Close();
+        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear(); SaveNotes?.Close(); Segments?.SceneChanged();
         if (after.name == "Title") RoundUnlimited.Reset();
         Adapter.Invalidate("场景已变化，旧指定已清除", true, after.name == "Free" || after.name == "Title");
     }
@@ -234,6 +246,7 @@ public sealed class Plugin : BaseUnityPlugin
             try { pinball.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PINBALL_SCORE " + ex.GetBaseException().Message); }
             try { SaveSort.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_SORT " + ex.GetBaseException().Message); }
             try { SaveNotes.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("SAVE_NOTE " + ex.GetBaseException().Message); }
+            try { Segments.Update(); } catch (Exception ex) { Logger.LogWarning("SEGMENT_SAVE " + ex.GetBaseException().Message); }
             try { speedButtons.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("DUEL_SPEED " + ex.GetBaseException().Message); }
             wasVisible = window.Visible; inputGuard.Tick();
             if (Time.unscaledTime >= nextRefresh)
@@ -510,6 +523,7 @@ internal static class LuaContextPatch
         if (plugin == null) return;
         // Option consequences are read from the original text, before instrumentation.
         plugin.OptionHints.Load(luaString, friendlyName);
+        plugin.Segments?.ScriptLoaded(friendlyName);
         var token = plugin.Adapter.LuaLoaded(luaString, friendlyName);
         var instrumented = LuaGate.Instrument(luaString, token);
         if (instrumented != luaString) __state = token;
@@ -670,6 +684,33 @@ internal static class SaveSlotCountPatch
     [HarmonyPrefix, HarmonyPatch(typeof(LoadGamePanel), "Awake")] private static void Load(LoadGamePanel __instance) => Plugin.Instance?.ExpandSaveSlots(__instance);
     [HarmonyPrefix, HarmonyPatch(typeof(SaveGamePanel), "Awake")] private static void Save(SaveGamePanel __instance) => Plugin.Instance?.ExpandSaveSlots(__instance);
 }
+// 剧情中随时存档 (F71): a story save made away from the game's own save points writes the copy kept at this script's start.
+[HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.SaveGameData), new[] { typeof(string) })]
+internal static class SegmentSaveWritePatch
+{
+    // Held for the favourite question (F73): nothing is written now, so nothing is noted either.
+    [ThreadStatic] private static bool held;
+    private static bool Prefix(string slot)
+    {
+        held = Plugin.Instance?.SaveNotes?.HoldOverwrite(slot) == true;
+        if (held) return false;
+        Plugin.Instance?.Segments?.BeforeSave(); return true;
+    }
+    private static void Postfix(string slot) { if (held) { held = false; return; } Plugin.Instance?.Segments?.AfterSave(slot); }
+}
+[HarmonyPatch(typeof(SaveSystem), "CreateSaveData")]
+internal static class SegmentSaveCreatePatch
+{
+    private static bool Prefix(ref GameSave __result)
+    {
+        if (Plugin.Instance?.Segments?.Substitute() is not GameSave copy) return true;
+        __result = copy; return false;
+    }
+}
+[HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.LoadGameData))]
+internal static class SegmentSaveLoadPatch { private static void Postfix() => Plugin.Instance?.Segments?.Loaded(); }
+[HarmonyPatch(typeof(LuaManager), nameof(LuaManager.ToggleSaveButton))]
+internal static class SegmentSaveNativePatch { private static void Postfix(int active) => Plugin.Instance?.Segments?.NativeToggle(active == 1); }
 // A save deleted in game takes its star and note with it.
 [HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.DeleteSaveData))]
 internal static class SaveNoteDeletePatch { private static void Postfix(string slot) => Plugin.Instance?.SaveNotes.Deleted(slot); }

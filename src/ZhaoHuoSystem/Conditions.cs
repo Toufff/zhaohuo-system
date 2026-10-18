@@ -150,6 +150,45 @@ internal static class Conditions
             _ => (null, null)
         };
     }
+    /// <summary>
+    /// The writes that make this condition hold (F74): each unmet "value op constant" part sets that value to the nearest
+    /// one that passes. An AND needs every part, an OR (and a condition list) the part with the fewest writes. Null when
+    /// a part cannot be met by writing one value (time, random, nested conditions, sums of values); empty when it holds.
+    /// </summary>
+    internal static List<KeyValuePair<string, int>>? Satisfy(object? condition, int depth = 0)
+    {
+        try
+        {
+            if (condition == null || depth > 12) return null;
+            var parts = R.Items(R.RequiredField<System.Collections.IEnumerable>(condition, "_items")).Select(item => item is StatCompareItem ? SatisfyCompare(item, depth + 1) : Satisfy(item, depth + 1)).ToList();
+            if (parts.Count == 0) return null;
+            if (condition is ConditionResultData || R.Field(condition, "_logicOp") is LogicOperatorType.OR)
+                return parts.Where(part => part != null).OrderBy(part => part!.Count).FirstOrDefault();
+            if (parts.Exists(part => part == null)) return null;
+            var writes = new List<KeyValuePair<string, int>>();
+            foreach (var part in parts)
+                foreach (var write in part!)
+                {
+                    int same = writes.FindIndex(x => x.Key == write.Key);
+                    if (same < 0) writes.Add(write);
+                    else if (writes[same].Value != write.Value) return null; // two parts want one value differently
+                }
+            return writes;
+        }
+        catch { return null; }
+    }
+    private static List<KeyValuePair<string, int>>? SatisfyCompare(object item, int depth)
+    {
+        var left = Group(R.Field(item, "_value1"), depth); var right = Group(R.Field(item, "_value2"), depth);
+        var op = R.RequiredField<StatCompareType>(item, "_compareOp");
+        if (!left.Known || !right.Known) return null;
+        if (GameStatUtils.StatCompare(left.Value, right.Value, op)) return new();
+        bool Field(Variable v) => v.FieldId.Length > 0 && v.Sign == 1 && !v.Nested && v.TimeText.Length == 0;
+        bool Constant(Variable v) => v.Literal && v.FieldId.Length == 0 && v.TimeText.Length == 0;
+        if (Field(left) && Constant(right) && ValueSemantics.Suggested(right.Value, Symbol(op)) is int target) return new() { new(left.FieldId, target) };
+        if (Field(right) && Constant(left) && ValueSemantics.Suggested(left.Value, LuaOptions.Mirror(Symbol(op))) is int mirrored) return new() { new(right.FieldId, mirrored) };
+        return null;
+    }
     internal static string TimeName(GameTime time) => L.Format("{0}年{1}月{2}", time.Year, time.Month, L.GameText(time.StageText, time.Stage.ToString()));
     private static string AssetName(object? asset, string type) => asset switch
     {

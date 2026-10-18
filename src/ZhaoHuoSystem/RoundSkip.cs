@@ -11,8 +11,10 @@ namespace ZhaoHuoSystem;
 
 /// <summary>
 /// 「跳过本旬」 right of the date, on the free map and in the free phase's story menus (F60). The first click asks
-/// 「确定吗？」 for a few seconds; the second gives up the round's remaining actions and runs what the game does when a
-/// story returns to the map with none left: next round, shop and income, then any mission that is due. In the story
+/// 「确定吗？」 for a few seconds; the second gives up the round's remaining actions one at a time, checking missions
+/// after each exactly as the game does when a location's story returns to the map (F72): a story due at that point
+/// (main missions such as 4-3 唐门内战 need a set round with 2 or 1 actions left) plays there and the rest of the
+/// round is kept; with none due, the last one is the round change (next round, shop and income). In the story
 /// scene it shows only while a menu whose options spend action points waits (choosing where to go), never mid-story.
 /// Hidden while a main story waits at a location (the game allows only that), while the map is busy or a native panel
 /// is open, and with 「隐藏全部悬浮窗」.
@@ -92,31 +94,50 @@ internal sealed class RoundSkip(ManualLogSource log, Func<bool> actionMenu) : ID
     private void SkipStory()
     {
         var stats = PlayerStatManagerData.Instance;
-        log.LogInfo($"ROUND_SKIP story left={stats.CurrentActionCount} time={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage}");
-        stats.Stats.Set(GameStatType.行動次數, 0);
         var menu = Fungus.MenuDialog.ActiveMenuDialog;
         if (menu != null) menu.Clear();
-        LuaManager.Instance.ChangeScene("Free", "", "");
-        log.LogInfo($"ROUND_SKIP story done time={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage} actions={stats.CurrentActionCount}");
+        // LuaManager.ChangeScene("Free") runs the mission check itself; here each step has run it once already, and a
+        // second run would advance a main mission twice. So its other steps, then the scene the steps decided.
+        SaveSystem.Instance.SaveUniverseData();
+        bool story = SpendStepwise(stats, "story");
+        StoryMainUI.Instance.Hide();
+        StoryManager.Instance.SetHotKey(active: false);
+        if (story) Mortal.Core.SceneController.Instance.LoadStory(); else Mortal.Core.SceneController.Instance.LoadFree();
+    }
+
+    /// <summary>
+    /// One action point at a time, each followed by what LuaManager.ChangeScene("Free") checks after a location's story:
+    /// UpdateCheckMissions (at 0 it is the round change), then HasAnyMissionTrigger. Each check runs once per step: it
+    /// moves a main mission on when it starts. Stops at the first story due; true when one is.
+    /// </summary>
+    private bool SpendStepwise(PlayerStatManagerData stats, string where)
+    {
+        int left = stats.CurrentActionCount;
+        string start = $"{stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage}";
+        var missions = MissionManagerData.Instance;
+        for (int value = left - 1; value >= 0; value--)
+        {
+            // Set, not spent: 「本旬行动点无限」 holds back spending, and the points still have to go down here.
+            stats.Stats.Set(GameStatType.行動次數, value);
+            missions.UpdateCheckMissions();
+            if (!missions.HasAnyMissionTrigger()) continue;
+            log.LogInfo($"ROUND_SKIP {where} left={left} time={start} stopped={value} story={stats.CurrentStoryScript}");
+            return true;
+        }
+        log.LogInfo($"ROUND_SKIP {where} left={left} time={start} done={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage} actions={stats.CurrentActionCount} next=Free");
+        return false;
     }
 
     private IEnumerator Skip(FreeManager free)
     {
         var stats = PlayerStatManagerData.Instance;
-        int left = stats.CurrentActionCount;
-        log.LogInfo($"ROUND_SKIP left={left} time={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage}");
-        // As a location action starts: the map stops taking input, then the points drain and the screen closes.
+        // As a location action starts: the map stops taking input, then the screen closes.
         free.SetHotKey(active: false); free.DisableButton(); free.SetProcessing();
-        yield return free.UpdateActionValue(-left);
-        if (stats.CurrentActionCount != 0) stats.Stats.Set(GameStatType.行動次數, 0);
-        yield return new WaitForSeconds(.5f);
+        yield return new WaitForSeconds(.3f);
         yield return free.TransitionScreen();
-        // What LuaManager.ChangeScene("Free") does when a story ends: with no actions left this is the round change.
+        // What LuaManager.ChangeScene("Free") does when a story ends, once per action point given up.
         SaveSystem.Instance.SaveUniverseData();
-        var missions = MissionManagerData.Instance;
-        missions.UpdateCheckMissions();
-        bool story = missions.HasAnyMissionTrigger();
-        log.LogInfo($"ROUND_SKIP done time={stats.GameTime.Year}/{stats.GameTime.Month}/{stats.GameTime.Stage} actions={stats.CurrentActionCount} next={(story ? "Story" : "Free")}");
+        bool story = SpendStepwise(stats, "map");
         if (story) Mortal.Core.SceneController.Instance.LoadStory(); else Mortal.Core.SceneController.Instance.LoadFree();
     }
 

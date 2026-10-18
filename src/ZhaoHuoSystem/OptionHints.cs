@@ -55,7 +55,8 @@ internal sealed class OptionHints : IDisposable
     {
         Forget(row);
         if (Suppressed || texts == null || texts.Length == 0) return;
-        var detail = Segments(source?.text) ?? LockedSegments(row, source?.text);
+        HideUnlock(row);
+        var detail = Segments(source?.text) ?? LockedSegments(row, source?.text, texts.FirstOrDefault(text => text != null && text.isActiveAndEnabled) ?? texts.FirstOrDefault(text => text != null));
         if (detail == null) return;
         var segments = Inline(detail);
         var own = new HashSet<Component>(texts.Where(text => text != null)); if (source != null) own.Add(source);
@@ -254,7 +255,7 @@ internal sealed class OptionHints : IDisposable
     /// A locked row (「解锁条件：？？？」, or a named lock like 「银两不足」): the condition that unlocks it, then what the
     /// option does once open (F57). Its place among the menu's buttons is its row in the script's option table.
     /// </summary>
-    private List<HintSegment>? LockedSegments(Component row, string? source)
+    private List<HintSegment>? LockedSegments(Component row, string? source, Text? line = null)
     {
         try
         {
@@ -275,9 +276,70 @@ internal sealed class OptionHints : IDisposable
             var locked = LuaOptions.Merge(open, new OptionPreview()); locked.Requirement = slot.Requirement; locked.Locked = true;
             var segments = LuaOptions.Describe(locked, EffectText, SwitchArm, Requirement, Format, Otherwise);
             if (segments.Count > 0 && logged.Add("locked:" + slot.Key)) log.LogInfo("OPTION_LOCKED " + slot.Key + " " + Tone.Plain(string.Join("；", segments.Select(segment => segment.Full))));
+            if (line != null) ShowUnlock(row, line, slot);
             return segments.Count == 0 ? null : segments;
         }
         catch (Exception ex) { log.LogWarning("OPTION_HINT locked " + ex.GetBaseException().Message); return null; }
+    }
+
+    // 「一键设置」 on locked rows (F74): writes values through the panel's own path, then opens the row in place.
+    public Func<string, string, OperationResult>? SetValue;
+    public Func<string, bool>? CanWrite;
+    private readonly Dictionary<Transform, (Button Button, Text Label)> unlocks = new();
+    private Font? unlockFont;
+    private void HideUnlock(Component row)
+    {
+        if (unlocks.TryGetValue(row.transform, out var shown) && shown.Button != null) shown.Button.gameObject.SetActive(false);
+    }
+    /// <summary>Beside a locked row whose unlock condition can be met by writing values the panel can write.</summary>
+    private void ShowUnlock(Component row, Text line, OptionSlot slot)
+    {
+        if (slot.Requirement.Length == 0 || slot.Text.Length == 0 || SetValue == null) return;
+        var writes = Conditions.Satisfy(FindCondition(slot.Requirement));
+        if (writes == null || CanWrite != null && writes.Exists(write => !CanWrite(write.Key))) return;
+        if (!unlocks.TryGetValue(row.transform, out var shown) || shown.Button == null)
+        {
+            var button = InlineButton.Create("ZhaoHuo.Unlock", line.transform, () => Unlock(row, slot), out var label);
+            unlocks[row.transform] = shown = (button, label);
+        }
+        else
+        {
+            shown.Button.onClick.RemoveAllListeners(); shown.Button.onClick.AddListener(() => Unlock(row, slot));
+            if (shown.Button.transform.parent != line.transform) shown.Button.transform.SetParent(line.transform, false);
+        }
+        if (unlockFont == null) unlockFont = Font.CreateDynamicFontFromOSFont(L.FontNames, 18);
+        shown.Button.gameObject.SetActive(true);
+        InlineButton.Place(shown.Button, shown.Label, line, unlockFont, L.Text("一键设置"), .6f);
+    }
+    /// <summary>
+    /// Writes what the condition needs, checks it now holds, then turns the row into the open option: the game's own
+    /// listener for this option is on the button already, so choosing it runs the option's own branch.
+    /// </summary>
+    private void Unlock(Component row, OptionSlot slot)
+    {
+        try
+        {
+            var condition = FindCondition(slot.Requirement);
+            var writes = Conditions.Satisfy(condition);
+            if (writes == null || SetValue == null) { log.LogWarning("OPTION_UNLOCK " + slot.Key + " cannot be met"); return; }
+            foreach (var write in writes)
+            {
+                var result = SetValue(write.Key, write.Value.ToString(CultureInfo.InvariantCulture));
+                if (!result.Success) { log.LogWarning($"OPTION_UNLOCK {slot.Key} {write.Key}={write.Value} refused: {result.Message}"); return; }
+            }
+            if (!Conditions.Read(condition).Satisfied) { log.LogWarning("OPTION_UNLOCK " + slot.Key + " still unmet"); return; }
+            if (row.GetComponent<Button>() is Button button) button.interactable = true;
+            if (R.Field<Text>(row, "_source") is Text source) source.text = slot.Text;
+            log.LogInfo($"OPTION_UNLOCK {slot.Key} writes={string.Join(",", writes.Select(write => write.Key + "=" + write.Value))}");
+            HideUnlock(row);
+            (row as IMenuDialogOption)?.UpdateContent();
+        }
+        catch (Exception ex) { log.LogWarning("OPTION_UNLOCK " + ex.GetBaseException().Message); }
+    }
+    private static object? FindCondition(string name)
+    {
+        var config = R.Field(CheckPointManager.Instance, "_condition");
+        return R.Items(R.Field(config, "_list")).FirstOrDefault(item => item is UnityEngine.Object asset && asset != null && asset.name == name);
     }
 
     /// <summary>Whether choosing this row spends action points (a free phase's 「where to go」 menu, F60).</summary>

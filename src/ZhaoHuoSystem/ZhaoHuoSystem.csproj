@@ -4,7 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>ZhaoHuoSystem</AssemblyName>
-    <Version>0.3.30</Version>
+    <Version>0.3.31</Version>
     <GameDir Condition="'$(GameDir)' == ''">F:\SteamLibrary\steamapps\common\LegendOfMortal</GameDir>
     <!-- BepInEx is referenced from the game's own installation; nothing is copied to the output. -->
     <LoaderDir Condition="'$(LoaderDir)' == ''">$(GameDir)</LoaderDir>
@@ -26,6 +26,7 @@
     <Reference Include="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
     <Reference Include="$(ManagedDir)\UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="$(ManagedDir)\UnityEngine.JSONSerializeModule.dll" Private="false" />
     <Reference Include="$(ManagedDir)\UnityEngine.InputLegacyModule.dll" Private="false" />
     <Reference Include="$(ManagedDir)\UnityEngine.TextRenderingModule.dll" Private="false" />
     <Reference Include="$(ManagedDir)\UnityEngine.UIModule.dll" Private="false" />
