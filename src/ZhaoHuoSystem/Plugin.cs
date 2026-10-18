@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.32")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.33")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -110,7 +110,7 @@ public sealed class Plugin : BaseUnityPlugin
         unlimited = new RoundUnlimited(Logger, () => roundSkip.Button);
         // Saving anywhere in stories (F71); on by default, with no settings row, only this entry to switch it off.
         var storySaves = Config.Bind("工具", "剧情中随时存档", true, "剧情中任何时候都能用游戏自带的存档；存下的是当前这段剧情开头的状态，读档从这段开头重播。");
-        Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt")) { Enabled = storySaves.Value };
+        Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt"), Path.Combine(diagnostics, "segment-save-music.txt")) { Enabled = storySaves.Value };
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
@@ -698,7 +698,12 @@ internal static class SegmentSaveWritePatch
         if (held) return false;
         Plugin.Instance?.Segments?.BeforeSave(); return true;
     }
-    private static void Postfix(string slot) { if (held) { held = false; return; } Plugin.Instance?.Segments?.AfterSave(slot); }
+    private static void Postfix(string slot)
+    {
+        if (held) { held = false; return; }
+        Plugin.Instance?.Segments?.AfterSave(slot);
+        Plugin.Instance?.SaveNotes?.Written(slot);
+    }
 }
 [HarmonyPatch(typeof(SaveSystem), "CreateSaveData")]
 internal static class SegmentSaveCreatePatch
@@ -713,6 +718,15 @@ internal static class SegmentSaveCreatePatch
 internal static class SegmentSaveLoadPatch { private static void Postfix() => Plugin.Instance?.Segments?.Loaded(); }
 [HarmonyPatch(typeof(LuaManager), nameof(LuaManager.ToggleSaveButton))]
 internal static class SegmentSaveNativePatch { private static void Postfix(int active) => Plugin.Instance?.Segments?.NativeToggle(active == 1); }
+// Whether the music and ambience can be heard, for the note a story save keeps of them (F78).
+[HarmonyPatch(typeof(SoundManager))]
+internal static class SegmentSaveMusicPatch
+{
+    [HarmonyPostfix, HarmonyPatch(nameof(SoundManager.FadeOutMusic))] private static void MusicOut(int value) => Plugin.Instance?.Segments?.MusicLevel(value);
+    [HarmonyPostfix, HarmonyPatch(nameof(SoundManager.FadeInMusic))] private static void MusicIn(int value) => Plugin.Instance?.Segments?.MusicLevel(value);
+    [HarmonyPostfix, HarmonyPatch(nameof(SoundManager.FadeOutEnvSound))] private static void EnvOut(int value) => Plugin.Instance?.Segments?.EnvLevel(value);
+    [HarmonyPostfix, HarmonyPatch(nameof(SoundManager.FadeInEnvSound))] private static void EnvIn(int value) => Plugin.Instance?.Segments?.EnvLevel(value);
+}
 // A save deleted in game takes its star and note with it.
 [HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.DeleteSaveData))]
 internal static class SaveNoteDeletePatch { private static void Postfix(string slot) => Plugin.Instance?.SaveNotes.Deleted(slot); }

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -23,9 +25,11 @@ namespace ZhaoHuoSystem;
 /// script turned saving on itself) keep the game's own save. Battles and the map are untouched.
 /// To check this in normal play, each such save also notes what it wrote (in the mod's own folder, never in a save);
 /// the first script after loading that save is compared with it and the result logged (SAVE_CHECK).
+/// A script often goes on with the music its parent put on, and a load stops all sound before replaying it: each such
+/// save also notes the music and ambience heard as its script started, and the load puts them back (F78).
 /// Off with the config entry 「工具/剧情中随时存档」.
 /// </summary>
-internal sealed class SegmentSaves(ManualLogSource log, string checkFile)
+internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string musicFile)
 {
     public bool Enabled = true;
     private static readonly MethodInfo? Create = AccessTools.Method(typeof(SaveSystem), "CreateSaveData");
@@ -33,6 +37,11 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile)
     private GameSave? snapshot;
     private string script = "";
     private bool nativeOpen, writing, justLoaded;
+    // Heard as this script started; a fade to 0 is heard as none.
+    private string music = "", env = "";
+    private bool musicSilent, envSilent;
+    public void MusicLevel(int value) => musicSilent = value <= 0;
+    public void EnvLevel(int value) => envSilent = value <= 0;
 
     /// <summary>Each story script as the game loads it, before any of it runs.</summary>
     public void ScriptLoaded(string? friendlyName)
@@ -52,7 +61,12 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile)
             if (Create.Invoke(SaveSystem.Instance, null) is not GameSave save) return;
             save.StartStoryScript = player.CurrentStoryScript;
             snapshot = save; script = player.CurrentStoryScript;
-            if (justLoaded) { justLoaded = false; Check(save); }
+            bool loaded = justLoaded; justLoaded = false;
+            if (loaded) RestoreMusic();
+            var sound = SoundManager.Instance;
+            music = sound == null || musicSilent ? "" : R.Field<string>(sound, "_currentMusic", "") ?? "";
+            env = sound == null || envSilent ? "" : R.Field<string>(sound, "_currentEnvSound", "") ?? "";
+            if (loaded) Check(save);
         }
         catch (Exception ex) { snapshot = null; log.LogWarning("SEGMENT_SAVE " + ex.GetBaseException().Message); }
     }
@@ -79,14 +93,48 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile)
 
     public void AfterSave(string slot)
     {
+        NoteMusic(slot, writing);
         if (!writing) return;
         writing = false;
         try
         {
             File.WriteAllText(checkFile, slot + "\n" + script + "\n" + Normalized(snapshot!), new UTF8Encoding(false));
-            log.LogInfo($"SEGMENT_SAVE slot={slot} start={script}");
+            log.LogInfo($"SEGMENT_SAVE slot={slot} start={script} music={music} env={env}");
         }
         catch (Exception ex) { log.LogWarning("SEGMENT_SAVE note " + ex.GetBaseException().Message); }
+    }
+
+    /// <summary>One line per slot written by these saves; any other save to that slot drops its line.</summary>
+    private void NoteMusic(string slot, bool segment)
+    {
+        try
+        {
+            bool note = segment && (music.Length > 0 || env.Length > 0);
+            if (!note && !File.Exists(musicFile)) return;
+            var lines = File.Exists(musicFile)
+                ? File.ReadAllLines(musicFile, Encoding.UTF8).Where(line => !line.StartsWith(slot + "\t", StringComparison.Ordinal)).ToList()
+                : new List<string> { "# 赵活系统：剧情中随时存档读档时补放的背景音乐。只有本模组读取，游戏存档不受影响。" };
+            if (note) lines.Add(string.Join("\t", slot, script, music, env));
+            File.WriteAllLines(musicFile, lines, new UTF8Encoding(false));
+        }
+        catch (Exception ex) { log.LogWarning("SEGMENT_SAVE music " + ex.GetBaseException().Message); }
+    }
+
+    /// <summary>Just loaded, before the script replays: the music its save noted, if the save is one of these.</summary>
+    private void RestoreMusic()
+    {
+        try
+        {
+            if (!File.Exists(musicFile) || SoundManager.Instance is not SoundManager sound || sound == null) return;
+            string slot = SaveSystem.Instance.CurrentSlot;
+            var line = File.ReadAllLines(musicFile, Encoding.UTF8).Select(text => text.Split('\t'))
+                .FirstOrDefault(parts => parts.Length >= 4 && parts[0] == slot && string.Equals(parts[1], script, StringComparison.OrdinalIgnoreCase));
+            if (line == null) return;
+            if (line[2].Length > 0) sound.PlayMusic(line[2]);
+            if (line[3].Length > 0) sound.PlayEnvSound(line[3]);
+            log.LogInfo($"SEGMENT_MUSIC slot={slot} start={script} music={line[2]} env={line[3]}");
+        }
+        catch (Exception ex) { log.LogWarning("SEGMENT_MUSIC " + ex.GetBaseException().Message); }
     }
 
     /// <summary>A save was loaded: the next story script is compared with what that save wrote, if it was one of these.</summary>

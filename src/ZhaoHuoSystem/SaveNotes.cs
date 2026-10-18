@@ -63,7 +63,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
             if (!store.Favourite(key) || SaveSystem.Instance == null || SaveSystem.Instance.GetSaveData(slot) == null) return false;
             overwrite = slot;
             string note = store.Note(key);
-            overwriteText = L.Format("{0} 是收藏的存档", SlotName(slot)) + (note.Length > 0 ? L.Format("（{0}）", note) : "") + L.Text("，覆盖后原来的进度就没有了。");
+            overwriteText = L.Format("{0} 是收藏的存档", SlotName(slot)) + (note.Length > 0 ? L.Format("（{0}）", note) : "") + L.Text("，覆盖后原来的进度就没有了，星标和备注也一起清掉。");
             log.LogInfo("SAVE_NOTE overwrite asked slot=" + slot);
             return true;
         }
@@ -94,9 +94,12 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     }
 
     /// <summary>The game deleted a save (the load page's delete): its star and note go too.</summary>
-    public void Deleted(string slot)
+    public void Deleted(string slot) => Forget(slot, "removed");
+    /// <summary>A new save went into this slot (F79): the star and note were about the save it replaced.</summary>
+    public void Written(string slot) => Forget(slot, "cleared");
+    private void Forget(string slot, string why)
     {
-        try { if (store.Remove(SaveNoteStore.Key(Account(), slot))) log.LogInfo("SAVE_NOTE removed slot=" + slot); }
+        try { if (store.Remove(SaveNoteStore.Key(Account(), slot))) { log.LogInfo($"SAVE_NOTE {why} slot={slot}"); StarChanged?.Invoke(); } }
         catch (Exception ex) { log.LogWarning("SAVE_NOTE " + ex.GetBaseException().Message); }
     }
 

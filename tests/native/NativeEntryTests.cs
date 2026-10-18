@@ -112,6 +112,12 @@ internal static partial class Program
             Signature(mortalCore, "Mortal.Core", "SaveSystem", "CreateSaveData");
             Signature(mortalCore, "Mortal.Core", "SaveSystem", "LoadGameData");
             Has(mortalCore, "Mortal.Core", "SaveSystem", "CurrentSlot");
+            // ...and the music a story save notes and a load puts back.
+            Has(mortalCore, "Mortal.Core", "SoundManager", "_currentMusic");
+            Has(mortalCore, "Mortal.Core", "SoundManager", "_currentEnvSound");
+            Signature(mortalCore, "Mortal.Core", "SoundManager", "PlayMusic", "name");
+            Signature(mortalCore, "Mortal.Core", "SoundManager", "PlayEnvSound", "name");
+            foreach (var fade in new[] { "FadeOutMusic", "FadeInMusic", "FadeOutEnvSound", "FadeInEnvSound" }) Signature(mortalCore, "Mortal.Core", "SoundManager", fade, "value", "durationMs");
             // 覆盖收藏的存档 asks once more: an existing save in the slot, and the save page's own refresh afterwards.
             Require(Members(mortalCore, "Mortal.Core", "SaveSystem").Methods.TryGetValue("GetSaveData", out var readOverloads) && readOverloads.Exists(p => p.Length == 1 && p[0] == "slot"), "SaveSystem.GetSaveData(slot)");
             Signature(mortalCore, "Mortal.Core", "SaveGamePanel", "UpdateSlot");
