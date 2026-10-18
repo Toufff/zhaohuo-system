@@ -27,7 +27,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **One-time event reminders**: map locations, and dialogue options such as picking a route while travelling, are marked when an event that can happen only once is available behind them right now. The location's badge turns green and the option gets a green ●.
 
-- **Skip the rest of a period**: on the free-action map, and in the free phase's story menus for choosing where to go, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location.
+- **Skip the rest of a period**: on the free-action map, and in the free phase's story menus for choosing where to go, a 跳过本旬 (skip this period) button sits to the right of the date. Click it once and it asks 确定吗？ (are you sure?); click again to give up the actions left in this ten-day period and move on to the next. It is hidden while a main-story event is waiting for you at a location. Skipping checks after each action point and stops for any story that comes due on the way.
 
 - **Unlimited actions for a period**: next to 跳过本旬 right of the date, 本旬行动点无限 (unlimited action points this period) stops action points from being spent until the next ten-day period. Turn off 显示本旬按钮 (show period buttons) on the 设置 (Settings) tab to hide both buttons beside the date.
 
@@ -35,7 +35,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
 
-- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story).
+- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story). Locked options also get a 一键设置 (set to meet) button: it sets the unmet unlock conditions just far enough to meet them, and the option unlocks on the spot.
   - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
   - Hover the option to see the full conditions and the flags involved.
 
@@ -61,9 +61,11 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Collection**: the 收集 (Collection) tab lists the records kept in the 讲经堂 hall: achievements (风云史), deaths (生死簿) and endings (汗青书). Unlock them one at a time, or a whole list at once with 全部解锁 (unlock all). Unlocking an achievement also unlocks the matching Steam achievement, the same way the game does, and cannot be undone.
 
+- **Save anywhere in stories**: the game's own save works at any point in a story, including right before a choice or a dice roll. The save holds the state at the start of the current story segment, and loading replays that segment from its start without counting anything twice.
+
 - **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last. The load and save pages each remember the order you last used.
 
-- **Save stars and notes**: manual saves on the load and save pages can be starred and given a short note to tell them apart; stars and notes live in the mod's own file, never in your saves. Uninstalling the mod deletes them too.
+- **Save stars and notes**: manual saves on the load and save pages can be starred and given a short note to tell them apart; stars and notes live in the mod's own file, never in your saves. Overwriting a starred save asks for confirmation once more. Uninstalling the mod deletes them too.
 
 - **50 manual save slots**: manual saves go from 20 to 50 slots (configurable from 20 to 99). After uninstalling, saves in slot 21 and above no longer appear in the game's list, but the files stay and show up again when you reinstall.
 
@@ -75,7 +77,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 ## Install
 
-Built and tested on the Steam release, build 25987745.
+Built and tested on the Steam release, build 26021712.
 
 1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
 2. Close the game and double-click `install.bat`.

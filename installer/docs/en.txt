@@ -1,7 +1,7 @@
 ZhaoHuo System v{VERSION} - in-game trainer for Legend of Mortal
 ================================================================
 
-Built for the Steam release, build 25987745. Small game updates usually don't affect it; if something breaks after an update, uninstall it and report the problem.
+Built for the Steam release, build 26021712. Small game updates usually don't affect it; if something breaks after an update, uninstall it and report the problem.
 
 ONE-CLICK INSTALL
 1. Close the game.
