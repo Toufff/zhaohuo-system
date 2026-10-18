@@ -35,7 +35,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
 
-- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story). Locked options also get a 一键设置 (set to meet) button: it sets the unmet unlock conditions just far enough to meet them, and the option unlocks on the spot.
+- **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story). Locked options also get a 一键设置 (set to meet) button: it sets the unmet unlock conditions just far enough to meet them, and the option unlocks on the spot. When the unlock condition compares a sum of several values (e.g. the six Paths added together > 1), the shortfall is added to one of them.
   - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
   - Hover the option to see the full conditions and the flags involved.
 
@@ -63,7 +63,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Save anywhere in stories**: the game's own save works at any point in a story, including right before a choice or a dice roll. The save holds the state at the start of the current story segment, and loading replays that segment from its start without counting anything twice.
 
-- **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last. The load and save pages each remember the order you last used.
+- **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last. The load and save pages each remember the order you last used. Sorting also offers 收藏优先 (starred first), which puts starred saves at the top.
 
 - **Save stars and notes**: manual saves on the load and save pages can be starred and given a short note to tell them apart; stars and notes live in the mod's own file, never in your saves. Overwriting a starred save asks for confirmation once more. Uninstalling the mod deletes them too.
 
