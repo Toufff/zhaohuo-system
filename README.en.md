@@ -61,11 +61,11 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Collection**: the 收集 (Collection) tab lists the records kept in the 讲经堂 hall: achievements (风云史), deaths (生死簿) and endings (汗青书). Unlock them one at a time, or a whole list at once with 全部解锁 (unlock all). Unlocking an achievement also unlocks the matching Steam achievement, the same way the game does, and cannot be undone.
 
-- **Save anywhere in stories**: the game's own save works at any point in a story, including right before a choice or a dice roll. The save holds the state at the start of the current story segment, and loading replays that segment from its start without counting anything twice.
+- **Save anywhere in stories**: the game's own save works at any point in a story, including right before a choice or a dice roll. The save holds the state at the start of the current story segment, and loading replays that segment from its start without counting anything twice. Loading also brings back the music and ambience that were playing when the segment began.
 
 - **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last. The load and save pages each remember the order you last used. Sorting also offers 收藏优先 (starred first), which puts starred saves at the top.
 
-- **Save stars and notes**: manual saves on the load and save pages can be starred and given a short note to tell them apart; stars and notes live in the mod's own file, never in your saves. Overwriting a starred save asks for confirmation once more. Uninstalling the mod deletes them too.
+- **Save stars and notes**: manual saves on the load and save pages can be starred and given a short note to tell them apart; stars and notes live in the mod's own file, never in your saves. Stars and notes belong to the save: when a new save is written into a slot, that slot's old star and note are cleared. Overwriting a starred save asks for confirmation once more. Uninstalling the mod deletes them too.
 
 - **50 manual save slots**: manual saves go from 20 to 50 slots (configurable from 20 to 99). After uninstalling, saves in slot 21 and above no longer appear in the game's list, but the files stay and show up again when you reinstall.
 
