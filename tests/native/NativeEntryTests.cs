@@ -209,6 +209,9 @@ internal static partial class Program
             Signature(core, "Mortal.Core", "SaveSystem", "SetSlot", "slot");
             Signature(core, "Mortal.Core", "SaveSystem", "LoadGameData");
             Signature(core, "Mortal.Core", "SaveSystem", "CreateSaveData");
+            // On the title (F100) the most recent save goes into all four stores CreateSaveData writes from.
+            foreach (string store in new[] { "PlayerStatManagerData", "ItemDatabase", "ShopDatabase" }) Signature(core, "Mortal.Core", store, "Load", "gameSave");
+            Signature(core, "Mortal.Core", "MissionManagerData", "Load", "save");
             Signature(core, "Mortal.Core", "SoundManager", "StopMusic");
             Signature(core, "Mortal.Core", "SceneController", "LoadCurrentScene");
             Has(core, "Mortal.Core", "SceneController", "IsPrepare", "IsLoading", "Instance");

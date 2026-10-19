@@ -1408,7 +1408,13 @@ public sealed partial class ToolWindow : IDisposable
     {
         OperationResult result;
         try { result = operation() ?? OperationResult.Fail("操作未返回结果"); }
-        catch (Exception exception) { result = OperationResult.Fail(L.Format("操作失败：{0}", exception.Message)); }
+        catch (Exception exception)
+        {
+            // A call into the game by reflection wraps what it threw; the player is shown that, the log gets all of it.
+            var cause = exception.GetBaseException();
+            Plugin.Instance?.Log.LogError("OPERATION_FAILED " + exception);
+            result = OperationResult.Fail(L.Format("操作失败：{0}", cause.Message));
+        }
         Message(result.Message, !result.Success);
         ReadSnapshot();
         return result;

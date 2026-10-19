@@ -8,8 +8,9 @@ namespace ZhaoHuoSystem;
 
 /// <summary>
 /// On the title (F96) the story tree and the route map read the most recent save, the load page's 最近存档: once the panel
-/// is open there, that save is put into the game's player, mission and item data the way the game's own load does, without
-/// its scene. Starting a new game or loading a save resets that data first, as before; the prologue's restore data is left alone.
+/// is open there, that save is put into the game's player, mission, item and shop data the way the game's own load does,
+/// without its scene. The shop too: a 直接跳转 there saves through the game's CreateSaveData, which writes the shop, and the
+/// shop has no lists before a load or a new game (F100). Starting a new game or loading a save resets that data first, as before; the prologue's restore data is left alone.
 /// </summary>
 internal static class TitleSave
 {
@@ -33,6 +34,7 @@ internal static class TitleSave
             PlayerStatManagerData.Instance?.Load(save);
             MissionManagerData.Instance?.Load(save);
             ItemDatabase.Instance?.Load(save);
+            ShopDatabase.Instance?.Load(save);
             string number = int.TryParse(slot, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n.ToString(CultureInfo.InvariantCulture) : slot;
             string date = Conditions.TimeName(new GameTime(save.CurrentYear, save.CurrentMonth, save.CurrentStage));
             Source = L.Format("按最近存档（第 {0} 格 · {1}）", number, date);

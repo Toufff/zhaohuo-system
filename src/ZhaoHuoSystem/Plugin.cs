@@ -26,10 +26,11 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.38")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.39")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
+    internal BepInEx.Logging.ManualLogSource Log => Logger;
     internal GameAdapter Adapter = null!;
     internal OptionHints OptionHints = null!;
     internal PracticeButtons Practice = null!;
