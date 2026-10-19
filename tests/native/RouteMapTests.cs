@@ -7,6 +7,13 @@ internal static partial class Program
 {
     private static void RouteMapTests()
     {
+        Test("路线图 fork buttons name main-line stations, in map order (F92)", () =>
+        {
+            var order = RouteMapDefs.Stations.Select(s => s.Id).ToList();
+            var at = RouteMapDefs.Forks.Select(f => order.IndexOf(f.Station)).ToList();
+            Require(at.All(i => i >= 0), "every fork button names a station");
+            Require(at.SequenceEqual(at.OrderBy(i => i)), "the buttons follow the map from left to right");
+        });
         Test("路线图 places scripts by station, chapter jumps and prefix; a fork story hangs off its station; sections split trunk from branch (F89)", () =>
         {
             var source = new FakeRouteSource();

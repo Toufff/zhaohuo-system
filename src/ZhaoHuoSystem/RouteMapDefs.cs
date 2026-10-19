@@ -31,6 +31,13 @@ public static class RouteMapDefs
         => new() { Id = id, Lane = lane, Label = label, Members = members, DateFrom = date, Variants = variants ?? new string[0], Route = route };
     private static string[] M(params string[] ids) => ids;
 
+    /// <summary>The stations where the ways part, one button each above the map (the prototype's top bar, F92).</summary>
+    public static readonly (string Station, string Name)[] Forks =
+    {
+        ("M2005_01", "留学去向"), ("M2008_01", "江陵：决战还是襄阳"), ("M3003_02", "跟不跟大师兄"),
+        ("M4002_02", "求亲之后"), ("M6001_03", "你的决策"), ("M6002_02", "决战")
+    };
+
     /// <summary>The 53 main-line stations, in drawing order; a member ending in * stands for every mission with that prefix.</summary>
     public static readonly StationDef[] Stations =
     {

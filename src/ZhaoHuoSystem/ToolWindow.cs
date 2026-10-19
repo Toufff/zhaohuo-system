@@ -20,6 +20,9 @@ public sealed partial class ToolWindow : IDisposable
     private int _tab;
     private string _eventSearch = "";
     private string _valueSearch = "";
+    private string _settingsSearch = "", _slotsText = "";
+    private Vector2 _settingsScroll;
+    private float _settingsHeight;
     private string _valueGroup = "all";
     private bool _mapOverview;
     private bool _eventViewChosen, _lastActionWaiting, _lastPreview;
@@ -53,7 +56,7 @@ public sealed partial class ToolWindow : IDisposable
     private GUIStyle _label = null!, _muted = null!, _title = null!, _heading = null!;
     private GUIStyle _button = null!, _primary = null!, _tabButton = null!, _tabSelected = null!, _launcher = null!;
     private GUIStyle _input = null!, _small = null!, _met = null!, _unmet = null!, _tooltip = null!, _metSmall = null!;
-    private GUIStyle _listItem = null!, _listSelected = null!, _scrollbar = null!;
+    private GUIStyle _listItem = null!, _listSelected = null!, _scrollbar = null!, _hscrollbar = null!;
     // Fully satisfied events share one green treatment with the map markers.
     private GUIStyle _listReady = null!, _readySmall = null!;
     // Event consequences carry the mod's one colour meaning, so these styles render its marks as rich text.
@@ -100,6 +103,9 @@ public sealed partial class ToolWindow : IDisposable
     public bool ShowMapCounts { get; set; } = true;
     /// <summary>「跳过本旬」 and 「本旬行动点无限」 beside the date, together (F62).</summary>
     public bool ShowRoundButtons { get; set; } = true;
+    /// <summary>Manual save slots on the load and save pages (F51); a page built with another count builds them again when it opens (F90).</summary>
+    public int SaveSlots { get; set; } = 50;
+    public const int MinSaveSlots = 20, MaxSaveSlots = 99;
     public Action? SettingsChanged;
     /// <summary>Battle-tab toggles live in CombatCheats; this only reports a change so it can be saved.</summary>
     public Action? CombatChanged;
@@ -584,73 +590,144 @@ public sealed partial class ToolWindow : IDisposable
             && condition.SuggestedValue.Value >= value.Min && condition.SuggestedValue.Value <= value.Max;
     }
 
-    private void DrawSettings(Rect r)
+    // 设置: a search over the names and notes (F91); the rows scroll when the window is too short for them all.
+    private void DrawSettings(Rect area)
+    {
+        string searched = _settingsSearch;
+        _settingsSearch = Search(new Rect(area.x, area.y, area.width, S(32)), _settingsSearch, "搜索设置名称或说明", "zh.settings.search");
+        if (_settingsSearch != searched) _settingsScroll = Vector2.zero;
+        Rect rows = new(area.x, area.y + S(44), area.width, area.height - S(44));
+        float width = rows.width - S(18);
+        _settingsScroll = BeginScroll(rows, _settingsScroll, new Rect(0, 0, width, Mathf.Max(rows.height, _settingsHeight)));
+        try { _settingsHeight = SettingsRows(new Rect(0, 0, width, rows.height)); }
+        finally { EndScroll(); }
+    }
+
+    private float SettingsRows(Rect r)
     {
         float y = r.y, labelWidth = Mathf.Min(S(220), r.width * .36f), x = r.x + labelWidth + S(10);
+        string query = _settingsSearch.Trim();
+        // A row stays while its name or note holds the words, as shown in this language or in 简体.
+        bool Shown(params string[] texts) => query.Length == 0 || texts.Any(text => Matches(query, L.Text(text), text));
         // Pausing each action for a choice is the one gameplay switch here; on by default, saved like the rest.
-        Label(new Rect(r.x, y, labelWidth, S(32)), "行动前选择结果", _label);
-        if (Button(new Rect(x, y, S(110), S(30)), _snapshot.ActionSelectionEnabled ? "开启" : "关闭", "settings.selection", _snapshot.ActionSelectionEnabled ? _tabSelected : _button))
-            Execute(() => _adapter.SetActionSelection(!_snapshot.ActionSelectionEnabled));
-        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。", _muted);
-        y += S(52);
+        string note = "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。";
+        if (Shown("行动前选择结果", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "行动前选择结果", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), _snapshot.ActionSelectionEnabled ? "开启" : "关闭", "settings.selection", _snapshot.ActionSelectionEnabled ? _tabSelected : _button))
+                Execute(() => _adapter.SetActionSelection(!_snapshot.ActionSelectionEnabled));
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
+        }
         // Size of every mod surface on top of the automatic screen-height scale.
-        Label(new Rect(r.x, y, labelWidth, S(32)), "界面缩放", _label);
         float step = ButtonWidth("−", 44);
-        if (Button(new Rect(x, y, step, S(30)), "−", "settings.scale.down")) SetScale(UiScale.User - .1f);
-        Label(new Rect(x + step + S(8), y, S(70), S(32)), L.Format("{0}%", Mathf.RoundToInt(UiScale.User * 100)), _label);
-        if (Button(new Rect(x + step + S(84), y, step, S(30)), "+", "settings.scale.up")) SetScale(UiScale.User + .1f);
-        if (Button(new Rect(x + step * 2 + S(94), y, ButtonWidth("恢复", 70), S(30)), "恢复", "settings.scale.reset")) SetScale(1f);
-        y += S(44);
+        if (Shown("界面缩放"))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "界面缩放", _label);
+            if (Button(new Rect(x, y, step, S(30)), "−", "settings.scale.down")) SetScale(UiScale.User - .1f);
+            Label(new Rect(x + step + S(8), y, S(70), S(32)), L.Format("{0}%", Mathf.RoundToInt(UiScale.User * 100)), _label);
+            if (Button(new Rect(x + step + S(84), y, step, S(30)), "+", "settings.scale.up")) SetScale(UiScale.User + .1f);
+            if (Button(new Rect(x + step * 2 + S(94), y, ButtonWidth("恢复", 70), S(30)), "恢复", "settings.scale.reset")) SetScale(1f);
+            y += S(44);
+        }
         // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
-        Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);
-        if (Button(new Rect(x, y, S(110), S(30)), ShowBranches ? "开启" : "关闭", "settings.branches", ShowBranches ? _tabSelected : _button))
+        note = "剧情按条件分支时弹出，可拖到别处并记住位置；关闭后不再弹出，其他悬浮显示照常。";
+        if (Shown("显示剧情分支小框", "重置位置", note))
         {
-            ShowBranches = !ShowBranches; SettingsChanged?.Invoke();
+            Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), ShowBranches ? "开启" : "关闭", "settings.branches", ShowBranches ? _tabSelected : _button))
+            {
+                ShowBranches = !ShowBranches; SettingsChanged?.Invoke();
+            }
+            float resetWidth = ButtonWidth("重置位置", 96);
+            if (Button(new Rect(x + S(118), y, resetWidth, S(30)), "重置位置", "settings.branches.reset", tooltip: L.Text("把小框放回左下角"))) BranchPlaceReset?.Invoke();
+            float branchDetailX = x + S(118) + resetWidth + S(14);
+            Label(new Rect(branchDetailX, y + S(3), Mathf.Max(S(80), r.xMax - branchDetailX), S(44)), note, _muted);
+            y += S(52);
         }
-        float resetWidth = ButtonWidth("重置位置", 96);
-        if (Button(new Rect(x + S(118), y, resetWidth, S(30)), "重置位置", "settings.branches.reset", tooltip: L.Text("把小框放回左下角"))) BranchPlaceReset?.Invoke();
-        float branchDetailX = x + S(118) + resetWidth + S(14);
-        Label(new Rect(branchDetailX, y + S(3), Mathf.Max(S(80), r.xMax - branchDetailX), S(44)), "剧情按条件分支时弹出，可拖到别处并记住位置；关闭后不再弹出，其他悬浮显示照常。", _muted);
-        y += S(52);
         // Only the map's counts (贴吧 36 楼); 隐藏全部悬浮窗 below still hides everything.
-        Label(new Rect(r.x, y, labelWidth, S(32)), "显示地图事件数字", _label);
-        if (Button(new Rect(x, y, S(110), S(30)), ShowMapCounts ? "开启" : "关闭", "settings.mapcounts", ShowMapCounts ? _tabSelected : _button))
+        note = "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示照常。";
+        if (Shown("显示地图事件数字", note))
         {
-            ShowMapCounts = !ShowMapCounts; SettingsChanged?.Invoke();
+            Label(new Rect(r.x, y, labelWidth, S(32)), "显示地图事件数字", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), ShowMapCounts ? "开启" : "关闭", "settings.mapcounts", ShowMapCounts ? _tabSelected : _button))
+            {
+                ShowMapCounts = !ShowMapCounts; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
         }
-        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示照常。", _muted);
-        y += S(52);
-        Label(new Rect(r.x, y, labelWidth, S(32)), "指定后直接出结果", _label);
-        if (Button(new Rect(x, y, S(110), S(30)), _adapter.DirectDiceResult ? "开启" : "关闭", "settings.directdice", _adapter.DirectDiceResult ? _tabSelected : _button))
+        note = "骰子界面点「指定」后不播转盘、不等「继续」，直接出结果；结果仍由游戏结算，和真掷出来的一样。";
+        if (Shown("指定后直接出结果", note))
         {
-            _adapter.DirectDiceResult = !_adapter.DirectDiceResult; SettingsChanged?.Invoke();
+            Label(new Rect(r.x, y, labelWidth, S(32)), "指定后直接出结果", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), _adapter.DirectDiceResult ? "开启" : "关闭", "settings.directdice", _adapter.DirectDiceResult ? _tabSelected : _button))
+            {
+                _adapter.DirectDiceResult = !_adapter.DirectDiceResult; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
         }
-        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "骰子界面点「指定」后不播转盘、不等「继续」，直接出结果；结果仍由游戏结算，和真掷出来的一样。", _muted);
-        y += S(52);
-        Label(new Rect(r.x, y, labelWidth, S(32)), "显示本旬按钮", _label);
-        if (Button(new Rect(x, y, S(110), S(30)), ShowRoundButtons ? "开启" : "关闭", "settings.roundbuttons", ShowRoundButtons ? _tabSelected : _button))
+        note = "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示照常。";
+        if (Shown("显示本旬按钮", note))
         {
-            ShowRoundButtons = !ShowRoundButtons; SettingsChanged?.Invoke();
+            Label(new Rect(r.x, y, labelWidth, S(32)), "显示本旬按钮", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), ShowRoundButtons ? "开启" : "关闭", "settings.roundbuttons", ShowRoundButtons ? _tabSelected : _button))
+            {
+                ShowRoundButtons = !ShowRoundButtons; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
         }
-        Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示照常。", _muted);
-        y += S(52);
-        KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
-        Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
-        if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
-        y += S(44);
-        KeyRow(r.x, x, ref y, labelWidth, "隐藏快捷键", HideKey, 2);
-        var keys = new List<string>();
-        if (PanelKey != KeyCode.None) keys.Add(KeyLabel(PanelKey));
-        if (HideKey != KeyCode.None) keys.Add(KeyLabel(HideKey));
-        Label(new Rect(r.x, y + S(4), r.width, S(50)), keys.Count > 0 ? L.Format("隐藏后按 {0} 恢复显示。", string.Join(" / ", keys)) : L.Text("请先绑定面板或隐藏快捷键"), _muted);
-        y += S(60);
-        Label(new Rect(r.x, y, labelWidth, S(32)), "反馈诊断", _label);
-        if (Button(new Rect(x, y, ButtonWidth("导出诊断", 110), S(30)), "导出诊断", "settings.export"))
+        // F90: typed, or ten at a time; a page builds its slots again the next time it opens.
+        note = "读档、存档页的手动存档格数（20–99，游戏原为 20），可直接输入，下次打开读档或存档页时生效。调小或卸载模组后，多出的存档只是不显示，文件仍在。";
+        if (Shown("手动存档数", note))
         {
-            try { Message(L.Format("已导出诊断：{0}（路径已复制）", ExportDiagnostics?.Invoke() ?? ""), false); }
-            catch (Exception ex) { Message(L.Format("导出诊断失败：{0}", ex.GetBaseException().Message), true); }
+            Label(new Rect(r.x, y, labelWidth, S(32)), "手动存档数", _label);
+            float field = S(56);
+            if (Button(new Rect(x, y, step, S(30)), "−", "settings.slots.down")) { GUI.FocusControl(null); SetSaveSlots(((SaveSlots + 9) / 10 - 1) * 10); }
+            const string slotsField = "zh.settings.slots";
+            if (GUI.GetNameOfFocusedControl() != slotsField) _slotsText = SaveSlots.ToString();
+            GUI.SetNextControlName(slotsField);
+            _slotsText = new string(GUI.TextField(new Rect(x + step + S(8), y, field, S(30)), _slotsText, 2, _input).Where(char.IsDigit).ToArray());
+            if (int.TryParse(_slotsText, out int typed) && typed >= MinSaveSlots && typed <= MaxSaveSlots && typed != SaveSlots) SetSaveSlots(typed);
+            if (Button(new Rect(x + step + field + S(16), y, step, S(30)), "+", "settings.slots.up")) { GUI.FocusControl(null); SetSaveSlots((SaveSlots / 10 + 1) * 10); }
+            Label(new Rect(r.x, y + S(38), r.width, S(44)), note, _muted);
+            y += S(88);
         }
-        Label(new Rect(r.x, y + S(38), r.width, S(50)), "把最近 5 次游戏的日志、当前状态、配置和性能统计放进一个文件夹，路径会复制到剪贴板。", _muted);
+        if (Shown("面板快捷键")) KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
+        if (Shown("隐藏全部悬浮窗", "隐藏快捷键"))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
+            y += S(44);
+            KeyRow(r.x, x, ref y, labelWidth, "隐藏快捷键", HideKey, 2);
+            var keys = new List<string>();
+            if (PanelKey != KeyCode.None) keys.Add(KeyLabel(PanelKey));
+            if (HideKey != KeyCode.None) keys.Add(KeyLabel(HideKey));
+            Label(new Rect(r.x, y + S(4), r.width, S(50)), keys.Count > 0 ? L.Format("隐藏后按 {0} 恢复显示。", string.Join(" / ", keys)) : L.Text("请先绑定面板或隐藏快捷键"), _muted);
+            y += S(60);
+        }
+        note = "把最近 5 次游戏的日志、当前状态、配置和性能统计放进一个文件夹，路径会复制到剪贴板。";
+        if (Shown("反馈诊断", "导出诊断", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "反馈诊断", _label);
+            if (Button(new Rect(x, y, ButtonWidth("导出诊断", 110), S(30)), "导出诊断", "settings.export"))
+            {
+                try { Message(L.Format("已导出诊断：{0}（路径已复制）", ExportDiagnostics?.Invoke() ?? ""), false); }
+                catch (Exception ex) { Message(L.Format("导出诊断失败：{0}", ex.GetBaseException().Message), true); }
+            }
+            Label(new Rect(r.x, y + S(38), r.width, S(50)), note, _muted);
+            y += S(88);
+        }
+        if (y == r.y) Empty(r, L.Format("没有名称或说明含「{0}」的设置。", query));
+        return y;
+    }
+    private void SetSaveSlots(int value)
+    {
+        value = Mathf.Clamp(value, MinSaveSlots, MaxSaveSlots);
+        if (value == SaveSlots) return;
+        SaveSlots = value; SettingsChanged?.Invoke();
     }
     // 收集: the game's 讲经堂 lists, one section at a time, with per-item and whole-section unlock (F42).
     private void DrawCollection(Rect r)
@@ -1325,11 +1402,11 @@ public sealed partial class ToolWindow : IDisposable
     }
 
     private void Empty(Rect r, string text) => Label(new Rect(r.x + S(8), r.y + S(18), r.width - S(16), Mathf.Min(r.height, S(80))), text, _muted);
-    private Vector2 BeginScroll(Rect position, Vector2 scroll, Rect view)
+    private Vector2 BeginScroll(Rect position, Vector2 scroll, Rect view, bool horizontal = false)
     {
         _hoverClips.Push(_hoverAllowed);
         _hoverAllowed = _hoverAllowed && position.Contains(Event.current.mousePosition);
-        return GUI.BeginScrollView(position, scroll, view, false, false, GUIStyle.none, _scrollbar);
+        return GUI.BeginScrollView(position, scroll, view, false, false, horizontal ? _hscrollbar : GUIStyle.none, _scrollbar);
     }
     private void EndScroll() { GUI.EndScrollView(); _hoverAllowed = _hoverClips.Pop(); }
     private float S(float value) => value * _scale;
@@ -1489,9 +1566,7 @@ public sealed partial class ToolWindow : IDisposable
         _muted = TextStyle(15, muted); _muted.wordWrap = true;
         _small = TextStyle(13, muted); _small.wordWrap = true;
         _heading = TextStyle(18, text); _heading.fontStyle = FontStyle.Bold; _heading.wordWrap = true;
-        _routeLabel = TextStyle(13, text); _routeLabel.alignment = TextAnchor.MiddleCenter;
-        _routeTag = TextStyle(11, new Color(.95f, .80f, .36f, 1)); _routeTag.alignment = TextAnchor.MiddleCenter;
-        _routePill = TextStyle(12, new Color(.07f, .08f, .09f, 1)); _routePill.alignment = TextAnchor.MiddleCenter;
+        RouteStyles();
         _routeItem = ButtonStyle(TextureOnce("clear", Color.clear), _section, text); _routeItem.alignment = TextAnchor.MiddleLeft; _routeItem.wordWrap = true;
         _routeItemSelected = ButtonStyle(_selection, _selection, text); _routeItemSelected.alignment = TextAnchor.MiddleLeft; _routeItemSelected.wordWrap = true;
         _title = TextStyle(18, text); _title.fontStyle = FontStyle.Bold;
@@ -1522,6 +1597,7 @@ public sealed partial class ToolWindow : IDisposable
         _enumLine = TextStyle(14, text); _enumLine.wordWrap = true;
         _enumHeader = new GUIStyle(_enumLine) { fontStyle = FontStyle.Bold };
         _scrollbar = new GUIStyle(GUI.skin.verticalScrollbar) { fixedWidth = S(13) };
+        _hscrollbar = new GUIStyle(GUI.skin.horizontalScrollbar) { fixedHeight = S(13) };
     }
 
     private GUIStyle TextStyle(int size, Color color)

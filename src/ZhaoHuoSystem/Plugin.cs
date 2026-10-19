@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.35")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.36")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -133,8 +133,8 @@ public sealed class Plugin : BaseUnityPlugin
         SaveSort.SaveMode = Mathf.Clamp(saveSort.Value, 0, SaveSlotSort.Modes.Length - 1);
         SaveSort.LoadMode = Mathf.Clamp(loadSort.Value, 0, SaveSlotSort.Modes.Length - 1);
         SaveSort.Changed = (save, mode) => { if (save) saveSort.Value = mode; else loadSort.Value = mode; };
-        var saveSlots = Config.Bind("界面", "手动存档数", 50, "读档、存档页的手动存档格数，20–99（游戏原为 20）。超过 20 号的存档在卸载模组后不在游戏的存档列表里显示，文件仍在，「最近存档」照常可读。改后重进标题画面或场景生效。");
-        SaveSlots = Mathf.Clamp(saveSlots.Value, 20, 99);
+        var saveSlots = Config.Bind("界面", "手动存档数", 50, "读档、存档页的手动存档格数，20–99（游戏原为 20），面板「设置」里也能改。超过 20 号的存档在卸载模组后不在游戏的存档列表里显示，文件仍在，「最近存档」照常可读。改后下次打开读档、存档页时生效。");
+        SaveSlots = Mathf.Clamp(saveSlots.Value, ToolWindow.MinSaveSlots, ToolWindow.MaxSaveSlots);
         // Stars and notes live beside the logs, never in a save (F50). A file that cannot be read is left alone, not overwritten.
         SaveNoteStore notes;
         try { notes = new SaveNoteStore(Path.Combine(diagnostics, "save-notes.txt")); }
@@ -164,15 +164,16 @@ public sealed class Plugin : BaseUnityPlugin
         var directDice = Config.Bind("工具", "指定后直接出结果", true, "骰子界面点「指定」后不播转盘、不等「继续」，直接给出结果；结果仍由游戏自己结算。");
         Adapter.DirectDiceResult = directDice.Value;
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
-        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value;
+        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
             uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons; directDice.Value = Adapter.DirectDiceResult;
+            SaveSlots = window.SaveSlots; saveSlots.Value = SaveSlots;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -372,6 +373,22 @@ public sealed class Plugin : BaseUnityPlugin
         if (R.Field(panel, "_slotCount") is not int count || count >= SaveSlots) return;
         R.Set(panel, "_slotCount", SaveSlots);
         Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} {count}->{SaveSlots}");
+    }
+    /// <summary>
+    /// Before a page opens (F90): one built with another count than 设置 now has builds its slots again, with the game's
+    /// own CreateSlot, as at its Awake. The pages are built once a session, so this is what lets a change apply without a restart.
+    /// </summary>
+    internal void FitSaveSlots(MonoBehaviour panel)
+    {
+        if (R.Field(panel, "_slotCount") is not int count || count == SaveSlots) return;
+        try
+        {
+            R.Set(panel, "_slotCount", SaveSlots);
+            AccessTools.Method(panel.GetType(), "CreateSlot")?.Invoke(panel, null);
+            AccessTools.Method(panel.GetType(), "SetButtonNavigation")?.Invoke(panel, null);
+            Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} rebuilt {count}->{SaveSlots}");
+        }
+        catch (Exception ex) { Logger.LogWarning("SAVE_SLOTS " + ex.GetBaseException().Message); }
     }
     private readonly HashSet<string> overlayFailures = new(StringComparer.Ordinal);
     private void OverlayFailed(string overlay, Exception ex)
@@ -700,6 +717,9 @@ internal static class SaveSlotCountPatch
 {
     [HarmonyPrefix, HarmonyPatch(typeof(LoadGamePanel), "Awake")] private static void Load(LoadGamePanel __instance) => Plugin.Instance?.ExpandSaveSlots(__instance);
     [HarmonyPrefix, HarmonyPatch(typeof(SaveGamePanel), "Awake")] private static void Save(SaveGamePanel __instance) => Plugin.Instance?.ExpandSaveSlots(__instance);
+    // A count changed in 设置 since the page was built (F90).
+    [HarmonyPrefix, HarmonyPatch(typeof(LoadGamePanel), nameof(LoadGamePanel.OnPanelOpen))] private static void LoadOpen(LoadGamePanel __instance) => Plugin.Instance?.FitSaveSlots(__instance);
+    [HarmonyPrefix, HarmonyPatch(typeof(SaveGamePanel), nameof(SaveGamePanel.OnPanelOpen))] private static void SaveOpen(SaveGamePanel __instance) => Plugin.Instance?.FitSaveSlots(__instance);
 }
 // 剧情中随时存档 (F71): a story save made away from the game's own save points writes the copy kept at this script's start.
 [HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.SaveGameData), new[] { typeof(string) })]

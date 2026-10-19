@@ -99,11 +99,12 @@ internal static partial class Program
             string mortalPinball = Path.Combine(managed, "Mortal.Pinball.dll");
             Has(mortalPinball, "Mortal.Pinball", "PinballManager", "Instance", "_totalScore", "_totalText", "_isBroken");
             Signature(mortalPinball, "Mortal.Pinball", "PinballManager", "AddScore", "score");
-            // 存档排序: both pages' slot arrays, refresh and pad wiring, and each slot's number and loaded save.
+            // 存档排序: both pages' slot arrays, refresh and pad wiring, and each slot's number and loaded save; 手动存档数 (F90)
+            // builds a page's slots again from its count.
             foreach (string page in new[] { "LoadGamePanel", "SaveGamePanel" })
             {
-                Has(mortalCore, "Mortal.Core", page, "_saveSlots");
-                foreach (string method in new[] { "UpdateSlot", "SetButtonNavigation", "OnPanelOpen" }) Signature(mortalCore, "Mortal.Core", page, method);
+                Has(mortalCore, "Mortal.Core", page, "_saveSlots", "_slotCount");
+                foreach (string method in new[] { "UpdateSlot", "SetButtonNavigation", "OnPanelOpen", "CreateSlot" }) Signature(mortalCore, "Mortal.Core", page, method);
             }
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slot", "_currentData");
             Signature(mortalCore, "Mortal.Core", "SaveSlotPanel", "SelectButton");

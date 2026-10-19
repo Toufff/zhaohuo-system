@@ -101,6 +101,7 @@ input.Reset();
 Assert(!input.BlockPointer && !input.BlockKeyboard && input.OwnedButtons == 0, "focus loss or scene reset releases all owned policy state");
 Assert(!InputIsolationPolicy.IsTextControl("zh.button.tab1") && !InputIsolationPolicy.IsTextControl("zh.button.value.apply.stat:money"), "button focus is not text editing");
 Assert(InputIsolationPolicy.IsTextControl("zh.event.search") && InputIsolationPolicy.IsTextControl("zh.value.search") && InputIsolationPolicy.IsTextControl("zh.value.stat:money"), "only named search and numeric editors isolate keyboard input");
+Assert(InputIsolationPolicy.IsTextControl("zh.settings.search") && InputIsolationPolicy.IsTextControl("zh.settings.slots") && !InputIsolationPolicy.IsTextControl("zh.button.settings.slots.up"), "the settings search and slot count isolate keyboard input, their buttons do not");
 input.Keyboard(10, true, false);
 Assert(input.BlockKeyboard, "main text editing gates keyboard shortcuts");
 input.Pointer(10, false, 1); input.Keyboard(10, false, false);

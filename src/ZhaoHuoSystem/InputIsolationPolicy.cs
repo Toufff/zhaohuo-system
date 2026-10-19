@@ -45,5 +45,5 @@ public sealed class InputIsolationPolicy
         wasEditing = BlockPointer = BlockKeyboard = false;
     }
     public static bool IsTextControl(string? name) => name == "zh.event.search" || name == "zh.value.search"
-        || name != null && (name.StartsWith("zh.value.", StringComparison.Ordinal) || name.StartsWith("zh.review.", StringComparison.Ordinal));
+        || name != null && (name.StartsWith("zh.value.", StringComparison.Ordinal) || name.StartsWith("zh.review.", StringComparison.Ordinal) || name.StartsWith("zh.settings.", StringComparison.Ordinal));
 }

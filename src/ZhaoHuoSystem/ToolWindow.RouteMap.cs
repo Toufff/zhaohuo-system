@@ -23,6 +23,12 @@ public sealed partial class ToolWindow
     private readonly List<(string Owner, string Script, string Snippet)> _routeHits = new();
     private Dictionary<string, string>? _routeDialogue;
     private GUIStyle _routeLabel = null!, _routeTag = null!, _routePill = null!, _routeItem = null!, _routeItemSelected = null!;
+    private GUIStyle _routeYear = null!, _routeMonth = null!, _routeGroup = null!;
+    // The map's own zoom on top of 界面缩放, and the side column's share of the page once dragged (F92); this session only.
+    private float _routeZoom = 1, _routeSideShare;
+    private Vector2 _routeView;
+    private const float RouteZoomMin = .5f, RouteZoomMax = 1.5f;
+    private float Z(float value) => S(value) * _routeZoom;
 
     private sealed class RouteLayout
     {
@@ -75,15 +81,79 @@ public sealed partial class ToolWindow
         Label(new Rect(r.x, r.y, r.width - rebuild - others - next - S(24), S(29)), status, _small, status);
         r.y += S(36); r.height -= S(36);
         if (map == null) { Empty(r, Routes.Building ? "第一次打开要读一遍全部剧本，稍等片刻。" : "路线图还没生成"); return; }
+        // Second row: the stations where the ways part one click away (the prototype's top bar), the zoom on the right.
+        float step = ButtonWidth("−", 36), percent = ButtonWidth("150%", 58), zoomX = r.xMax - step * 2 - percent - S(8);
+        if (Button(new Rect(zoomX, r.y, step, S(29)), "−", "route.zoom.out", tooltip: L.Text("缩小"))) SetRouteZoom(_routeZoom - .1f, _routeView / 2);
+        if (Button(new Rect(zoomX + step + S(4), r.y, percent, S(29)), L.Format("{0}%", Mathf.RoundToInt(_routeZoom * 100)), "route.zoom.reset", tooltip: L.Text("恢复 100%"))) SetRouteZoom(1, _routeView / 2);
+        if (Button(new Rect(zoomX + step + percent + S(8), r.y, step, S(29)), "+", "route.zoom.in", tooltip: L.Text("放大"))) SetRouteZoom(_routeZoom + .1f, _routeView / 2);
+        float forkX = r.x;
+        var forks = RouteMapDefs.Forks.Select(f => (f.Name, Station: map.Stations.Find(s => s.Id == f.Station))).Where(f => f.Station != null)
+            .Select(f => (Text: L.DisplayText(f.Name), When: f.Station!.Date != null ? L.Format("{0}年{1}月", f.Station.Date[0], f.Station.Date[1]) : "", f.Station)).ToList();
+        // The date goes on the buttons when the row has room for all of them with it, as on the prototype; else on the hover.
+        bool dated = forks.Sum(f => ButtonWidth(f.Text + "  " + f.When, 60) + S(6)) <= zoomX - S(10) - forkX;
+        foreach (var (name, when, fork) in forks)
+        {
+            string id = fork.Id, text = dated ? name + "  " + when : name, key = "stn:" + id;
+            float width = ButtonWidth(text, 60);
+            if (forkX + width > zoomX - S(10)) break;
+            if (Button(new Rect(forkX, r.y, width, S(29)), text, "route.fork." + id, _routeSelected == key ? _tabSelected : _button, when + "  " + L.DisplayText(fork.Label)))
+            { _routeSelected = key; _routeOthers = false; _routeSearch = ""; _routeSideKey = ""; ScrollRouteTo(key); }
+            forkX += width + S(6);
+        }
+        r.y += S(36); r.height -= S(36);
         if (_routeLayoutMap != map || Mathf.Abs(_routeLayoutScale - _scale) > .001f) { _routeLayout = Layout(map); _routeLayoutMap = map; _routeLayoutScale = _scale; }
         var layout = _routeLayout!;
-        float sideWidth = Mathf.Min(S(360), r.width * .42f);
+        float sideWidth = Mathf.Clamp(_routeSideShare > 0 ? _routeSideShare * r.width : Mathf.Min(S(360), r.width * .42f), Mathf.Min(S(240), r.width * .3f), r.width * .6f);
         var canvas = new Rect(r.x, r.y, r.width - sideWidth - S(10), r.height);
         var side = new Rect(canvas.xMax + S(10), r.y, sideWidth, r.height);
+        // Before the map: its control id must not move with the stations the map draws.
+        RouteSplitter(new Rect(canvas.xMax, r.y, S(10), r.height), r);
         var clock = Stopwatch.StartNew();
         DrawRouteCanvas(canvas, map, layout);
         DrawRouteSide(side, map, layout);
         if (Event.current.type == EventType.Repaint) _routeDrawMs = _routeDrawMs <= 0 ? clock.Elapsed.TotalMilliseconds : _routeDrawMs * .9 + clock.Elapsed.TotalMilliseconds * .1;
+    }
+
+    /// <summary>The gap between the map and the side column: drag it to give either more room.</summary>
+    private void RouteSplitter(Rect gap, Rect page)
+    {
+        int id = GUIUtility.GetControlID(FocusType.Passive);
+        var current = Event.current;
+        bool dragging = GUIUtility.hotControl == id;
+        if (current.type == EventType.Repaint)
+            Fill(new Rect(gap.center.x, gap.y + gap.height / 2 - S(24), 1, S(48)), dragging || gap.Contains(current.mousePosition) ? Color.white : new Color(1, 1, 1, .3f));
+        Hover(gap, L.Text("拖动调整地图和说明栏的宽度"));
+        switch (current.GetTypeForControl(id))
+        {
+            case EventType.MouseDown when current.button == 0 && gap.Contains(current.mousePosition): GUIUtility.hotControl = id; current.Use(); break;
+            case EventType.MouseDrag when dragging: _routeSideShare = Mathf.Clamp01((page.xMax - current.mousePosition.x - S(5)) / page.width); current.Use(); break;
+            case EventType.MouseUp when dragging: GUIUtility.hotControl = 0; current.Use(); break;
+        }
+    }
+
+    /// <summary>The point under the pointer (or the middle of the map) stays where it is.</summary>
+    private void SetRouteZoom(float value, Vector2 pivot)
+    {
+        float next = Mathf.Clamp(Mathf.Round(value * 10) / 10, RouteZoomMin, RouteZoomMax);
+        if (Mathf.Abs(next - _routeZoom) < .001f) return;
+        _routeScroll = (_routeScroll + pivot) * (next / _routeZoom) - pivot;
+        _routeZoom = next; RouteStyles(); _routeLayoutMap = null;
+    }
+
+    /// <summary>The map's texts follow its zoom; the side column keeps the panel's sizes.</summary>
+    private void RouteStyles()
+    {
+        Color text = new(.94f, .95f, .96f, 1), muted = new(.73f, .76f, .79f, 1);
+        GUIStyle Canvas(int size, Color color, TextAnchor alignment)
+        {
+            var style = TextStyle(size, color);
+            style.fontSize = Mathf.Max(6, Mathf.RoundToInt(S(size) * _routeZoom)); style.alignment = alignment;
+            return style;
+        }
+        _routeLabel = Canvas(13, text, TextAnchor.MiddleCenter);
+        _routeTag = Canvas(11, new Color(.95f, .80f, .36f, 1), TextAnchor.MiddleCenter);
+        _routePill = Canvas(12, new Color(.07f, .08f, .09f, 1), TextAnchor.MiddleCenter);
+        _routeYear = Canvas(16, text, TextAnchor.MiddleLeft); _routeMonth = Canvas(13, muted, TextAnchor.MiddleLeft); _routeGroup = Canvas(15, muted, TextAnchor.MiddleLeft);
     }
 
     private RouteLayout Layout(RouteMap map)
@@ -102,8 +172,8 @@ public sealed partial class ToolWindow
         int maxSlot = Math.Max(map.Stations.Max(s => slot[s.Id]), map.Arcs.Where(a => a.Hi != null).Select(a => RouteSlotOf(a.Hi)).DefaultIfEmpty(0).Max()) + 3;
         var occupied = new Dictionary<int, int>();
         foreach (var s in map.Stations) occupied[slot[s.Id]] = Math.Max(occupied.TryGetValue(slot[s.Id], out int o) ? o : -1, rank[s.Id]);
-        layout.X.Add(S(24));
-        for (int i = 0; i < maxSlot; i++) layout.X.Add(layout.X[i] + (occupied.TryGetValue(i, out int o) ? (o + 1) * S(RouteGap) : S(RouteSlot)));
+        layout.X.Add(Z(24));
+        for (int i = 0; i < maxSlot; i++) layout.X.Add(layout.X[i] + (occupied.TryGetValue(i, out int o) ? (o + 1) * Z(RouteGap) : Z(RouteSlot)));
         layout.MaxSlot = maxSlot;
         // This playthrough: stations with a story record, and those between two such with only one way through.
         var vis = map.Stations.ToDictionary(s => s.Id, s => s.Visited ? "yes" : "no", StringComparer.Ordinal);
@@ -121,46 +191,58 @@ public sealed partial class ToolWindow
         }
         foreach (int lane in RouteLanes)
         {
-            var row = map.Stations.Where(s => s.Lane == lane).Select(s => (s, x: layout.X[slot[s.Id]] + rank[s.Id] * S(RouteGap) + S(RouteGap) / 2)).OrderBy(p => p.x).ToList();
+            var row = map.Stations.Where(s => s.Lane == lane).Select(s => (s, x: layout.X[slot[s.Id]] + rank[s.Id] * Z(RouteGap) + Z(RouteGap) / 2)).OrderBy(p => p.x).ToList();
             for (int i = 0; i < row.Count; i++)
-                layout.Points[row[i].s.Id] = (row[i].x, S(RouteAxis) + (Array.IndexOf(RouteLanes, lane) + .5f) * S(RouteLane), row[i].s.Kind == "route" ? lane < 0 : i % 2 == 0, vis[row[i].s.Id]);
+                layout.Points[row[i].s.Id] = (row[i].x, Z(RouteAxis) + (Array.IndexOf(RouteLanes, lane) + .5f) * Z(RouteLane), row[i].s.Kind == "route" ? lane < 0 : i % 2 == 0, vis[row[i].s.Id]);
         }
-        layout.MainBottom = S(RouteAxis) + RouteLanes.Length * S(RouteLane);
+        layout.MainBottom = Z(RouteAxis) + RouteLanes.Length * Z(RouteLane);
         // Side stories: by how they are entered; a chained story goes with the story it follows.
         RouteMap.Arc Root(RouteMap.Arc a) { var x = a; for (int n = 0; x.Kind == "chain" && layout.ArcById.TryGetValue(x.Parent, out var p) && n < 8; n++) x = p; return x; }
-        float y = layout.MainBottom + S(50);
+        float y = layout.MainBottom + Z(50);
         foreach (var (group, title) in new[] { ("fork", "从主线某一站岔出，走完回到原处（含只在序章里出现的事件）"), ("free", "自由行动里触发（地点菜单、随机事件）"), ("date", "按日期和条件自动触发") })
         {
             var items = map.Arcs.Where(a => a.Lo != null && (a.Anchor.Length > 0 ? "fork" : Root(a).Kind == "date" ? "date" : "free") == group).Select(a =>
             {
-                float x1 = a.Anchor.Length > 0 && layout.Points.TryGetValue(a.Anchor, out var p) ? p.X - S(8) : layout.X[Math.Min(RouteSlotOf(a.Lo), maxSlot)] + S(2);
-                float w = _small.CalcSize(new GUIContent(L.DisplayText(a.Label))).x + S(16);
-                float x2 = a.Hi != null ? Mathf.Max(layout.X[Math.Min(RouteSlotOf(a.Hi) + 1, maxSlot)] - S(2), x1) : x1;
+                float x1 = a.Anchor.Length > 0 && layout.Points.TryGetValue(a.Anchor, out var p) ? p.X - Z(8) : layout.X[Math.Min(RouteSlotOf(a.Lo), maxSlot)] + Z(2);
+                float w = _routePill.CalcSize(new GUIContent(L.DisplayText(a.Label))).x + Z(16);
+                float x2 = a.Hi != null ? Mathf.Max(layout.X[Math.Min(RouteSlotOf(a.Hi) + 1, maxSlot)] - Z(2), x1) : x1;
                 return (a, x1, x2, w);
             }).OrderBy(t => t.x1).ThenByDescending(t => t.a.Lines).ToList();
             if (items.Count == 0) continue;
             layout.Groups.Add((L.Text(title), y));
-            y += S(RouteGroupHead);
+            y += Z(RouteGroupHead);
             var rows = new List<float>();
             foreach (var (a, x1, x2, w) in items)
             {
-                float need = Mathf.Max(x2, x1 + w) + S(10);
+                float need = Mathf.Max(x2, x1 + w) + Z(10);
                 int row = rows.FindIndex(end => end <= x1);
                 if (row < 0) { row = rows.Count; rows.Add(0); }
                 rows[row] = need;
-                layout.Arcs.Add((a, x1, x2, w, y + row * S(RouteRow) + S(RouteRow) / 2, group));
+                layout.Arcs.Add((a, x1, x2, w, y + row * Z(RouteRow) + Z(RouteRow) / 2, group));
             }
-            y += rows.Count * S(RouteRow) + S(10);
+            y += rows.Count * Z(RouteRow) + Z(10);
         }
-        layout.Width = layout.X[maxSlot] + S(80);
-        layout.Height = y + S(20);
+        layout.Width = layout.X[maxSlot] + Z(80);
+        layout.Height = y + Z(20);
         return layout;
     }
 
     private void DrawRouteCanvas(Rect canvas, RouteMap map, RouteLayout layout)
     {
         GUI.DrawTexture(new Rect(canvas.x, canvas.y - S(4), canvas.width, 1), _line);
-        _routeScroll = BeginScroll(canvas, _routeScroll, new Rect(0, 0, layout.Width, layout.Height));
+        var current = Event.current;
+        _routeView = canvas.size;
+        // The plain wheel scrolls up and down; Shift + wheel goes along the calendar, Ctrl + wheel zooms about the pointer.
+        if (current.type == EventType.ScrollWheel && canvas.Contains(current.mousePosition) && (current.shift || current.control))
+        {
+            float wheel = current.delta.y != 0 ? current.delta.y : current.delta.x;
+            if (current.control) SetRouteZoom(_routeZoom - Mathf.Sign(wheel) * .1f, current.mousePosition - canvas.position);
+            else _routeScroll.x += wheel * S(20);
+            current.Use();
+        }
+        _routeScroll = BeginScroll(canvas, _routeScroll, new Rect(0, 0, layout.Width, layout.Height), horizontal: true);
+        // Taken before the stations and stories, whose number on screen changes as the map moves.
+        int pan = GUIUtility.GetControlID(FocusType.Passive);
         try
         {
             var view = new Rect(_routeScroll.x, _routeScroll.y, canvas.width, canvas.height);
@@ -174,14 +256,14 @@ public sealed partial class ToolWindow
                     if (year == 1) s0 = 0;
                     if (s1 <= 0 || s0 >= layout.MaxSlot) continue;
                     if (year % 2 == 0) Fill(new Rect(layout.X[s0], 0, layout.X[s1] - layout.X[s0], layout.Height), RouteBand);
-                    GUI.Label(new Rect(layout.X[s0] + S(8), S(6), S(90), S(22)), L.Format("第{0}年", year), _label);
+                    GUI.Label(new Rect(layout.X[s0] + Z(8), Z(6), Z(90), Z(22)), L.Format("第{0}年", year), _routeYear);
                 }
                 for (int i = 0; i < layout.MaxSlot; i += 3)
                 {
-                    Fill(new Rect(layout.X[i], S(30), 1, layout.Height - S(30)), RouteGrid);
-                    GUI.Label(new Rect(layout.X[i] + S(4), S(30), S(46), S(18)), L.Format("{0}月", (i / 3 + 3) % 12 + 1), _small);
+                    Fill(new Rect(layout.X[i], Z(30), 1, layout.Height - Z(30)), RouteGrid);
+                    GUI.Label(new Rect(layout.X[i] + Z(4), Z(30), Z(46), Z(18)), L.Format("{0}月", (i / 3 + 3) % 12 + 1), _routeMonth);
                 }
-                foreach (var (title, top) in layout.Groups) GUI.Label(new Rect(view.x + S(8), top, S(900), S(24)), title, _muted);
+                foreach (var (title, top) in layout.Groups) GUI.Label(new Rect(view.x + Z(8), top, Z(900), Z(24)), title, _routeGroup);
                 // Lines: this playthrough's way in colour, a stretch through free play dashed, a jump in time arched over.
                 foreach (var e in map.Edges)
                 {
@@ -196,42 +278,49 @@ public sealed partial class ToolWindow
             foreach (var s in map.Stations)
             {
                 if (!layout.Points.TryGetValue(s.Id, out var p)) continue;
-                var hit = new Rect(p.X - S(40), p.Up ? p.Y - S(28) : p.Y - S(12), S(80), S(44));
+                var hit = new Rect(p.X - Z(40), p.Up ? p.Y - Z(28) : p.Y - Z(12), Z(80), Z(44));
                 if (!hit.Overlaps(view)) continue;
                 string key = "stn:" + s.Id;
                 if (repaint)
                 {
                     bool selected = _routeSelected == key, next = map.NextStation == s.Id;
-                    if (next) Ring(new Vector2(p.X, p.Y), S(17), S(3), new Color(.95f, .80f, .36f));
-                    if (p.Vis != "no" || selected) Ring(new Vector2(p.X, p.Y), S(13), S(2.5f), selected ? Color.white : p.Vis == "yes" ? RouteRun : new Color(RouteRun.r, RouteRun.g, RouteRun.b, .45f));
-                    float size = s.Kind == "route" ? S(16) : S(15);
-                    GUI.DrawTexture(new Rect(p.X - size / 2, p.Y - size / 2, size, size), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, RouteColor(s.Read), 0, s.Kind == "route" ? S(4) : size / 2);
+                    if (next) Ring(new Vector2(p.X, p.Y), Z(17), Z(3), new Color(.95f, .80f, .36f));
+                    if (p.Vis != "no" || selected) Ring(new Vector2(p.X, p.Y), Z(13), Z(2.5f), selected ? Color.white : p.Vis == "yes" ? RouteRun : new Color(RouteRun.r, RouteRun.g, RouteRun.b, .45f));
+                    float size = s.Kind == "route" ? Z(16) : Z(15);
+                    GUI.DrawTexture(new Rect(p.X - size / 2, p.Y - size / 2, size, size), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, RouteColor(s.Read), 0, s.Kind == "route" ? Z(4) : size / 2);
                     string label = L.DisplayText(s.Label);
-                    var labelRect = new Rect(p.X - S(70), p.Up ? p.Y - S(30) : p.Y + S(11), S(140), S(20));
+                    var labelRect = new Rect(p.X - Z(70), p.Up ? p.Y - Z(30) : p.Y + Z(11), Z(140), Z(20));
                     GUI.Label(labelRect, label, _routeLabel);
-                    if (next) GUI.Label(new Rect(p.X - S(40), p.Up ? p.Y - S(48) : p.Y + S(29), S(80), S(18)), L.Text("下一站"), _routeTag);
-                    if (s.Endings > 0) GUI.Label(new Rect(p.X + S(9), p.Up ? p.Y + S(4) : p.Y - S(18), S(20), S(16)), L.Text("终"), _routeTag);
-                    if (s.Variants > 0) GUI.Label(new Rect(p.X - S(46), p.Up ? p.Y + S(4) : p.Y - S(18), S(36), S(16)), (s.DeadVariants.Count > 0 ? "⚠ " : "") + "+" + s.Variants, _routeTag);
+                    if (next) GUI.Label(new Rect(p.X - Z(40), p.Up ? p.Y - Z(48) : p.Y + Z(29), Z(80), Z(18)), L.Text("下一站"), _routeTag);
+                    if (s.Endings > 0) GUI.Label(new Rect(p.X + Z(9), p.Up ? p.Y + Z(4) : p.Y - Z(18), Z(20), Z(16)), L.Text("终"), _routeTag);
+                    if (s.Variants > 0) GUI.Label(new Rect(p.X - Z(46), p.Up ? p.Y + Z(4) : p.Y - Z(18), Z(36), Z(16)), (s.DeadVariants.Count > 0 ? "⚠ " : "") + "+" + s.Variants, _routeTag);
                 }
                 if (GUI.Button(hit, new GUIContent("", L.DisplayText(s.Label)), GUIStyle.none)) { _routeSelected = key; _routeOthers = false; _routeSearch = ""; _routeSideKey = ""; }
                 Hover(hit, L.DisplayText(s.Label) + "\n" + RouteDate(s.Date));
             }
             foreach (var (arc, x1, x2, w, y, _) in layout.Arcs)
             {
-                var pill = new Rect(x1, y - S(9), w, S(18));
-                var span = new Rect(x1, y - S(1), Mathf.Max(0, x2 - x1), S(2));
+                var pill = new Rect(x1, y - Z(9), w, Z(18));
+                var span = new Rect(x1, y - Z(1), Mathf.Max(0, x2 - x1), Z(2));
                 if (!pill.Overlaps(view) && !span.Overlaps(view)) continue;
                 string key = "arc:" + arc.Id;
                 if (repaint)
                 {
-                    if (x2 > x1 + w) Fill(new Rect(x1 + w, y - S(1), x2 - x1 - w, S(2)), new Color(RouteColor(arc.Read).r, RouteColor(arc.Read).g, RouteColor(arc.Read).b, .5f));
+                    if (x2 > x1 + w) Fill(new Rect(x1 + w, y - Z(1), x2 - x1 - w, Z(2)), new Color(RouteColor(arc.Read).r, RouteColor(arc.Read).g, RouteColor(arc.Read).b, .5f));
                     var fill = RouteColor(arc.Read); fill.a = .9f;
-                    GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, fill, 0, S(9));
-                    if (arc.Visited || _routeSelected == key) GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, _routeSelected == key ? Color.white : RouteRun, S(2), S(9));
+                    GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, fill, 0, Z(9));
+                    if (arc.Visited || _routeSelected == key) GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, _routeSelected == key ? Color.white : RouteRun, Z(2), Z(9));
                     GUI.Label(pill, L.DisplayText(arc.Label), _routePill);
                 }
                 if (GUI.Button(pill, GUIContent.none, GUIStyle.none)) { _routeSelected = key; _routeOthers = false; _routeSearch = ""; _routeSideKey = ""; }
                 Hover(pill, L.DisplayText(arc.Label) + "\n" + RouteSpan(arc.Lo, arc.Hi));
+            }
+            // Dragging the map moves it; a station or story under the press takes its own click first.
+            switch (current.GetTypeForControl(pan))
+            {
+                case EventType.MouseDown when current.button == 0 && view.Contains(current.mousePosition): GUIUtility.hotControl = pan; current.Use(); break;
+                case EventType.MouseDrag when GUIUtility.hotControl == pan: _routeScroll -= current.delta; current.Use(); break;
+                case EventType.MouseUp when GUIUtility.hotControl == pan: GUIUtility.hotControl = 0; current.Use(); break;
             }
         }
         finally { EndScroll(); }
@@ -244,12 +333,12 @@ public sealed partial class ToolWindow
     /// <summary>Square-cornered lines (no rotated textures): along, across, along; dashed through free play; a jump in time arched over the lane.</summary>
     private void DrawRouteEdge(Vector2 a, Vector2 b, string kind, Color color)
     {
-        float w = S(2.5f);
+        float w = Z(2.5f);
         void Segment(Vector2 p, Vector2 q)
         {
             var rect = new Rect(Mathf.Min(p.x, q.x) - w / 2, Mathf.Min(p.y, q.y) - w / 2, Mathf.Abs(q.x - p.x) + w, Mathf.Abs(q.y - p.y) + w);
             if (kind == "main") { Fill(rect, color); return; }
-            float dash = S(6), gap = S(5);
+            float dash = Z(6), gap = Z(5);
             bool across = Mathf.Abs(q.x - p.x) >= Mathf.Abs(q.y - p.y);
             float length = across ? rect.width : rect.height;
             for (float t = 0; t < length; t += dash + gap)
@@ -257,22 +346,23 @@ public sealed partial class ToolWindow
         }
         if (kind == "skip")
         {
-            float top = Mathf.Min(a.y, b.y) - S(RouteLane) * .7f;
+            float top = Mathf.Min(a.y, b.y) - Z(RouteLane) * .7f;
             Segment(a, new Vector2(a.x, top)); Segment(new Vector2(a.x, top), new Vector2(b.x, top)); Segment(new Vector2(b.x, top), b);
             return;
         }
         if (Mathf.Abs(a.y - b.y) < .5f) { Segment(a, b); return; }
-        float mid = a.x + Mathf.Max(S(16), Mathf.Min(S(48), (b.x - a.x) / 2));
+        float mid = a.x + Mathf.Max(Z(16), Mathf.Min(Z(48), (b.x - a.x) / 2));
         Segment(a, new Vector2(mid, a.y)); Segment(new Vector2(mid, a.y), new Vector2(mid, b.y)); Segment(new Vector2(mid, b.y), b);
     }
 
     private void ScrollRouteTo(string key)
     {
         if (_routeLayout == null) return;
+        // Into the middle of the map, as the prototype does.
         if (key.StartsWith("stn:", StringComparison.Ordinal) && _routeLayout.Points.TryGetValue(key.Substring(4), out var p))
-            _routeScroll = new Vector2(Mathf.Max(0, p.X - S(200)), Mathf.Max(0, p.Y - S(160)));
+            _routeScroll = new Vector2(Mathf.Max(0, p.X - _routeView.x / 2), Mathf.Max(0, p.Y - _routeView.y / 2));
         else if (key.StartsWith("arc:", StringComparison.Ordinal))
-            foreach (var item in _routeLayout.Arcs) if ("arc:" + item.Arc.Id == key) { _routeScroll = new Vector2(Mathf.Max(0, item.X1 - S(200)), Mathf.Max(0, item.Y - S(160))); break; }
+            foreach (var item in _routeLayout.Arcs) if ("arc:" + item.Arc.Id == key) { _routeScroll = new Vector2(Mathf.Max(0, item.X1 - _routeView.x / 3), Mathf.Max(0, item.Y - _routeView.y / 2)); break; }
     }
 
     // ---- the right-hand side: search, the selected station or story, or what lies outside the timeline ----
@@ -443,6 +533,7 @@ public sealed partial class ToolWindow
         Add(L.Text("横轴是游戏里的日历，每条车道是一条路线；圆点是主线的一站，方块是会改走主线的支线（襄阳行、山洞九日、雪山行）。点开一站看它的小节、进入条件和从这里岔出去的支线；下方的胶囊是支线，按怎么进入分三组。"), _muted);
         Add(L.Text("颜色：越偏黄越少读过（全部周目），越偏灰读得越多。蓝圈是这一局走过的站，淡蓝圈是推断走过的，金圈是下一站。虚线经过自由行动，上方拱起的线是跳过时间。"), _muted);
         Add(L.Text("有收录节点的小节和支线带「存入」，写进上方填的空格后从读档页读取，就从那里重玩。"), _muted);
+        Add(L.Text("按住左键拖动地图可以移动；滚轮上下移动，Shift + 滚轮左右移动，Ctrl + 滚轮或上方的 −、+ 缩放。地图和说明栏之间的竖线可以拖动，调整两边宽度。"), _muted);
     }
 
     private static string Short(string text, int length = 90)

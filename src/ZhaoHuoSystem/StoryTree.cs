@@ -26,9 +26,14 @@ internal sealed class StoryTree(ManualLogSource log, StoryGraph graph)
         var main = MissionManagerData.Instance?.Main;
         if (main == null) return new List<Root>();
         var list = new List<Root>();
-        try
+        bool failed = false;
+        IEnumerable<MissionCheckData> checks;
+        try { checks = R.Items(R.Field(main, "_missions")).OfType<MissionCheckData>().ToList(); }
+        catch (Exception ex) { log.LogWarning("STORY_TREE roots " + ex); return list; }
+        foreach (var check in checks)
         {
-            foreach (var check in R.Items(R.Field(main, "_missions")).OfType<MissionCheckData>())
+            // One mission that cannot be read is left out (and logged whole), not the whole tree (F93).
+            try
             {
                 if (check == null || string.IsNullOrEmpty(check.StartScript) || R.Field(check, "_active") is false) continue;
                 var type = R.Field(check, "_timeCheckType");
@@ -39,9 +44,12 @@ internal sealed class StoryTree(ManualLogSource log, StoryGraph graph)
                 list.Add(new Root { Key = check.Key, Script = check.StartScript, Order = time != null && time.Year > 0 ? time.ConvertToRounds() : int.MaxValue,
                     Title = when + "  " + (desc.Length > 0 ? L.DisplayText(desc) : check.Key) });
             }
+            catch (Exception ex) { failed = true; log.LogWarning("STORY_TREE root " + (check != null ? check.Key : "?") + " " + ex); }
         }
-        catch (Exception ex) { log.LogWarning("STORY_TREE roots " + ex.GetBaseException().Message); }
-        return roots = list.OrderBy(root => root.Order).ThenBy(root => root.Key, StringComparer.Ordinal).ToList();
+        var ordered = list.OrderBy(root => root.Order).ThenBy(root => root.Key, StringComparer.Ordinal).ToList();
+        // Until 0.3.36 a failed read was kept for the session and the tree stayed empty; it is read again next time instead.
+        if (!failed) roots = ordered;
+        return ordered;
     }
 
     public static string SegmentTitle(StoryGraph.Segment segment)
