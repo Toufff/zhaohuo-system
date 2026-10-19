@@ -26,6 +26,9 @@ internal sealed class RouteMapGame : IRouteSource
     private readonly Dictionary<string, object> switchData = new(StringComparer.Ordinal);
     private readonly Dictionary<string, MissionCheckData> checkByKey = new(StringComparer.Ordinal);
     public string CurrentMain { get; }
+    /// <summary>The checkpoint data (condition records, switch results, free-play event tables) lives in the story scene; on the
+    /// title before any story it is not loaded yet, and the map is built without it (F96).</summary>
+    public bool Partial { get; }
 
     public RouteMapGame()
     {
@@ -43,14 +46,17 @@ internal sealed class RouteMapGame : IRouteSource
             CurrentMain = missions.Main?.CurrentKey ?? "";
         }
         else CurrentMain = "";
+        // A story scene left behind keeps its manager object (Unity-null) with the data it holds; only never-loaded is missing.
         var checkpoints = CheckPointManager.Instance;
+        Partial = ReferenceEquals(checkpoints, null);
         foreach (var condition in R.Items(R.Field(R.Field(checkpoints, "_condition"), "_list")))
             if (condition is UnityEngine.Object asset && asset != null && !records.ContainsKey(asset.name)) records[asset.name] = condition;
         foreach (var config in R.Field<SwitchResultConfig[]>(checkpoints, "_switchList") ?? new SwitchResultConfig[0])
             foreach (var data in R.Items(R.Field(config, "_list")))
                 if (data is UnityEngine.Object asset && asset != null && !switchData.ContainsKey(asset.name)) switchData[asset.name] = data;
         foreach (var check in checks) if (!checkByKey.ContainsKey(check.Key)) checkByKey[check.Key] = check;
-        if (PlayerStatManagerData.Instance is PlayerStatManagerData player && player != null)
+        // The story record exists only once a game has been started or loaded (null on a fresh title).
+        if (PlayerStatManagerData.Instance is PlayerStatManagerData player && player != null && player.StoryKeyList != null)
             foreach (string key in player.StoryKeyList) visited.Add(key);
     }
 
@@ -154,6 +160,8 @@ internal sealed class RouteMapRunner(ManualLogSource log)
     public string Error { get; private set; } = "";
     /// <summary>The longest single frame's work, to tell how much a frame lost while building.</summary>
     public double LongestFrameMs { get; private set; }
+    /// <summary>Built without the story scene's checkpoint data; built again once it is there (F96).</summary>
+    public bool Partial { get; private set; }
 
     public void Start()
     {
@@ -162,7 +170,8 @@ internal sealed class RouteMapRunner(ManualLogSource log)
         total.Restart();
         var load = Stopwatch.StartNew();
         try { source = new RouteMapGame(); }
-        catch (Exception ex) { Error = ex.GetBaseException().Message; log.LogWarning("ROUTE_MAP source " + Error); return; }
+        catch (Exception ex) { Error = ex.GetBaseException().Message; log.LogWarning("ROUTE_MAP source " + ex); return; }
+        Partial = source.Partial;
         LoadMs = load.Elapsed.TotalMilliseconds;
         building = new RouteMap();
         steps = RouteMapBuilder.Steps(source, (text, args) => args.Length == 0 ? L.Text(text) : L.Format(text, args), building, phase => { log.LogInfo("ROUTE_MAP " + phase); lastPhase = phase.Split(' ')[0]; }).GetEnumerator();
@@ -170,8 +179,13 @@ internal sealed class RouteMapRunner(ManualLogSource log)
     }
 
     /// <summary>Each frame (from the plugin's Update): a few steps, within the budget.</summary>
+    /// <summary>The game's data changed under the map (the title's 最近存档 was read): build it again when next shown.</summary>
+    public void Forget() { if (steps == null) { Map = null; Error = ""; } }
+
     public void Update()
     {
+        if (steps == null && Map != null && Partial && !ReferenceEquals(CheckPointManager.Instance, null))
+        { Map = null; Partial = false; log.LogInfo("ROUTE_MAP checkpoints loaded, built again when next shown"); }
         if (steps == null) return;
         var frame = Stopwatch.StartNew();
         try

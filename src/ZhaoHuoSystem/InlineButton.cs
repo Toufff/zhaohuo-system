@@ -56,5 +56,42 @@ internal static class InlineButton
         float height = line.fontSize * size * 1.6875f * UiScale.User;
         own.sizeDelta = new Vector2(label.preferredWidth + height * .8f, height);
         own.anchoredPosition = new Vector2(right - rect.xMin + height * .4f, middle - rect.center.y);
+        Skin(button, height);
+    }
+
+    /// <summary>
+    /// 界面风格: the game's framed button behind the label, lit under the pointer, as in the panel; the flat colours when the
+    /// skin is off or not found. The frame's clear margin reaches outside the button, so the frame shows at the button's size.
+    /// </summary>
+    private static void Skin(Button button, float height)
+    {
+        var normal = GameSkin.Sliced(GameSkin.Part.Button, out float scale, out float pad);
+        var root = button.GetComponent<Image>();
+        var existing = button.transform.Find("Frame");
+        if (normal == null)
+        {
+            if (existing != null) existing.gameObject.SetActive(false);
+            button.transition = Selectable.Transition.ColorTint; button.targetGraphic = root; root.color = Color.white;
+            return;
+        }
+        Image frame;
+        if (existing == null)
+        {
+            var made = new GameObject("Frame", typeof(RectTransform), typeof(Image));
+            made.transform.SetParent(button.transform, false); made.transform.SetAsFirstSibling();
+            frame = made.GetComponent<Image>(); frame.type = Image.Type.Sliced; frame.raycastTarget = false;
+            var stretch = (RectTransform)made.transform; stretch.anchorMin = Vector2.zero; stretch.anchorMax = Vector2.one;
+        }
+        else { frame = existing.GetComponent<Image>(); existing.gameObject.SetActive(true); }
+        // The panel draws it at its scale on a 30-pixel button; the same proportion here.
+        float k = scale * height / 30;
+        frame.sprite = normal; frame.pixelsPerUnitMultiplier = 1 / k;
+        var frameRect = (RectTransform)frame.transform;
+        frameRect.offsetMin = new Vector2(-pad * k, -pad * k); frameRect.offsetMax = new Vector2(pad * k, pad * k);
+        var lit = GameSkin.Sliced(GameSkin.Part.ButtonLit, out _, out _);
+        button.transition = Selectable.Transition.SpriteSwap; button.targetGraphic = frame;
+        button.spriteState = new SpriteState { highlightedSprite = lit, pressedSprite = lit, selectedSprite = lit };
+        // Still catches the pointer; a little dark under the frame's see-through middle keeps the label clear on bright maps.
+        root.color = new Color(0, 0, 0, .45f);
     }
 }

@@ -159,7 +159,15 @@ public sealed class GameAdapter : IGameAdapter
         previewPool = pool; previewTitle = title; Refresh();
     }
     public void ClearPreview() { if (previewPool.Length == 0) return; previewPool = previewTitle = ""; Refresh(); }
-    public void Refresh()
+    /// <summary>While the panel is closed the value list (some 1,500 entries with their texts) is built again at most every few
+    /// seconds; the map, the events and the dice still follow every refresh (F95). A write always reads it fresh.</summary>
+    public bool PanelOpen;
+    private float valuesBuiltAt = float.MinValue;
+    private string valuesIdentity = "";
+    private long valuesLanguage = -1;
+
+    public void Refresh() => Refresh(false);
+    public void Refresh(bool freshValues)
     {
         try
         {
@@ -170,10 +178,14 @@ public sealed class GameAdapter : IGameAdapter
             var p = PlayerStatManagerData.Instance;
             var scene = SceneManager.GetActiveScene().name;
             var ready = p != null && p.Stats != null && (scene.IndexOf("story", StringComparison.OrdinalIgnoreCase) >= 0 || scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0);
-            var next = new ToolSnapshot { Ready = ready, Revision = revision, Version = RuntimeVersion, Location = ready ? (actualLocation.Length > 0 ? L.DisplayText(actualLocation) : L.Text(scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0 ? "当前地图" : "当前剧情")) : "", Action = poolName.Length > 0 ? L.Text("活动事件") : "", ContextDetail = identity + "\n" + L.Text("检查点") + " " + poolName, Status = StatusText(), PendingEventId = pendingEvent, ActionWaiting = actionWaiting, ActionSelectionEnabled = selectionEnabled };
-            values.Clear(); ambiguousFields.Clear(); fieldIdentities.Clear(); eventObjects.Clear();
-            if (ready && p != null)
+            var next = new ToolSnapshot { Ready = ready, Title = scene == "Title", Revision = revision, Version = RuntimeVersion, Location = ready ? (actualLocation.Length > 0 ? L.DisplayText(actualLocation) : L.Text(scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0 ? "当前地图" : "当前剧情")) : "", Action = poolName.Length > 0 ? L.Text("活动事件") : "", ContextDetail = identity + "\n" + L.Text("检查点") + " " + poolName, Status = StatusText(), PendingEventId = pendingEvent, ActionWaiting = actionWaiting, ActionSelectionEnabled = selectionEnabled };
+            bool rebuildValues = freshValues || PanelOpen || !ready || valuesIdentity != identity || valuesLanguage != L.Revision || Time.unscaledTime - valuesBuiltAt > 5f;
+            if (rebuildValues) { values.Clear(); ambiguousFields.Clear(); fieldIdentities.Clear(); }
+            eventObjects.Clear();
+            if (ready && p != null && !rebuildValues) next.Values = Snapshot.Values;
+            if (ready && p != null && rebuildValues)
             {
+                valuesBuiltAt = Time.unscaledTime; valuesIdentity = identity; valuesLanguage = L.Revision;
                 foreach (var stat in p.Stats!.List.OrderBy(stat => stat == null ? int.MaxValue : ValueSemantics.SafeCatalogOrder(stat.GetLocaleKey)))
                 {
                     if (stat == null) continue;
@@ -232,6 +244,10 @@ public sealed class GameAdapter : IGameAdapter
                 }
                 try { foreach (var binding in ValueCatalog.Read(p)) AddValue(next, binding); }
                 catch (Exception ex) { log.LogWarning("VALUE_CATALOG " + ex.GetBaseException().Message); }
+            }
+            if (ready && p != null)
+            {
+                var missions = MissionManagerData.Instance;
                 try { next.MapLocations = MapOverview.Read(p, missions); }
                 catch (Exception ex) { log.LogWarning("MAP_READ " + ex.GetBaseException().Message); }
                 try { using (Perf.Time("one-shot")) AddOneShots(next.MapLocations, p); }
@@ -424,7 +440,7 @@ public sealed class GameAdapter : IGameAdapter
     }
     public OperationResult SetValue(string fieldId, string input)
     {
-        Refresh();
+        Refresh(freshValues: true);
         if (!Snapshot.Ready) return Feedback(false, "当前场景不可编辑");
         if (string.IsNullOrWhiteSpace(input) || !int.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out var target)) return Feedback(false, "请输入整数");
         var definition = Snapshot.Values.FirstOrDefault(x => x.Id == fieldId);

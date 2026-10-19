@@ -19,9 +19,8 @@ namespace ZhaoHuoSystem;
 /// F71's copy, is kept in the mod's own folder: the latest one per script, with the game date, the main mission then,
 /// the script's options (requirements read right then) and when it was kept. A starred node is a copy of its own that
 /// later starts of the script never replace. The review page lists them, marks options whose story the player has not
-/// read yet (the game's own read-story record, across playthroughs), and writes one into an empty manual slot through
-/// the game's own save as a story save (SegmentSaves): it loads from the load page like any save and plays the script
-/// again from its start with the values it started with, music and all. No existing save is touched.
+/// read yet (the game's own read-story record, across playthroughs); 跳转 (F98) writes one into a slot the player picks
+/// as a story save (SegmentSaves) and loads it, playing the script again from its start with the values it started with.
 /// </summary>
 internal sealed class StoryReview(ManualLogSource log, string folder)
 {
@@ -38,7 +37,6 @@ internal sealed class StoryReview(ManualLogSource log, string folder)
     private const string Header = "# 赵活系统：剧情回顾收录的节点。只有本模组读取，游戏存档不受影响；删掉 review 文件夹即全部清空。";
     // Line breaks and pairs inside a field of the one-line-per-node index.
     private const char Break = '\u001f', Pair = '\u001e';
-    private static readonly MethodInfo? SaveFile = AccessTools.Method(typeof(SaveSystem), "GetSaveDataFile");
     private readonly Dictionary<string, Node> nodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, string>> reading = new(StringComparer.OrdinalIgnoreCase);
     private bool loaded;
@@ -231,45 +229,18 @@ internal sealed class StoryReview(ManualLogSource log, string folder)
         return (summary, detail.Trim());
     }
 
-    /// <summary>The first manual slot with no save in it, or "" when every one holds a save.</summary>
-    public string FirstEmptySlot(int count)
+    /// <summary>The kept start as a save to write (F98's 跳转), its save time now; null when its file cannot be read.</summary>
+    public GameSave? Read(Node node)
     {
-        for (int i = 1; i <= count; i++)
-        {
-            string slot = i.ToString("000", CultureInfo.InvariantCulture);
-            if (!Exists(slot)) return slot;
-        }
-        return "";
-    }
-    // Without the game's own file name a slot counts as taken: nothing is ever written over.
-    private static bool Exists(string slot)
-    {
-        try { return SaveSystem.Instance == null || SaveFile?.Invoke(SaveSystem.Instance, new object[] { slot }) is not string path || File.Exists(path); }
-        catch { return true; }
-    }
-
-    /// <summary>Writes the node into this manual slot, which must be empty, as a story save.</summary>
-    public OperationResult Export(Node node, string slot, int count, SegmentSaves segments)
-    {
-        if (SaveSystem.Instance == null || SaveFile == null) return OperationResult.Fail(L.Text("存档系统未就绪"));
-        if (!int.TryParse(slot, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) || number < 1 || number > count)
-            return OperationResult.Fail(L.Format("请填 1–{0} 的格子编号", count));
-        slot = number.ToString("000", CultureInfo.InvariantCulture);
-        if (Exists(slot)) return OperationResult.Fail(L.Format("第 {0} 格已有存档，请选空格", number));
-        GameSave? save;
         try
         {
             using var file = File.OpenRead(NodeFile(node.Id));
             using var zip = new GZipStream(file, CompressionMode.Decompress);
             using var reader = new StreamReader(zip, Encoding.UTF8);
-            save = JsonUtility.FromJson<GameSave>(reader.ReadToEnd());
+            var save = JsonUtility.FromJson<GameSave>(reader.ReadToEnd());
+            if (save != null) save.TimeTick = DateTime.Now.Ticks;
+            return save;
         }
-        catch (Exception ex) { log.LogWarning("REVIEW read " + node.Id + " " + ex.GetBaseException().Message); save = null; }
-        if (save == null) return OperationResult.Fail(L.Text("节点文件读不出来"));
-        save.TimeTick = DateTime.Now.Ticks;
-        segments.Export(save, node.Script, node.Music, node.Env, slot);
-        if (!Exists(slot)) return OperationResult.Fail(L.Text("写入失败，详见日志"));
-        log.LogInfo($"REVIEW export {node.Id} slot={slot}");
-        return OperationResult.Ok(L.Format("已存到第 {0} 格，去读档页读取", number));
+        catch (Exception ex) { log.LogWarning("REVIEW read " + node.Id + " " + ex.GetBaseException().Message); return null; }
     }
 }

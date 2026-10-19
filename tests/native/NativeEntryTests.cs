@@ -174,6 +174,47 @@ internal static partial class Program
             // 手动存档数: both pages build their slots in Awake from _slotCount.
             foreach (string page in new[] { "LoadGamePanel", "SaveGamePanel" }) { Has(mortalCore, "Mortal.Core", page, "_slotCount"); Signature(mortalCore, "Mortal.Core", page, "Awake"); }
         });
+        Test("speed-up patch targets resolve by name with the injected parameter names (F95)", () =>
+        {
+            string core = Path.Combine(managed, "Mortal.Core.dll"), story = Path.Combine(managed, "Mortal.Story.dll"), free = Path.Combine(managed, "Mortal.Free.dll"), fungus = Path.Combine(managed, "Fungus.dll");
+            // The global save's JSON copy; flag lookup by name; the stat-change pause and what shows a change.
+            Signature(core, "Mortal.Core", "SaveSystem", "SaveUniverseData");
+            Signature(core, "Mortal.Core", "SaveSystem", "ExecuteSaveJsonData", "saveFile", "gameSave");
+            Signature(core, "Mortal.Core", "MissionManagerData", "GetFlag", "name");
+            Has(core, "Mortal.Core", "MissionManagerData", "FlagsCollection");
+            Signature(story, "Mortal.Story", "StatModifyManager", "GetDisplayTime", "name");
+            Signature(story, "Mortal.Story", "StoryMainUI", "DisplayStatModification", "stat", "addValue");
+            Signature(story, "Mortal.Story", "StoryMainUI", "DisplayRelationshipModification", "icon", "addValue");
+            // The story log: its rebuild, its view, the history it joins, and opening it.
+            Signature(fungus, "Fungus", "NarrativeLogMenu", "UpdateNarrativeLogText");
+            Has(fungus, "Fungus", "NarrativeLogMenu", "narrativeLogView");
+            Signature(fungus, "Fungus", "NarrativeLog", "GetPrettyHistory", "previousOnly", "maxEntry");
+            Has(fungus, "Fungus", "NarrativeLog", "history");
+            Signature(story, "Mortal.Story", "StoryManager", "Log", "enabled");
+            Has(story, "Mortal.Story", "StoryManager", "_narrativeLogMenu", "_skipDialog", "_autoDialog", "Instance");
+            // Slot set-up and the save reads it makes; the public slot reader beside the private generic one.
+            foreach (string panel in new[] { "SaveSlotPanel", "LoadSlotPanel", "AutoSaveSlotPanel", "RecentSaveSlotPanel" }) Signature(core, "Mortal.Core", panel, "Setup");
+            Require(Members(core, "Mortal.Core", "SaveSystem").Methods.TryGetValue("GetSaveData", out var reads) && reads.Count(x => x.SequenceEqual(new[] { "slot" })) == 1, "SaveSystem.GetSaveData(slot)");
+            Signature(core, "Mortal.Core", "SaveSystem", "GetAutoSaveData", "slot");
+            Signature(core, "Mortal.Core", "SaveSystem", "GetSaveDataFile", "name");
+            // Auto mode, the free-play transitions and the command bridge used while skipping.
+            Signature(story, "Mortal.Story", "StoryManager", "StartAutoDialogue");
+            Signature(story, "Mortal.Story", "StoryManager", "SetDialogNextLineFlag");
+            Has(fungus, "Fungus", "SayDialog", "ActiveSayDialog", "StoryText");
+            Has(fungus, "Fungus", "Writer", "IsWaitingForInput");
+            foreach (string action in new[] { "ExecuteMainStoryAction", "ExecuteSubStoryAction", "ExecuteActivityAction" }) Signature(free, "Mortal.Free", "PositionController", action);
+            Signature(free, "Mortal.Free", "FreeManager", "Start");
+            Signature(fungus, "Fungus", "LuaEnvironment", "RunUnityCoroutine", "coroutine");
+            // 跳转 (F98): the save it writes and the game's own load it then runs, as the load page does.
+            Signature(core, "Mortal.Core", "SaveSystem", "SetSlot", "slot");
+            Signature(core, "Mortal.Core", "SaveSystem", "LoadGameData");
+            Signature(core, "Mortal.Core", "SaveSystem", "CreateSaveData");
+            Signature(core, "Mortal.Core", "SoundManager", "StopMusic");
+            Signature(core, "Mortal.Core", "SceneController", "LoadCurrentScene");
+            Has(core, "Mortal.Core", "SceneController", "IsPrepare", "IsLoading", "Instance");
+            Signature(core, "Mortal.Core", "MissionManagerData", "UpdateCheckMissions");
+            Has(core, "Mortal.Core", "GameSave", "StartStoryScript", "CurrentScene", "CurrentYear", "CurrentMonth", "CurrentStage", "MainMission", "RestoreData", "TimeTick");
+        });
     }
 
     private sealed class TypeMembers

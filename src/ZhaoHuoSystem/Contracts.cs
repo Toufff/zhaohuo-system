@@ -107,6 +107,8 @@ public sealed class ToolSnapshot
 {
     public long Revision { get; set; }
     public bool Ready { get; set; }
+    /// <summary>The title screen: the review tab, the collections and the settings work without a loaded game (F96).</summary>
+    public bool Title { get; set; }
     public string Version { get; set; } = "";
     public string Location { get; set; } = "";
     public string Action { get; set; } = "";

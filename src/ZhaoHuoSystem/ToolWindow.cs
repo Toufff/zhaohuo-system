@@ -56,7 +56,14 @@ public sealed partial class ToolWindow : IDisposable
     private GUIStyle _label = null!, _muted = null!, _title = null!, _heading = null!;
     private GUIStyle _button = null!, _primary = null!, _tabButton = null!, _tabSelected = null!, _launcher = null!;
     private GUIStyle _input = null!, _small = null!, _met = null!, _unmet = null!, _tooltip = null!, _metSmall = null!;
-    private GUIStyle _listItem = null!, _listSelected = null!, _scrollbar = null!, _hscrollbar = null!;
+    private GUIStyle _listItem = null!, _listSelected = null!, _scrollbar = null!, _hscrollbar = null!, _caption = null!, _unmetSmall = null!;
+    private Texture2D _dialogFill = null!, _jumpDialogAccent = null!, _cardFill = null!, _lineGrey = null!, _lineWarm = null!, _skinUnder = null!;
+    private GUIStyle _smallLine = null!;
+    private string _statusShown = "";
+    private float _statusSince;
+    private readonly Dictionary<GUIStyle, GUIStyle> _bare = new();
+    private int _skinRevision = -2;
+    private static int SkinKey => GameSkin.Enabled ? GameSkin.Revision : -1;
     // Fully satisfied events share one green treatment with the map markers.
     private GUIStyle _listReady = null!, _readySmall = null!;
     // Event consequences carry the mod's one colour meaning, so these styles render its marks as rich text.
@@ -75,10 +82,14 @@ public sealed partial class ToolWindow : IDisposable
         get => _visible;
         set
         {
+            // On the title screen the events and values wait for a game; the panel opens on 回顾 instead (F96).
+            if (value && !_visible && _adapter.Snapshot.Title && _tab <= 1) _tab = 4;
             _visible = value;
-            if (!value) { CancelInputCapture(); IsPointerOver = false; }
+            if (!value) { CancelInputCapture(); IsPointerOver = false; _dialog = JumpDialog.None; }
         }
     }
+    /// <summary>Story and map scenes, the fights (F64: their 战斗 tab is what the panel is for there) and the title (F96).</summary>
+    private static bool LauncherWanted(ToolSnapshot snapshot) => snapshot.Ready || snapshot.Title || CombatCheats.Current != CombatCheats.Mode.None;
 
     /// <summary>Physical screen coordinates, matching Mouse.current after converting Y.</summary>
     public Rect WindowRect { get; set; }
@@ -106,6 +117,10 @@ public sealed partial class ToolWindow : IDisposable
     /// <summary>Manual save slots on the load and save pages (F51); a page built with another count builds them again when it opens (F90).</summary>
     public int SaveSlots { get; set; } = 50;
     public const int MinSaveSlots = 20, MaxSaveSlots = 99;
+    /// <summary>The pause after a shown stat change: 0 the game's 0.5 s, 1 short, 2 none (F95).</summary>
+    public int StatPause { get; set; }
+    /// <summary>The free-play action transitions at three times the speed (F95).</summary>
+    public bool FastFreeTransitions { get; set; }
     public Action? SettingsChanged;
     /// <summary>Battle-tab toggles live in CombatCheats; this only reports a change so it can be saved.</summary>
     public Action? CombatChanged;
@@ -149,7 +164,7 @@ public sealed partial class ToolWindow : IDisposable
             if (WindowRect.width <= 0) WindowRect = new Rect(42 * scale, 58 * scale, 900 * scale, 620 * scale);
             ClampWindow(scale); LauncherRect = default;
         }
-        else LauncherRect = _adapter.Snapshot.Ready ? ComputeLauncherRect(scale) : default;
+        else LauncherRect = LauncherWanted(_adapter.Snapshot) ? ComputeLauncherRect(scale) : default;
     }
     private Rect ComputeLauncherRect(float scale)
     {
@@ -192,11 +207,10 @@ public sealed partial class ToolWindow : IDisposable
         if (Visible || Hidden) return false;
         ReadSnapshot();
         IsPointerOver = false; HasKeyboardFocus = HasTextFocus = false;
-        // Story and map scenes, and the fights too (F64: their 战斗 tab is what the panel is for there), not the title.
-        if (!_snapshot.Ready && CombatCheats.Current == CombatCheats.Mode.None) return false;
+        if (!LauncherWanted(_snapshot)) return false;
 
         float scale = UiScale.Current;
-        if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision) BuildStyles(scale);
+        if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision || _skinRevision != SkinKey) BuildStyles(scale);
         LauncherRect = ComputeLauncherRect(scale);
         IsPointerOver = LauncherRect.Contains(Event.current.mousePosition);
 
@@ -227,7 +241,7 @@ public sealed partial class ToolWindow : IDisposable
         }
 
         float scale = UiScale.Current;
-        if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision)
+        if (_background == null || Math.Abs(scale - _scale) > .02f || _languageRevision != L.Revision || _skinRevision != SkinKey)
         {
             // A new scale resizes the open window with its content instead of overflowing it.
             if (_initialized && _background != null && Math.Abs(scale - _scale) > .02f)
@@ -270,11 +284,17 @@ public sealed partial class ToolWindow : IDisposable
             GUI.depth = -10000;
             GUI.color = GUI.contentColor = GUI.backgroundColor = Color.white;
             GUI.enabled = true;
-            GUI.DrawTexture(WindowRect, _background);
+            // The game's window is see-through; a dark layer under it keeps the text clear over bright scenes (F99).
+            GUI.DrawTexture(WindowRect, GameSkin.Has(GameSkin.Part.Window) ? _skinUnder : _background);
+            GameSkin.Draw(WindowRect, GameSkin.Part.Window, _scale, Color.white);
             GUI.BeginGroup(WindowRect);
             try
             {
                 float width = WindowRect.width, height = WindowRect.height;
+                // An open jump dialog takes every press; what lies behind it is drawn but does not react (F98).
+                bool modal = _dialog != JumpDialog.None;
+                // Nor shows its hints over the dialog.
+                if (modal) { GUI.enabled = false; _hoverAllowed = false; }
                 DrawHeader(width);
                 DrawTabs(width);
                 Rect body = new(S(14), S(94), width - S(28), height - S(134));
@@ -292,6 +312,8 @@ public sealed partial class ToolWindow : IDisposable
                 // Two small strokes describe the actual resize handle.
                 GUI.DrawTexture(new Rect(width - S(16), height - S(7), S(10), 1), _line);
                 GUI.DrawTexture(new Rect(width - S(11), height - S(12), S(5), 1), _line);
+                GUI.enabled = true; _hoverAllowed = true;
+                if (modal) DrawDialog(width, height);
             }
             finally { GUI.EndGroup(); }
             if (GUIUtility.hotControl == 0) _ownedHotControl = 0;
@@ -311,11 +333,15 @@ public sealed partial class ToolWindow : IDisposable
         }
     }
 
+    // The mod's own version right after the title (F97); hovering either shows the game's build.
+    private static readonly string ModVersion = "v" + typeof(ToolWindow).Assembly.GetName().Version.ToString(3);
     private void DrawHeader(float width)
     {
         string close = PanelKey == KeyCode.None ? L.Text("收起") : L.Format("收起 {0}", KeyLabel(PanelKey));
         float closeWidth = ButtonWidth(close, 93), refreshWidth = ButtonWidth("刷新", 65);
-        Label(new Rect(S(14), S(7), width - closeWidth - refreshWidth - S(50), S(30)), "赵活系统", _title, _snapshot.Version);
+        float titleWidth = _brandTitle.CalcSize(new GUIContent(L.Text("赵活系统"))).x, versionWidth = _small.CalcSize(new GUIContent(ModVersion)).x + S(8);
+        Label(new Rect(S(14), S(5), titleWidth + S(4), S(34)), "赵活系统", _brandTitle, _snapshot.Version);
+        Label(new Rect(S(14) + titleWidth + S(10), S(9), versionWidth, S(28)), ModVersion, _small, _snapshot.Version);
         if (Button(new Rect(width - closeWidth - refreshWidth - S(22), S(8), refreshWidth, S(28)), "刷新", "refresh")) Refresh();
         if (Button(new Rect(width - closeWidth - S(14), S(8), closeWidth, S(28)), close, "close"))
         {
@@ -336,7 +362,7 @@ public sealed partial class ToolWindow : IDisposable
             {
                 _tab = i; _capturing = 0;
                 // The review page reads the free slot and its list again each time it is opened.
-                if (i == 4) { _reviewSlotChecked = false; _reviewBuilt = -1; _treeDirty = true; Review?.ForgetReading(); }
+                if (i == 4) { _reviewBuilt = -1; _treeDirty = true; Review?.ForgetReading(); }
                 GUI.FocusControl(null);
             }
         }
@@ -630,6 +656,18 @@ public sealed partial class ToolWindow : IDisposable
             if (Button(new Rect(x + step * 2 + S(94), y, ButtonWidth("恢复", 70), S(30)), "恢复", "settings.scale.reset")) SetScale(1f);
             y += S(44);
         }
+        // F99: the game's own frames and serif, or the plain look this panel had before.
+        note = "用游戏自己的边框、按钮和字体绘制面板；「简洁」是原来的纯色样式。素材取自游戏已载入的资源，个别部位要进过一次剧情或地图后才换上。";
+        if (Shown("界面风格", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "界面风格", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), GameSkin.Enabled ? "游戏素材" : "简洁", "settings.skin", GameSkin.Enabled ? _tabSelected : _button))
+            {
+                GameSkin.Enabled = !GameSkin.Enabled; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
+        }
         // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
         note = "剧情按条件分支时弹出，可拖到别处并记住位置；关闭后不再弹出，其他悬浮显示照常。";
         if (Shown("显示剧情分支小框", "重置位置", note))
@@ -679,6 +717,30 @@ public sealed partial class ToolWindow : IDisposable
             Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
             y += S(52);
         }
+        // F95: pacing the player can see stays the game's own unless chosen here.
+        note = "剧情里数值变化弹出提示后停一下再继续；没有弹出提示的变化（变化为 0、隐藏的数值）一律不停。";
+        if (Shown("数值变化停顿", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "数值变化停顿", _label);
+            float pauseWidth = new[] { "0.5 秒（原版）", "0.2 秒", "不停顿" }.Max(text => ButtonWidth(text, 110));
+            if (Button(new Rect(x, y, pauseWidth, S(30)), StatPause switch { 1 => "0.2 秒", 2 => "不停顿", _ => "0.5 秒（原版）" }, "settings.statpause", StatPause == 0 ? _button : _tabSelected))
+            {
+                StatPause = (StatPause + 1) % 3; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + pauseWidth + S(14), y + S(3), Mathf.Max(S(80), r.xMax - x - pauseWidth - S(14)), S(44)), note, _muted);
+            y += S(52);
+        }
+        note = "地点行动后的停顿、转场遮罩和回到地图时的淡入；加快后快 3 倍，约 3.5 秒缩到 1.2 秒。";
+        if (Shown("自由行动过场", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "自由行动过场", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), FastFreeTransitions ? "加快" : "原版", "settings.freetransition", FastFreeTransitions ? _tabSelected : _button))
+            {
+                FastFreeTransitions = !FastFreeTransitions; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
+        }
         // F90: typed, or ten at a time; a page builds its slots again the next time it opens.
         note = "读档、存档页的手动存档格数（20–99，游戏原为 20），可直接输入，下次打开读档或存档页时生效。调小或卸载模组后，多出的存档只是不显示，文件仍在。";
         if (Shown("手动存档数", note))
@@ -689,7 +751,7 @@ public sealed partial class ToolWindow : IDisposable
             const string slotsField = "zh.settings.slots";
             if (GUI.GetNameOfFocusedControl() != slotsField) _slotsText = SaveSlots.ToString();
             GUI.SetNextControlName(slotsField);
-            _slotsText = new string(GUI.TextField(new Rect(x + step + S(8), y, field, S(30)), _slotsText, 2, _input).Where(char.IsDigit).ToArray());
+            _slotsText = new string(InputField(new Rect(x + step + S(8), y, field, S(30)), _slotsText, 2).Where(char.IsDigit).ToArray());
             if (int.TryParse(_slotsText, out int typed) && typed >= MinSaveSlots && typed <= MaxSaveSlots && typed != SaveSlots) SetSaveSlots(typed);
             if (Button(new Rect(x + step + field + S(16), y, step, S(30)), "+", "settings.slots.up")) { GUI.FocusControl(null); SetSaveSlots((SaveSlots / 10 + 1) * 10); }
             Label(new Rect(r.x, y + S(38), r.width, S(44)), note, _muted);
@@ -788,47 +850,36 @@ public sealed partial class ToolWindow : IDisposable
 
     // 剧情回顾 (F84): the kept starts of branch scripts, latest game date first; 存入 writes one into the slot above.
     internal StoryReview? Review;
-    internal Func<StoryReview.Node, string, OperationResult>? ReviewExport;
-    public Func<string>? ReviewFirstSlot;
     internal Func<StoryReview.Node, OperationResult>? ReviewStar;
     private sealed class ReviewRow { public string Header = "", Title = "", Summary = "", Detail = ""; public bool Described; public StoryReview.Node? Node; }
     private readonly List<ReviewRow> _reviewRows = new();
-    private string _reviewSearch = "", _reviewSlot = "", _reviewBuiltSearch = "";
+    private string _reviewSearch = "", _reviewBuiltSearch = "", _reviewStatus = "";
     private int _reviewBuilt = -1;
     private long _reviewLanguage = -1;
-    private bool _reviewSlotChecked;
     private Vector2 _reviewScroll;
 
     private void DrawReview(Rect r)
     {
         if (Review == null) { Empty(r, "剧情回顾未载入"); return; }
-        if (!_reviewSlotChecked)
-        {
-            _reviewSlotChecked = true;
-            string free = ReviewFirstSlot?.Invoke() ?? "";
-            _reviewSlot = int.TryParse(free, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) ? number.ToString(CultureInfo.InvariantCulture) : "";
-        }
-        // 收录节点 | 剧情树 on the left, the slot 存入 writes into on the right; both views share it.
+        _reviewStatus = _snapshot.Title ? TitleSource : "";
+        // 收录节点 | 剧情树 | 路线图 on the left; 说明 on the right, and the route map's own buttons beside it.
         float nodesWidth = ButtonWidth("收录节点", 95), treeWidth = ButtonWidth("剧情树", 95), routeWidth = ButtonWidth("路线图", 95);
         if (Button(new Rect(r.x, r.y, nodesWidth, S(29)), "收录节点", "review.nodes", !_treeMode && !_routeMode ? _tabSelected : _tabButton)) { _treeMode = false; _routeMode = false; }
         if (Button(new Rect(r.x + nodesWidth + S(6), r.y, treeWidth, S(29)), "剧情树", "review.tree", _treeMode ? _tabSelected : _tabButton)) { _treeMode = true; _routeMode = false; _treeDirty = true; }
         if (Button(new Rect(r.x + nodesWidth + treeWidth + S(12), r.y, routeWidth, S(29)), "路线图", "review.route", _routeMode ? _tabSelected : _tabButton)) { _routeMode = true; _treeMode = false; _routeSideKey = ""; }
-        float before = _label.CalcSize(new GUIContent(L.Text("存入第"))).x + S(6), after = _label.CalcSize(new GUIContent(L.Text("格"))).x + S(4), field = S(52);
-        float slotX = r.xMax - before - field - after;
-        Label(new Rect(slotX, r.y + S(2), before, S(26)), "存入第", _label);
-        GUI.SetNextControlName("zh.review.slot");
-        _reviewSlot = new string(GUI.TextField(new Rect(slotX + before, r.y - S(1), field, S(31)), _reviewSlot, 2, _input).Where(char.IsDigit).ToArray());
-        Label(new Rect(slotX + before + field + S(4), r.y + S(2), after, S(26)), "格", _label);
+        float help = ButtonWidth("说明", 70);
+        if (Button(new Rect(r.xMax - help, r.y, help, S(29)), "说明", "review.help", tooltip: L.Text("跳转规则、怎么看路线图、各个按钮的作用"))) OpenHelp();
+        if (_routeMode) RouteToolbar(r.y, r.x + nodesWidth + treeWidth + routeWidth + S(30), r.xMax - help - S(6));
         r.y += S(39); r.height -= S(39);
         if (_routeMode) { DrawRouteMap(r); return; }
         if (_treeMode) { DrawStoryTree(r); return; }
         _reviewSearch = Search(new Rect(r.x, r.y, r.width, S(32)), _reviewSearch, "搜索剧本、主线或选项", "zh.review.search");
-        Label(new Rect(r.x, r.y + S(38), r.width, S(46)), "有选项、掷骰或战斗的剧情段，开头会自动收录，每段只留最新一份。点「存入」写进上面填的空格，再从读档页读取，就从这一段开头重玩。", _muted);
+        Label(new Rect(r.x, r.y + S(38), r.width, S(46)), "有选项、掷骰或战斗的剧情段，开头会自动收录，每段只留最新一份。点「跳转」选一个存档格，写好后直接进入这一段的开头。", _muted);
         if (_reviewBuilt != Review.Revision || _reviewBuiltSearch != _reviewSearch || _reviewLanguage != L.Revision) BuildReviewRows();
         Rect rows = new(r.x, r.y + S(92), r.width, r.height - S(92));
         GUI.DrawTexture(new Rect(rows.x, rows.y - S(4), rows.width, 1), _line);
         if (_reviewRows.Count == 0) { Empty(rows, _reviewSearch.Length > 0 ? "没有符合搜索的节点" : "还没有收录。进入有选项、掷骰或战斗的剧情段时会自动收录。"); return; }
-        float header = S(32), row = S(58), contentWidth = rows.width - S(18), save = ButtonWidth("存入", 74), star = S(34);
+        float header = S(32), row = S(58), contentWidth = rows.width - S(18), save = ButtonWidth("跳转", 74), star = S(34);
         _reviewScroll = BeginScroll(rows, _reviewScroll, new Rect(0, 0, contentWidth, Mathf.Max(rows.height, _reviewRows.Sum(item => item.Node == null ? header : row))));
         try
         {
@@ -850,10 +901,11 @@ public sealed partial class ToolWindow : IDisposable
                             break;
                         }
                         Label(new Rect(star + S(12), y + S(4), contentWidth - save - star - S(28), S(26)), item.Title, _label, item.Detail);
-                        Label(new Rect(star + S(12), y + S(30), contentWidth - save - star - S(28), S(24)), item.Summary, _small, item.Detail);
-                        if (Button(new Rect(contentWidth - save - S(4), y + S(13), save, S(30)), "存入", "review.save." + node.Id))
+                        // One line; the whole of it is in the hover.
+                        Label(new Rect(star + S(12), y + S(30), contentWidth - save - star - S(28), S(24)), item.Summary, _smallLine, item.Detail);
+                        if (Button(new Rect(contentWidth - save - S(4), y + S(13), save, S(30)), "跳转", "review.jump." + node.Id, tooltip: L.Text("选一个存档格，写好后直接进入这一段")))
                         {
-                            if (Execute(() => ReviewExport?.Invoke(node, _reviewSlot) ?? OperationResult.Fail(L.Text("存档系统未就绪"))).Success) _reviewSlotChecked = false;
+                            OpenJump(new JumpTarget { Title = item.Title, Node = node, Script = node.Script }, false);
                             break;
                         }
                         GUI.DrawTexture(new Rect(0, y + height - 1, contentWidth, 1), _line);
@@ -868,6 +920,10 @@ public sealed partial class ToolWindow : IDisposable
     // 剧情树 (F87) as a folding tree: main missions, then each segment and the ways out of it. Opening a way analyses the
     // segment it leads into; a segment already laid out above reads 「→ 接到」 instead of opening again.
     internal StoryTree? Tree;
+    /// <summary>On the title: which save the tree and the map read (F96); empty elsewhere.</summary>
+    internal string TitleSource = "";
+    /// <summary>The game's data changed under the review views (the title's 最近存档 was read).</summary>
+    internal void ReviewDataChanged() { _treeDirty = true; _routeLayoutMap = null; _routeSideKey = ""; }
     private sealed class TreeRow { public int Depth; public string Key = "", Text = "", Status = "", Tooltip = ""; public bool CanOpen, Open, Header; public StoryReview.Node? Kept; }
     private readonly List<TreeRow> _treeRows = new();
     private readonly HashSet<string> _treeOpen = new(StringComparer.Ordinal);
@@ -878,12 +934,13 @@ public sealed partial class ToolWindow : IDisposable
     private void DrawStoryTree(Rect r)
     {
         if (Tree == null) { Empty(r, "剧情回顾未载入"); return; }
-        Label(new Rect(r.x, r.y, r.width, S(46)), "只列主线：按主线任务的触发日期排列，点开一层才分析下一层；上面已经展开过的段落写「→ 接到」。条件按当前存档的数值显示，未读、部分已读按全部周目读过的对白算。", _muted);
+        string intro = L.Text("只列主线：按主线任务的触发日期排列，点开一层才分析下一层；上面已经展开过的段落写「→ 接到」。条件按当前存档的数值显示，未读、部分已读按全部周目读过的对白算。");
+        Label(new Rect(r.x, r.y, r.width, S(46)), _snapshot.Title && TitleSource.Length > 0 ? TitleSource + "。" + intro : intro, _muted);
         if (_treeDirty || _treeLanguage != L.Revision) BuildTreeRows();
         Rect rows = new(r.x, r.y + S(54), r.width, r.height - S(54));
         GUI.DrawTexture(new Rect(rows.x, rows.y - S(4), rows.width, 1), _line);
         if (_treeRows.Count == 0) { Empty(rows, "主线任务数据未载入"); return; }
-        float height = S(30), indent = S(18), contentWidth = rows.width - S(18), save = ButtonWidth("存入", 74);
+        float height = S(30), indent = S(18), contentWidth = rows.width - S(18), save = ButtonWidth("跳转", 74);
         _treeScroll = BeginScroll(rows, _treeScroll, new Rect(0, 0, contentWidth, Mathf.Max(rows.height, _treeRows.Count * height)));
         try
         {
@@ -901,9 +958,9 @@ public sealed partial class ToolWindow : IDisposable
                 }
                 string text = row.Text + (row.Status.Length > 0 ? "〔" + row.Status + "〕" : "");
                 Label(new Rect(x + S(28), y + S(3), Mathf.Max(S(40), right - x - S(32)), S(26)), text, row.Header || row.Depth == 0 ? _label : _small, row.Tooltip.Length > 0 ? row.Tooltip : text);
-                if (row.Kept is StoryReview.Node node && Button(new Rect(contentWidth - save - S(4), y + S(1), save, S(28)), "存入", "tree.save." + row.Key))
+                if (row.Kept is StoryReview.Node node && Button(new Rect(contentWidth - save - S(4), y + S(1), save, S(28)), "跳转", "tree.jump." + row.Key, tooltip: L.Text("选一个存档格，写好后直接进入这一段")))
                 {
-                    if (Execute(() => ReviewExport?.Invoke(node, _reviewSlot) ?? OperationResult.Fail(L.Text("存档系统未就绪"))).Success) _reviewSlotChecked = false;
+                    OpenJump(new JumpTarget { Title = row.Text, Node = node, Script = node.Script }, false);
                     break;
                 }
             }
@@ -1221,7 +1278,7 @@ public sealed partial class ToolWindow : IDisposable
         {
             string control = "zh.value." + value.Id;
             GUI.SetNextControlName(control);
-            string edited = GUI.TextField(new Rect(editor.x, editor.y, editor.width - ButtonWidth("应用", 67) - S(8), editor.height), draft.Text, _input);
+            string edited = InputField(new Rect(editor.x, editor.y, editor.width - ButtonWidth("应用", 67) - S(8), editor.height), draft.Text);
             bool submitValue = enterTarget == value.Id;
             if (edited != draft.Text) { draft.Text = edited; draft.Dirty = true; draft.PendingReadback = false; draft.Error = ""; draft.ErrorTemplate = ""; }
             if (Button(new Rect(editor.xMax - ButtonWidth("应用", 67), editor.y, ButtonWidth("应用", 67), editor.height), "应用", "value.apply." + value.Id) || submitValue) CommitValue(value, draft);
@@ -1304,7 +1361,14 @@ public sealed partial class ToolWindow : IDisposable
 
     private void DrawStatus(Rect r)
     {
+        // On 回顾 the bar carries the review's own facts (the map's counts, which save it reads), not the event status (F98).
         string status = Time.realtimeSinceStartup < _messageUntil ? _message : _snapshot.ActionWaiting ? "等待继续" : _snapshot.Status;
+        // A note about what just changed goes after a few seconds; a waiting action or a pending choice stays. Timed from when
+        // it changed, whichever page was open, so an old note does not come back on another page.
+        if (status != _statusShown) { _statusShown = status; _statusSince = Time.realtimeSinceStartup; }
+        if (_tab == 4) { status = Time.realtimeSinceStartup < _messageUntil ? _message : _reviewStatus; Label(r, status, _small, status); return; }
+        bool lasting = _snapshot.ActionWaiting || _snapshot.PendingEventId.Length > 0 || Time.realtimeSinceStartup < _messageUntil;
+        if (!lasting && Time.realtimeSinceStartup - _statusSince > 6) status = "";
         if (string.IsNullOrWhiteSpace(status)) status = _snapshot.Ready ? "" : "等待游戏数据";
         Label(r, status, _small, status);
     }
@@ -1371,7 +1435,7 @@ public sealed partial class ToolWindow : IDisposable
         if (clear > 0 && Button(new Rect(r.xMax - clear + S(4), r.y, clear - S(4), r.height), "×", name + ".clear", tooltip: L.Text("清除搜索")))
         { GUI.FocusControl(null); return ""; }
         GUI.SetNextControlName(name);
-        string next = GUI.TextField(new Rect(r.x, r.y, r.width - clear, r.height), value, _input);
+        string next = InputField(new Rect(r.x, r.y, r.width - clear, r.height), value);
         if (string.IsNullOrEmpty(next) && GUI.GetNameOfFocusedControl() != name)
             Label(new Rect(r.x + S(9), r.y + S(3), r.width - S(18), r.height - S(6)), placeholder, _muted);
         return next;
@@ -1383,7 +1447,7 @@ public sealed partial class ToolWindow : IDisposable
     {
         GUI.SetNextControlName("zh.button." + name);
         var content = new GUIContent(L.Text(text));
-        bool clicked = GUI.Button(r, content, style ?? _button);
+        bool clicked = SkinnedButton(r, content, style ?? _button);
         Hover(r, tooltip);
         return clicked;
     }
@@ -1476,7 +1540,9 @@ public sealed partial class ToolWindow : IDisposable
                 if (!LauncherRect.Contains(current.mousePosition)) return false;
                 ShowEvents(); return true;
             case EventType.Repaint:
-                _launcher.Draw(LauncherRect, new GUIContent(L.Text("赵活系统")), id);
+                if (GameSkin.Draw(LauncherRect, LauncherRect.Contains(current.mousePosition) && GameSkin.Has(GameSkin.Part.ButtonLit) ? GameSkin.Part.ButtonLit : GameSkin.Part.Button, scale, Color.white))
+                    Bare(_launcher).Draw(LauncherRect, new GUIContent(L.Text("赵活系统")), id);
+                else _launcher.Draw(LauncherRect, new GUIContent(L.Text("赵活系统")), id);
                 break;
         }
         return false;
@@ -1503,7 +1569,8 @@ public sealed partial class ToolWindow : IDisposable
         string text = NativeUiState.ToneColors(_hoverText, Tone.PositiveOnDark, Tone.NegativeOnDark);
         float height = Mathf.Min(_tooltip.CalcHeight(new GUIContent(text), width), Screen.height - S(24));
         var r = new Rect(Mathf.Min(pointer.x + S(15), Screen.width - width - S(10)), Mathf.Min(pointer.y + S(22), Screen.height - height - S(10)), width, height);
-        GUI.Label(r, text, _tooltip);
+        if (GameSkin.Has(GameSkin.Part.Card)) { GUI.DrawTexture(r, _cardFill); GameSkin.Draw(r, GameSkin.Part.Card, _scale, Color.white); GUI.Label(r, text, Bare(_tooltip)); }
+        else GUI.Label(r, text, _tooltip);
     }
 
     private void DrawEnumTooltip(Vector2 pointer, ValueSnapshot value)
@@ -1550,7 +1617,9 @@ public sealed partial class ToolWindow : IDisposable
         if (_background == null)
         {
             _background = Texture(new Color(0, 0, 0, .78f));
-            _line = Texture(new Color(.66f, .70f, .74f, .24f));
+            _lineGrey = Texture(new Color(.66f, .70f, .74f, .24f));
+            _lineWarm = Texture(new Color(.80f, .70f, .52f, .30f));
+            _skinUnder = Texture(new Color(.02f, .02f, .03f, .84f));
             _section = Texture(new Color(.13f, .15f, .18f, .85f));
             _selection = Texture(new Color(.20f, .35f, .49f, .76f));
         }
@@ -1572,6 +1641,12 @@ public sealed partial class ToolWindow : IDisposable
         _title = TextStyle(18, text); _title.fontStyle = FontStyle.Bold;
         _met = new GUIStyle(_label); _met.normal.textColor = Palette.Positive;
         _unmet = new GUIStyle(_label); _unmet.normal.textColor = Palette.Negative;
+        _unmetSmall = new GUIStyle(_small); _unmetSmall.normal.textColor = Palette.Negative;
+        _smallLine = new GUIStyle(_small) { wordWrap = false, clipping = TextClipping.Clip };
+        _caption = TextStyle(14, text); _caption.fontStyle = FontStyle.Bold;
+        _dialogFill = TextureOnce("dialog", new Color(.07f, .08f, .10f, .98f));
+        _cardFill = TextureOnce("card", new Color(.04f, .05f, .07f, .92f));
+        _jumpDialogAccent = TextureOnce("accent", new Color(.22f, .37f, .51f, 1));
         _metSmall = new GUIStyle(_small); _metSmall.normal.textColor = _met.normal.textColor;
         _button = ButtonStyle(_section, TextureOnce("hover", new Color(.26f, .29f, .33f, 1)), text);
         _primary = ButtonStyle(TextureOnce("primary", new Color(.22f, .37f, .51f, 1)), TextureOnce("primaryHover", new Color(.29f, .46f, .61f, 1)), text);
@@ -1598,6 +1673,7 @@ public sealed partial class ToolWindow : IDisposable
         _enumHeader = new GUIStyle(_enumLine) { fontStyle = FontStyle.Bold };
         _scrollbar = new GUIStyle(GUI.skin.verticalScrollbar) { fixedWidth = S(13) };
         _hscrollbar = new GUIStyle(GUI.skin.horizontalScrollbar) { fixedHeight = S(13) };
+        ApplySkin();
     }
 
     private GUIStyle TextStyle(int size, Color color)

@@ -40,8 +40,10 @@ internal sealed class StoryTree(ManualLogSource log, StoryGraph graph)
                 var time = type is TimeCheckType.特定 ? R.Field<GameTime>(check, "_specificTime") : type is TimeCheckType.區間 ? R.Field<GameTime>(check, "_minTime") : null;
                 string desc = R.Field<string>(check, "_desc", "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
                 if (desc.Length > 52) desc = desc.Substring(0, 52) + "…";
-                string when = time != null && time.Year > 0 ? Conditions.TimeName(time) : L.Text("日期不定");
-                list.Add(new Root { Key = check.Key, Script = check.StartScript, Order = time != null && time.Year > 0 ? time.ConvertToRounds() : int.MaxValue,
+                // GameTime overloads == and != and throws when one side is null: no comparison operator on it (F93).
+                bool dated = time is { Year: > 0 };
+                string when = dated ? Conditions.TimeName(time!) : L.Text("日期不定");
+                list.Add(new Root { Key = check.Key, Script = check.StartScript, Order = dated ? time!.ConvertToRounds() : int.MaxValue,
                     Title = when + "  " + (desc.Length > 0 ? L.DisplayText(desc) : check.Key) });
             }
             catch (Exception ex) { failed = true; log.LogWarning("STORY_TREE root " + (check != null ? check.Key : "?") + " " + ex); }

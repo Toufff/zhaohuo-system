@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.37")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.38")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -117,8 +117,9 @@ public sealed class Plugin : BaseUnityPlugin
         Review = new StoryReview(Logger, Path.Combine(diagnostics, "review")) { ScriptText = name => OptionHints.ScriptText(name), ScriptMap = name => OptionHints.Map(name) };
         Segments.Kept = Review.Keep;
         window.Review = Review;
-        window.ReviewFirstSlot = () => Review.FirstEmptySlot(SaveSlots);
-        window.ReviewExport = (node, slot) => Review.Export(node, slot, SaveSlots, Segments);
+        window.ReadSlots = ReadSlots;
+        window.Jump = JumpTo;
+        window.JumpBase = () => Adapter.Snapshot.Title && TitleSave.Base.Length > 0 ? TitleSave.Base : L.Text("当前进度");
         window.ReviewStar = node => Review.Star(node);
         // 剧情树 (F87): the main story's segments, read from the scripts as they are opened.
         window.Tree = new StoryTree(Logger, new StoryGraph(name => OptionHints.ScriptText(name), name => OptionHints.Map(name)));
@@ -156,6 +157,8 @@ public sealed class Plugin : BaseUnityPlugin
         var hideKey = Config.Bind("界面", "隐藏快捷键", "None", "切换「隐藏全部悬浮窗」的按键；默认不绑定。");
         var hidden = Config.Bind("界面", "隐藏全部悬浮窗", false, "隐藏本模组在游戏内的全部悬浮显示，便于截图；用面板或隐藏快捷键恢复。");
         var uiScale = Config.Bind("界面", "界面缩放", 1f, "在按屏幕高度自动缩放的基础上再乘的倍数（0.5–2.5）。");
+        var skinStyle = Config.Bind("界面", "界面风格", 0, "0 用游戏自己的边框、按钮和字体绘制面板，1 为原来的纯色样式。");
+        GameSkin.Enabled = skinStyle.Value != 1;
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
         var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框；关闭后不再弹出，其他悬浮显示不受影响。");
         var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
@@ -163,17 +166,23 @@ public sealed class Plugin : BaseUnityPlugin
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
         var directDice = Config.Bind("工具", "指定后直接出结果", true, "骰子界面点「指定」后不播转盘、不等「继续」，直接给出结果；结果仍由游戏自己结算。");
         Adapter.DirectDiceResult = directDice.Value;
+        var statPause = Config.Bind("工具", "数值变化停顿", 0, "剧情里数值变化弹出提示后的停顿：0 原版 0.5 秒，1 为 0.2 秒，2 不停；没有弹出提示的变化一律不停。");
+        var fastFree = Config.Bind("工具", "自由行动过场加快", false, "地点行动后的停顿、转场遮罩和回到地图时的淡入快 3 倍。");
+        Speedups.Log = Logger; Speedups.StatPause = Mathf.Clamp(statPause.Value, 0, 2); Speedups.FastFree = fastFree.Value;
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
         window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots;
+        window.StatPause = Speedups.StatPause; window.FastFreeTransitions = Speedups.FastFree;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
             uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons; directDice.Value = Adapter.DirectDiceResult;
             SaveSlots = window.SaveSlots; saveSlots.Value = SaveSlots;
+            statPause.Value = Speedups.StatPause = window.StatPause; fastFree.Value = Speedups.FastFree = window.FastFreeTransitions;
+            skinStyle.Value = GameSkin.Enabled ? 0 : 1;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -267,8 +276,16 @@ public sealed class Plugin : BaseUnityPlugin
             try { Segments.Update(); } catch (Exception ex) { Logger.LogWarning("SEGMENT_SAVE " + ex.GetBaseException().Message); }
             try { speedButtons.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("DUEL_SPEED " + ex.GetBaseException().Message); }
             wasVisible = window.Visible; inputGuard.Tick();
+            // Each scene brings its own UI sprites; the skin picks up the ones it still lacks (F99).
+            GameSkin.Scan();
+            // On the title the review views read the load page's 最近存档 once the panel is open (F96).
+            if (window.Visible && Adapter.Snapshot.Title && TitleSave.Ensure(Logger)) { routeMap.Forget(); window.ReviewDataChanged(); }
+            window.TitleSource = TitleSave.Source;
+            // Opening the panel refreshes at once, with the full value list (F95).
+            if (window.Visible && !wasVisible) nextRefresh = 0;
             if (Time.unscaledTime >= nextRefresh)
             {
+                Adapter.PanelOpen = window.Visible;
                 nextRefresh = Time.unscaledTime + .4f;
                 if (L.RefreshLanguage()) RefreshPresentation();
                 using (Perf.Time("refresh")) Adapter.Refresh();
@@ -368,6 +385,68 @@ public sealed class Plugin : BaseUnityPlugin
         }
     }
     /// <summary>Before a load or save page builds its slots: never fewer than the game's own.</summary>
+    /// <summary>The manual slots for the jump's slot picker: what each holds, read as the save pages show it (F95's headers).</summary>
+    private List<SlotLine> ReadSlots()
+    {
+        var lines = new List<SlotLine>();
+        var system = SaveSystem.Instance;
+        if (system == null) return lines;
+        SlotSetupPatch.Depth++;
+        try
+        {
+            for (int i = 1; i <= SaveSlots; i++)
+            {
+                string slot = i.ToString("000", CultureInfo.InvariantCulture);
+                var save = system.GetSaveData(slot);
+                lines.Add(save == null ? new SlotLine { Slot = slot, Empty = true } : new SlotLine
+                {
+                    Slot = slot, Date = Conditions.TimeName(new GameTime(save.CurrentYear, save.CurrentMonth, save.CurrentStage)),
+                    Saved = new DateTime(save.TimeTick).ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture), Star = SaveNotes.IsFavourite(slot), Note = SaveNotes.NoteOf(slot)
+                });
+            }
+        }
+        finally { SlotSetupPatch.Depth--; }
+        return lines;
+    }
+
+    /// <summary>
+    /// 跳转 / 直接跳转 (F98): the start is written into the slot as a story save (SegmentSaves, music and all), the player
+    /// having already answered for an overwrite, then loaded the way the game's own load page loads a slot.
+    /// </summary>
+    private OperationResult JumpTo(JumpTarget target, bool direct, string slot)
+    {
+        var system = SaveSystem.Instance;
+        var scenes = SceneController.Instance;
+        if (system == null || scenes == null) return OperationResult.Fail(L.Text("存档系统未就绪"));
+        if (scenes.IsPrepare || scenes.IsLoading) return OperationResult.Fail(L.Text("正在切换场景，请稍后再试"));
+        GameSave? save = direct ? DirectSave(target) : target.Node != null ? Review.Read(target.Node) : null;
+        if (save == null) return OperationResult.Fail(L.Text(direct ? "当前进度读不出来" : "节点文件读不出来"));
+        string start = direct ? target.Script : target.Node!.Script;
+        SaveNotes.Allow(slot);
+        try { Segments.Export(save, start, direct ? "" : target.Node!.Music, direct ? "" : target.Node!.Env, slot); }
+        finally { SaveNotes.Allow(null); }
+        if (system.GetSaveData(slot) is not GameSave written || written.TimeTick != save.TimeTick) return OperationResult.Fail(L.Text("写入失败，详见日志"));
+        Logger.LogInfo($"JUMP {(direct ? "direct" : "kept")} slot={slot} start={start} title={target.Title}");
+        window.Visible = false;
+        system.SetSlot(slot);
+        SoundManager.Instance?.StopMusic();
+        system.LoadGameData();
+        system.SaveUniverseData();
+        MissionManagerData.Instance?.UpdateCheckMissions();
+        scenes.LoadCurrentScene();
+        return OperationResult.Ok(L.Format("正在进入第 {0} 格", int.Parse(slot, CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>直接跳转: the game as it stands now (on the title, its 最近存档), moved to the start, date and main mission asked for.</summary>
+    private static GameSave? DirectSave(JumpTarget target)
+    {
+        if (AccessTools.Method(typeof(SaveSystem), "CreateSaveData")?.Invoke(SaveSystem.Instance, null) is not GameSave save || target.Script.Length == 0) return null;
+        save.StartStoryScript = target.Script; save.CurrentScene = "Story"; save.RestoreData = ""; save.TimeTick = DateTime.Now.Ticks;
+        if (target.Date is { Length: 3 } d && d[0] > 0) { save.CurrentYear = d[0]; save.CurrentMonth = d[1]; save.CurrentStage = (MonthStageType)d[2]; }
+        if (target.MainMission.Length > 0 && save.MainMission != null) save.MainMission.Key = target.MainMission;
+        return save;
+    }
+
     internal void ExpandSaveSlots(MonoBehaviour panel)
     {
         if (R.Field(panel, "_slotCount") is not int count || count >= SaveSlots) return;

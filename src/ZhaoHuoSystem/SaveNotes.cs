@@ -246,6 +246,9 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     public Action? StarChanged;
     /// <summary>Whether this account's slot is starred.</summary>
     public bool IsFavourite(string slot) => store.Favourite(SaveNoteStore.Key(Account(), slot));
+    public string NoteOf(string slot) => store.Note(SaveNoteStore.Key(Account(), slot));
+    /// <summary>A write into this slot the player has already agreed to (the jump's own overwrite question, F98): not asked again.</summary>
+    public void Allow(string? slot) => allowed = slot;
 
     private void Open(Row row)
     {
