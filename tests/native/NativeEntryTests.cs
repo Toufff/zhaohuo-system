@@ -23,6 +23,16 @@ internal static partial class Program
             Signature(combat, "Mortal.Combat", "CombatActionController", "ModifyHealth", "value");
             Signature(combat, "Mortal.Combat", "CombatActionController", "ModifyStamina", "value");
             Signature(combat, "Mortal.Combat", "CombatEventActionModifyStat", "Action", "combatManager");
+            // F94: the effect-unit steps whose base bodies only wait a frame (CombatCheats.UnitSteps).
+            foreach (string step in new[] { "Init", "ApplyBeforeAction", "ApplyInitAction", "ApplyAfterAction", "ApplyBeforeResult", "ApplyAfterResult", "TriggerAfterAttacked", "TriggerDuringAttack", "Remove", "OnStateEffectRemoved" })
+                if (step == "OnStateEffectRemoved") Signature(combat, "Mortal.Combat", "CombatStateEffectUnitScriptable", step, "param", "removedOwner", "removedKey");
+                else Signature(combat, "Mortal.Combat", "CombatStateEffectUnitScriptable", step, "param");
+            foreach (string ui in new[] { "CombatStateEffectUI", "CombatBuffStateUI" }) Signature(combat, "Mortal.Combat", ui, "CastFinish");
+            Signature(combat, "Mortal.Combat", "CombatStateEffectUI", "Cast");
+            Signature(combat, "Mortal.Combat", "CombatManager", "InitCombatRound");
+            Signature(combat, "Mortal.Combat", "CombatManager", "StartAction", "playerActionResult");
+            Has(combat, "Mortal.Combat", "CombatBuffStateUI", "_movePanel");
+            Has(Path.Combine(managed, "Mortal.Core.dll"), "Mortal.Core", "MovePanel", "_rectTransform", "_originAnchoredPosition");
             Has(battle, "Mortal.Battle", "Character", "_entity", "CurrentHealth");
             Has(battle, "Mortal.Battle", "Entity", "_originType");
             Has(battle, "Mortal.Battle", "SkillButton", "_currentCooldownTime");

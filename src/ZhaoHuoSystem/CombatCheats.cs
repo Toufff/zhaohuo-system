@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx.Logging;
@@ -72,6 +73,23 @@ internal static class CombatCheats
         Patch(harmony, "Mortal.Combat.CombatActionController:ModifyHealth", prefix: nameof(CombatHealth));
         Patch(harmony, "Mortal.Combat.CombatActionController:ModifyStamina", prefix: nameof(CombatStamina));
         Patch(harmony, "Mortal.Combat.CombatManager:EnableSpeedTime", prefix: nameof(CombatSpeed));
+        // F94: every buff's effect units go through each of these steps every round; a step a unit leaves to the base class
+        // only waits a frame there (yield return null). Frames are not shortened by the speed-up (timeScale), so with many
+        // buffs the pause between rounds grew to seconds at any speed. Those steps now end at once; a unit's own steps run as before.
+        foreach (string step in UnitSteps) Patch(harmony, "Mortal.Combat.CombatStateEffectUnitScriptable:" + step, prefix: nameof(NoIdleFrame));
+        // The duel's timing log showed the bigger part: each state, its units and each level event run as coroutines yielded
+        // inside one another, and Unity resumes a coroutine a frame after a nested one that ends at once. One state taken off
+        // told all 46 states on both sides, about 63 frames, and every round passed thousands of such frames. The round's
+        // coroutines (from the start of the duel and from each chosen action) now run nested ones in place; they still give the
+        // frame back for every real wait.
+        Patch(harmony, "Mortal.Combat.CombatManager:InitCombatRound", postfix: nameof(Flat));
+        Patch(harmony, "Mortal.Combat.CombatManager:StartAction", postfix: nameof(Flat));
+        // Debuff icons have no cast animation: their Cast/CastFinish are the base class's frame waits too.
+        Patch(harmony, "Mortal.Combat.CombatStateEffectUI:Cast", prefix: nameof(NoIdleFrame));
+        Patch(harmony, "Mortal.Combat.CombatStateEffectUI:CastFinish", prefix: nameof(NoIdleFrame));
+        // About fifty effects send their buff icon back after each step that may have cast it, moved or not: a full-length
+        // tween from where it already is. Only an icon that moved goes back now.
+        Patch(harmony, "Mortal.Combat.CombatBuffStateUI:CastFinish", prefix: nameof(BuffIconBack));
         // Script-driven HP/气 changes must still land so HP-threshold story exits keep working.
         var scriptAction = AccessTools.Method(AccessTools.TypeByName("Mortal.Combat.CombatEventActionModifyStat"), "Action");
         var moveNext = scriptAction == null ? null : AccessTools.EnumeratorMoveNext(scriptAction);
@@ -84,6 +102,39 @@ internal static class CombatCheats
         foreach (var missing in Missing) logger.LogWarning("COMBAT missing " + missing);
         Installed = true;
         logger.LogInfo($"COMBAT ready missing={Missing.Count} invincible={Invincible} oneHit={OneHit} keepStamina={KeepStamina} noCooldown={NoCooldown} keepAlive={KeepAlive} duelSpeed={DuelSpeed}");
+    }
+
+    internal static readonly string[] UnitSteps = { "Init", "ApplyBeforeAction", "ApplyInitAction", "ApplyAfterAction", "ApplyBeforeResult", "ApplyAfterResult",
+        "TriggerAfterAttacked", "TriggerDuringAttack", "Remove", "OnStateEffectRemoved" };
+    private static bool NoIdleFrame(ref IEnumerator __result) { __result = Nothing(); return false; }
+    private static IEnumerator Nothing() { yield break; }
+    private static void Flat(ref IEnumerator __result) { if (__result != null) __result = Flatten(__result); }
+    /// <summary>
+    /// Runs a coroutine and every coroutine it yields in one go, giving the frame back only for a real wait: a frame, seconds,
+    /// a coroutine started on its own, or a polled condition such as a tween's end or the player's input.
+    /// </summary>
+    internal static IEnumerator Flatten(IEnumerator root)
+    {
+        var stack = new Stack<IEnumerator>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var top = stack.Peek();
+            if (!top.MoveNext()) { stack.Pop(); continue; }
+            object current = top.Current;
+            if (current is IEnumerator nested && current is not CustomYieldInstruction) { stack.Push(nested); continue; }
+            yield return current;
+        }
+    }
+    private static bool BuffIconBack(object __instance, ref IEnumerator __result)
+    {
+        try
+        {
+            if (R.Field(__instance, "_movePanel") is not Component panel || panel == null || R.Field(panel, "_rectTransform") is not RectTransform rect || rect == null
+                || R.Field(panel, "_originAnchoredPosition") is not Vector3 origin || ((Vector2)origin - rect.anchoredPosition).sqrMagnitude > .01f) return true;
+            __result = Nothing(); return false;
+        }
+        catch (Exception ex) { Fail("BuffIconBack", ex); return true; }
     }
 
     // The toggle (and its remembered state at the duel's start) goes through EnableSpeedTime, which copies _speedTime.
