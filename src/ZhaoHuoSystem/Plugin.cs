@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.34")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.35")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -43,6 +43,8 @@ public sealed class Plugin : BaseUnityPlugin
     private DuelSpeedButtons speedButtons = null!;
     private RoundUnlimited unlimited = null!;
     internal SegmentSaves Segments = null!;
+    private StoryReview Review = null!;
+    private RouteMapRunner routeMap = null!;
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
     private NativeDicePresenter dicePresenter = null!;
@@ -111,11 +113,23 @@ public sealed class Plugin : BaseUnityPlugin
         // Saving anywhere in stories (F71); on by default, with no settings row, only this entry to switch it off.
         var storySaves = Config.Bind("工具", "剧情中随时存档", true, "剧情中任何时候都能用游戏自带的存档；存下的是当前这段剧情开头的状态，读档从这段开头重播。");
         Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt"), Path.Combine(diagnostics, "segment-save-music.txt")) { Enabled = storySaves.Value };
+        // 剧情回顾 (F84): branch scripts' copies kept as they start, written into an empty slot from the panel.
+        Review = new StoryReview(Logger, Path.Combine(diagnostics, "review")) { ScriptText = name => OptionHints.ScriptText(name), ScriptMap = name => OptionHints.Map(name) };
+        Segments.Kept = Review.Keep;
+        window.Review = Review;
+        window.ReviewFirstSlot = () => Review.FirstEmptySlot(SaveSlots);
+        window.ReviewExport = (node, slot) => Review.Export(node, slot, SaveSlots, Segments);
+        window.ReviewStar = node => Review.Star(node);
+        // 剧情树 (F87): the main story's segments, read from the scripts as they are opened.
+        window.Tree = new StoryTree(Logger, new StoryGraph(name => OptionHints.ScriptText(name), name => OptionHints.Map(name)));
+        // 剧情路线图 (F89): built from the game's data the first time its view opens, a few milliseconds a frame.
+        routeMap = new RouteMapRunner(Logger);
+        window.Routes = routeMap;
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
-        var saveSort = Config.Bind("界面", "存档排序", 0, "存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前，3 收藏优先；记住上次的选择。");
-        var loadSort = Config.Bind("界面", "读档排序", saveSort.Value, "读档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前，3 收藏优先；记住上次的选择。");
+        var saveSort = Config.Bind("界面", "存档排序", 0, "存档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前，3 收藏优先，4 最早在前（排除收藏）；记住上次的选择。");
+        var loadSort = Config.Bind("界面", "读档排序", saveSort.Value, "读档页手动存档的显示顺序：0 编号，1 最新在前，2 最早在前，3 收藏优先，4 最早在前（排除收藏）；记住上次的选择。");
         SaveSort.SaveMode = Mathf.Clamp(saveSort.Value, 0, SaveSlotSort.Modes.Length - 1);
         SaveSort.LoadMode = Mathf.Clamp(loadSort.Value, 0, SaveSlotSort.Modes.Length - 1);
         SaveSort.Changed = (save, mode) => { if (save) saveSort.Value = mode; else loadSort.Value = mode; };
@@ -236,6 +250,7 @@ public sealed class Plugin : BaseUnityPlugin
         using var timing = Perf.Time("update");
         try
         {
+            routeMap.Update();
             // Typing in a mod field or binding a new key never fires a hotkey.
             bool typing = window.CapturingKey || window.HasTextFocus || SaveNotes.Editing;
             if (Pressed(window.PanelKey) && !typing) TogglePanel();

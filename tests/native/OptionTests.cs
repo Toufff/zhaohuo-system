@@ -264,6 +264,47 @@ internal static partial class Program
             Require(!LuaOptions.StoryLoop("map_entry", "loop_menu", Entry) && !LuaOptions.StoryLoop("loop_entry", "other", Entry) && !LuaOptions.StoryLoop("", "loop_menu", Entry), "not a loop");
         });
 
+        Test("剧情回顾 keeps scripts with a menu, a dice roll or a fight, not plain story (F84)", () =>
+        {
+            Require(LuaOptions.IsBranch("local c = choose(talk)"), "menu");
+            Require(LuaOptions.IsBranch("runwait(dicemenudialog.ExecuteRoll(dice1, 1, \"Work_02\"))"), "dice");
+            Require(LuaOptions.IsBranch("luamanager.ChangeScene(\"Combat\", \"CL_1\", \"\")") && LuaOptions.IsBranch("luamanager.ChangeScene(\"Battle\", \"B\", \"\")"), "fights");
+            Require(!LuaOptions.IsBranch("say(luamanager.GetStoryText(\"N_1\"))\nluamanager.ChangeScene(\"Free\", \"\", \"\")\nlocal chooser = 1"), "plain story");
+            var read = LuaOptions.Analyze("say(luamanager.GetStoryText(\"N_0\"))\nlocal t = {}\nt[1] = \"O_R1\"\nt[2] = \"O_R2\"\nlocal c = choose(t)\nif c == 1 then\nsay(luamanager.GetStoryText(\"D_1\"))\nelseif c == 2 then\nsay(luamanager.GetStoryText(\"D_2\"))\nluamanager.SetNextScript(\"next_one\")\nend\nsay(luamanager.GetStoryText(\"N_9\"))");
+            Require(read["O_R1"].TextKeys.SequenceEqual(new[] { "D_1" }) && read["O_R2"].TextKeys.SequenceEqual(new[] { "D_2" }) && read["O_R2"].NextScript == "next_one", "each option keeps its own lines");
+            Require(read[LuaOptions.ScriptLevel].TextKeys.SequenceEqual(new[] { "N_0", "N_9" }), "lines outside the options stay on the script level");
+        });
+
+        Test("剧情树 segments run through one-way scripts and split at choices, arms, fights, the map and the main mission (F87)", () =>
+        {
+            var scripts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["a"] = "say(luamanager.GetStoryText(\"A1\"))\nluamanager.SetNextScript(\"b\")",
+                ["b"] = "say(luamanager.GetStoryText(\"B1\"))\nlocal t = {}\nt[1] = \"O_1\"\nlocal Need = checkpointmanager.Condition(\"Need\")\nt[2] = Need and \"O_2\" or \"~x\"\nt[3] = \"O_3\"\nlocal c = choose(t)\n"
+                    + "if c == 1 then\nsay(luamanager.GetStoryText(\"D_1\"))\nluamanager.SetNextScript(\"fight\")\nelseif c == 2 then\nlocal switch1_result = checkpointmanager.Switch(\"Arm_1\")\nif switch1_result == 1 then\nluamanager.SetNextScript(\"x\")\nelseif switch1_result == 2 then\nluamanager.SetNextScript(\"y\")\nend\n"
+                    + "elseif c == 3 then\nstatmodifymanager.Mission(\"Main\", \"M9\")\nluamanager.ChangeScene(\"Free\", \"\", \"\")\nend",
+                ["fight"] = "luamanager.SetCurrentStoryScript(\"after\")\nluamanager.ChangeScene(\"Combat\", \"CL_1\", \"\")",
+                ["after"] = "local switch2_result = checkpointmanager.Switch(\"C00000_Result\")\nif switch2_result == 1 then\nluamanager.SetNextScript(\"won\")\nelseif switch2_result == 2 then\nluamanager.SetNextScript(\"lost\")\nend",
+                ["won"] = "statmodifymanager.Mission(\"Main\", \"M10\")\nluamanager.ChangeScene(\"Free\", \"\", \"\")",
+            };
+            var maps = new Dictionary<string, Dictionary<string, OptionPreview>>(StringComparer.OrdinalIgnoreCase);
+            var graph = new StoryGraph(name => scripts.TryGetValue(name, out var t) ? t : null,
+                name => scripts.TryGetValue(name, out var t) ? (maps.TryGetValue(name, out var m) ? m : maps[name] = LuaOptions.Analyze(t)) : null);
+            var start = graph.Get("a");
+            Require(start.Scripts.SequenceEqual(new[] { "a", "b" }) && start.Menu && start.TextKeys.SequenceEqual(new[] { "A1", "B1" }), "a runs into b, which branches");
+            Require(start.Ways.Count == 4, "O_1, O_2 by two arms, O_3: " + start.Ways.Count);
+            Require(start.Ways[0].Option == "O_1" && start.Ways[0].Target == "fight" && start.Ways[0].TextKeys.SequenceEqual(new[] { "D_1" }), "O_1 to the fight");
+            Require(start.Ways[1].Requirement == "Need" && start.Ways[1].When.Count == 1 && start.Ways[1].Target == "x" && start.Ways[2].Target == "y", "O_2 behind Need, by arm");
+            Require(start.Ways[3].Ends && start.Ways[3].MainMission == "M9" && start.Ways[3].ToMap && start.Ways[3].Target == "", "O_3 moves the main mission on and returns to the map");
+            var fight = graph.Get("fight");
+            Require(fight.Fight && fight.Ways.Count == 1 && fight.Ways[0].Kind == StoryGraph.WayKind.AfterFight && fight.Ways[0].Target == "after", "after the fight");
+            var after = graph.Get("after");
+            Require(after.Ways.Count == 2 && after.Ways.TrueForAll(way => way.Kind == StoryGraph.WayKind.Arm) && after.Ways[0].Target == "won", "result arms");
+            var won = graph.Get("won");
+            Require(won.ToMap && won.MainMission == "M10" && won.Ways.Count == 0, "the main mission moves on: the story stops");
+            Require(!graph.Get("missing").Known, "an unknown script is a segment that cannot be read");
+        });
+
         // Optional offline audit over a local, untracked dump of the game's scripts.
         string? dump = Environment.GetEnvironmentVariable("ZHAOHUO_LUA_DUMP");
         if (dump == null || !Directory.Exists(dump)) return;
@@ -279,6 +320,16 @@ internal static partial class Program
                 Require(night["O_3_1_7_6_Break_01_001"].SetsMain && !night["O_3_1_7_6_Break_01_002"].SetsMain, "出门散心 sets the main mission");
                 var temple = LuaOptions.Analyze(Text("ch2_4_3_break_start_01")!);
                 Require(!temple.Any(pair => pair.Key.Length > 0 && pair.Value.SetsMain), "破庙 menu rows leave the main mission alone");
+            });
+        if (File.Exists(Path.Combine(dump, "ch7_4_2_break_start_01.txt")))
+            Test("real 西武林 decision menu (ch7_4_2_break_start_01) splits by option, 「我们也来成立武林盟」 behind its condition, into ch7_4_4 (F87)", () =>
+            {
+                string? Text(string name) { var path = Path.Combine(dump, name.ToLowerInvariant() + ".txt"); return File.Exists(path) ? File.ReadAllText(path) : null; }
+                var graph = new StoryGraph(Text, name => Text(name) is string t ? LuaOptions.Analyze(t) : null);
+                var menu = graph.Get("ch7_4_2_break_start_01");
+                Require(menu.Known && menu.Menu && menu.Ways.Count >= 4, "menu ways " + menu.Ways.Count);
+                Require(menu.Ways.Exists(way => way.Requirement == "Ch_7_4_2_Break_01_004" && way.Target == "ch7_4_4"), "西武林 way");
+                Require(menu.Ways.Exists(way => way.Target == "ch7_4_5") && menu.Ways.Exists(way => way.Target == "ch7_4_3_1"), "other ways");
             });
         if (File.Exists(Path.Combine(dump, "section_01_free_08_01.txt")))
             Test("real 火闪电 fight (section_01_free_08_01) reaches M20045, set in the script after the fight", () =>

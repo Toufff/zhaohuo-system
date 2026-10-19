@@ -7,7 +7,7 @@ using UnityEngine;
 namespace ZhaoHuoSystem;
 
 /// <summary>Game-native IMGUI surface. All game access belongs to IGameAdapter.</summary>
-public sealed class ToolWindow : IDisposable
+public sealed partial class ToolWindow : IDisposable
 {
     private readonly IGameAdapter _adapter;
     private readonly Dictionary<string, ValueDraft> _drafts = new(StringComparer.Ordinal);
@@ -277,7 +277,8 @@ public sealed class ToolWindow : IDisposable
                     case 0: DrawEvents(body); break;
                     case 2: DrawCombat(body); break;
                     case 3: DrawCollection(body); break;
-                    case 4: DrawSettings(body); break;
+                    case 4: DrawReview(body); break;
+                    case 5: DrawSettings(body); break;
                     default: DrawValues(body); break;
                 }
                 DrawStatus(new Rect(S(14), height - S(33), width - S(42), S(25)));
@@ -321,13 +322,15 @@ public sealed class ToolWindow : IDisposable
     private void DrawTabs(float width)
     {
         // 设置 always stays the last tab.
-        string[] names = { "事件", "数值", "战斗", "收集", "设置" };
+        string[] names = { "事件", "数值", "战斗", "收集", "回顾", "设置" };
         for (int i = 0; i < names.Length; i++)
         {
             Rect r = new(S(14 + i * 95), S(51), S(86), S(32));
             if (Button(r, names[i], "tab" + i, _tab == i ? _tabSelected : _tabButton))
             {
                 _tab = i; _capturing = 0;
+                // The review page reads the free slot and its list again each time it is opened.
+                if (i == 4) { _reviewSlotChecked = false; _reviewBuilt = -1; _treeDirty = true; Review?.ForgetReading(); }
                 GUI.FocusControl(null);
             }
         }
@@ -704,6 +707,176 @@ public sealed class ToolWindow : IDisposable
             }
         }
         finally { EndScroll(); }
+    }
+
+    // 剧情回顾 (F84): the kept starts of branch scripts, latest game date first; 存入 writes one into the slot above.
+    internal StoryReview? Review;
+    internal Func<StoryReview.Node, string, OperationResult>? ReviewExport;
+    public Func<string>? ReviewFirstSlot;
+    internal Func<StoryReview.Node, OperationResult>? ReviewStar;
+    private sealed class ReviewRow { public string Header = "", Title = "", Summary = "", Detail = ""; public bool Described; public StoryReview.Node? Node; }
+    private readonly List<ReviewRow> _reviewRows = new();
+    private string _reviewSearch = "", _reviewSlot = "", _reviewBuiltSearch = "";
+    private int _reviewBuilt = -1;
+    private long _reviewLanguage = -1;
+    private bool _reviewSlotChecked;
+    private Vector2 _reviewScroll;
+
+    private void DrawReview(Rect r)
+    {
+        if (Review == null) { Empty(r, "剧情回顾未载入"); return; }
+        if (!_reviewSlotChecked)
+        {
+            _reviewSlotChecked = true;
+            string free = ReviewFirstSlot?.Invoke() ?? "";
+            _reviewSlot = int.TryParse(free, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) ? number.ToString(CultureInfo.InvariantCulture) : "";
+        }
+        // 收录节点 | 剧情树 on the left, the slot 存入 writes into on the right; both views share it.
+        float nodesWidth = ButtonWidth("收录节点", 95), treeWidth = ButtonWidth("剧情树", 95), routeWidth = ButtonWidth("路线图", 95);
+        if (Button(new Rect(r.x, r.y, nodesWidth, S(29)), "收录节点", "review.nodes", !_treeMode && !_routeMode ? _tabSelected : _tabButton)) { _treeMode = false; _routeMode = false; }
+        if (Button(new Rect(r.x + nodesWidth + S(6), r.y, treeWidth, S(29)), "剧情树", "review.tree", _treeMode ? _tabSelected : _tabButton)) { _treeMode = true; _routeMode = false; _treeDirty = true; }
+        if (Button(new Rect(r.x + nodesWidth + treeWidth + S(12), r.y, routeWidth, S(29)), "路线图", "review.route", _routeMode ? _tabSelected : _tabButton)) { _routeMode = true; _treeMode = false; _routeSideKey = ""; }
+        float before = _label.CalcSize(new GUIContent(L.Text("存入第"))).x + S(6), after = _label.CalcSize(new GUIContent(L.Text("格"))).x + S(4), field = S(52);
+        float slotX = r.xMax - before - field - after;
+        Label(new Rect(slotX, r.y + S(2), before, S(26)), "存入第", _label);
+        GUI.SetNextControlName("zh.review.slot");
+        _reviewSlot = new string(GUI.TextField(new Rect(slotX + before, r.y - S(1), field, S(31)), _reviewSlot, 2, _input).Where(char.IsDigit).ToArray());
+        Label(new Rect(slotX + before + field + S(4), r.y + S(2), after, S(26)), "格", _label);
+        r.y += S(39); r.height -= S(39);
+        if (_routeMode) { DrawRouteMap(r); return; }
+        if (_treeMode) { DrawStoryTree(r); return; }
+        _reviewSearch = Search(new Rect(r.x, r.y, r.width, S(32)), _reviewSearch, "搜索剧本、主线或选项", "zh.review.search");
+        Label(new Rect(r.x, r.y + S(38), r.width, S(46)), "有选项、掷骰或战斗的剧情段，开头会自动收录，每段只留最新一份。点「存入」写进上面填的空格，再从读档页读取，就从这一段开头重玩。", _muted);
+        if (_reviewBuilt != Review.Revision || _reviewBuiltSearch != _reviewSearch || _reviewLanguage != L.Revision) BuildReviewRows();
+        Rect rows = new(r.x, r.y + S(92), r.width, r.height - S(92));
+        GUI.DrawTexture(new Rect(rows.x, rows.y - S(4), rows.width, 1), _line);
+        if (_reviewRows.Count == 0) { Empty(rows, _reviewSearch.Length > 0 ? "没有符合搜索的节点" : "还没有收录。进入有选项、掷骰或战斗的剧情段时会自动收录。"); return; }
+        float header = S(32), row = S(58), contentWidth = rows.width - S(18), save = ButtonWidth("存入", 74), star = S(34);
+        _reviewScroll = BeginScroll(rows, _reviewScroll, new Rect(0, 0, contentWidth, Mathf.Max(rows.height, _reviewRows.Sum(item => item.Node == null ? header : row))));
+        try
+        {
+            float y = 0;
+            foreach (var item in _reviewRows)
+            {
+                float height = item.Node == null ? header : row;
+                if (y + height >= _reviewScroll.y && y <= _reviewScroll.y + rows.height)
+                {
+                    if (item.Node is not StoryReview.Node node) Label(new Rect(S(4), y + S(5), contentWidth - S(8), S(24)), item.Header, _heading);
+                    else
+                    {
+                        // Read marks are worked out only for rows that come into view.
+                        if (!item.Described) { (item.Summary, item.Detail) = Review.Describe(node); item.Described = true; }
+                        if (Button(new Rect(S(4), y + S(13), star, S(30)), node.Favourite ? "★" : "☆", "review.star." + node.Id, node.Favourite ? _primary : _button,
+                            node.Favourite ? "取消收藏（删掉这一份）" : "收藏这一份，以后不会被新收录覆盖"))
+                        {
+                            Execute(() => ReviewStar?.Invoke(node) ?? OperationResult.Fail(L.Text("存档系统未就绪")));
+                            break;
+                        }
+                        Label(new Rect(star + S(12), y + S(4), contentWidth - save - star - S(28), S(26)), item.Title, _label, item.Detail);
+                        Label(new Rect(star + S(12), y + S(30), contentWidth - save - star - S(28), S(24)), item.Summary, _small, item.Detail);
+                        if (Button(new Rect(contentWidth - save - S(4), y + S(13), save, S(30)), "存入", "review.save." + node.Id))
+                        {
+                            if (Execute(() => ReviewExport?.Invoke(node, _reviewSlot) ?? OperationResult.Fail(L.Text("存档系统未就绪"))).Success) _reviewSlotChecked = false;
+                            break;
+                        }
+                        GUI.DrawTexture(new Rect(0, y + height - 1, contentWidth, 1), _line);
+                    }
+                }
+                y += height;
+            }
+        }
+        finally { EndScroll(); }
+    }
+
+    // 剧情树 (F87) as a folding tree: main missions, then each segment and the ways out of it. Opening a way analyses the
+    // segment it leads into; a segment already laid out above reads 「→ 接到」 instead of opening again.
+    internal StoryTree? Tree;
+    private sealed class TreeRow { public int Depth; public string Key = "", Text = "", Status = "", Tooltip = ""; public bool CanOpen, Open, Header; public StoryReview.Node? Kept; }
+    private readonly List<TreeRow> _treeRows = new();
+    private readonly HashSet<string> _treeOpen = new(StringComparer.Ordinal);
+    private bool _treeMode, _treeDirty = true;
+    private long _treeLanguage = -1;
+    private Vector2 _treeScroll;
+
+    private void DrawStoryTree(Rect r)
+    {
+        if (Tree == null) { Empty(r, "剧情回顾未载入"); return; }
+        Label(new Rect(r.x, r.y, r.width, S(46)), "只列主线：按主线任务的触发日期排列，点开一层才分析下一层；上面已经展开过的段落写「→ 接到」。条件按当前存档的数值显示，未读、部分已读按全部周目读过的对白算。", _muted);
+        if (_treeDirty || _treeLanguage != L.Revision) BuildTreeRows();
+        Rect rows = new(r.x, r.y + S(54), r.width, r.height - S(54));
+        GUI.DrawTexture(new Rect(rows.x, rows.y - S(4), rows.width, 1), _line);
+        if (_treeRows.Count == 0) { Empty(rows, "主线任务数据未载入"); return; }
+        float height = S(30), indent = S(18), contentWidth = rows.width - S(18), save = ButtonWidth("存入", 74);
+        _treeScroll = BeginScroll(rows, _treeScroll, new Rect(0, 0, contentWidth, Mathf.Max(rows.height, _treeRows.Count * height)));
+        try
+        {
+            for (int i = 0; i < _treeRows.Count; i++)
+            {
+                float y = i * height;
+                if (y + height < _treeScroll.y || y > _treeScroll.y + rows.height) continue;
+                var row = _treeRows[i];
+                float x = S(4) + row.Depth * indent, right = contentWidth - (row.Kept != null ? save + S(8) : 0);
+                if (row.CanOpen && Button(new Rect(x, y + S(3), S(24), S(24)), row.Open ? "▾" : "▸", "tree.open." + row.Key, _tabButton))
+                {
+                    if (!_treeOpen.Remove(row.Key)) _treeOpen.Add(row.Key);
+                    _treeDirty = true;
+                    break;
+                }
+                string text = row.Text + (row.Status.Length > 0 ? "〔" + row.Status + "〕" : "");
+                Label(new Rect(x + S(28), y + S(3), Mathf.Max(S(40), right - x - S(32)), S(26)), text, row.Header || row.Depth == 0 ? _label : _small, row.Tooltip.Length > 0 ? row.Tooltip : text);
+                if (row.Kept is StoryReview.Node node && Button(new Rect(contentWidth - save - S(4), y + S(1), save, S(28)), "存入", "tree.save." + row.Key))
+                {
+                    if (Execute(() => ReviewExport?.Invoke(node, _reviewSlot) ?? OperationResult.Fail(L.Text("存档系统未就绪"))).Success) _reviewSlotChecked = false;
+                    break;
+                }
+            }
+        }
+        finally { EndScroll(); }
+    }
+
+    private void BuildTreeRows()
+    {
+        _treeRows.Clear();
+        _treeDirty = false; _treeLanguage = L.Revision;
+        var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var kept = Review?.Latest() ?? new Dictionary<string, StoryReview.Node>();
+        foreach (var root in Tree!.Roots())
+        {
+            string key = "m:" + root.Key;
+            bool open = _treeOpen.Contains(key);
+            _treeRows.Add(new TreeRow { Key = key, Text = root.Title, Tooltip = root.Key + " · " + root.Script, CanOpen = true, Open = open });
+            if (open) AddSegment(Tree.Graph.Get(root.Script), 1, key, shown, kept);
+        }
+    }
+
+    private void AddSegment(StoryGraph.Segment segment, int depth, string path, HashSet<string> shown, Dictionary<string, StoryReview.Node> kept)
+    {
+        if (!shown.Add(segment.Id)) { _treeRows.Add(new TreeRow { Depth = depth, Text = L.Format("→ 接到 {0}", segment.Id), Tooltip = StoryTree.SegmentTitle(segment) }); return; }
+        kept.TryGetValue(segment.Last, out var node);
+        _treeRows.Add(new TreeRow { Depth = depth, Header = true, Text = StoryTree.SegmentTitle(segment), Tooltip = string.Join(" → ", segment.Scripts), Kept = node });
+        for (int i = 0; i < segment.Ways.Count; i++)
+        {
+            var way = segment.Ways[i];
+            string key = path + "/" + segment.Id + "#" + i, end = StoryTree.WayEnd(way);
+            bool follow = way.Target.Length > 0 && !way.Ends, open = follow && _treeOpen.Contains(key);
+            string text = (i == segment.Ways.Count - 1 ? "└ " : "├ ") + StoryTree.WayLabel(way) + (follow ? " → " + way.Target : "") + (end.Length > 0 ? " → " + end : "");
+            _treeRows.Add(new TreeRow { Depth = depth + 1, Key = key, Text = text, Status = Tree!.Reading(way), CanOpen = follow, Open = open });
+            if (open) AddSegment(Tree.Graph.Get(way.Target), depth + 2, key, shown, kept);
+        }
+    }
+
+    private void BuildReviewRows()
+    {
+        _reviewRows.Clear();
+        _reviewBuilt = Review!.Revision; _reviewBuiltSearch = _reviewSearch; _reviewLanguage = L.Revision;
+        int year = int.MinValue, month = int.MinValue;
+        foreach (var node in Review.Nodes.OrderByDescending(n => n.Year).ThenByDescending(n => n.Month).ThenByDescending(n => n.Stage).ThenByDescending(n => n.Kept))
+        {
+            string title = StoryReview.Title(node);
+            if (!Matches(_reviewSearch, title, StoryReview.SearchText(node))) continue;
+            if (node.Year != year || node.Month != month) { year = node.Year; month = node.Month; _reviewRows.Add(new ReviewRow { Header = L.Format("{0}年{1}月", year, month) }); }
+            _reviewRows.Add(new ReviewRow { Node = node, Title = (node.Favourite ? "★ " : "") + title });
+        }
     }
 
     private void DrawCombat(Rect r)
@@ -1316,6 +1489,11 @@ public sealed class ToolWindow : IDisposable
         _muted = TextStyle(15, muted); _muted.wordWrap = true;
         _small = TextStyle(13, muted); _small.wordWrap = true;
         _heading = TextStyle(18, text); _heading.fontStyle = FontStyle.Bold; _heading.wordWrap = true;
+        _routeLabel = TextStyle(13, text); _routeLabel.alignment = TextAnchor.MiddleCenter;
+        _routeTag = TextStyle(11, new Color(.95f, .80f, .36f, 1)); _routeTag.alignment = TextAnchor.MiddleCenter;
+        _routePill = TextStyle(12, new Color(.07f, .08f, .09f, 1)); _routePill.alignment = TextAnchor.MiddleCenter;
+        _routeItem = ButtonStyle(TextureOnce("clear", Color.clear), _section, text); _routeItem.alignment = TextAnchor.MiddleLeft; _routeItem.wordWrap = true;
+        _routeItemSelected = ButtonStyle(_selection, _selection, text); _routeItemSelected.alignment = TextAnchor.MiddleLeft; _routeItemSelected.wordWrap = true;
         _title = TextStyle(18, text); _title.fontStyle = FontStyle.Bold;
         _met = new GUIStyle(_label); _met.normal.textColor = Palette.Positive;
         _unmet = new GUIStyle(_label); _unmet.normal.textColor = Palette.Negative;

@@ -42,6 +42,10 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
     private bool musicSilent, envSilent;
     public void MusicLevel(int value) => musicSilent = value <= 0;
     public void EnvLevel(int value) => envSilent = value <= 0;
+    /// <summary>剧情回顾 (F84): each script's copy with the music then, as the script starts.</summary>
+    public Action<string, GameSave, string, string>? Kept;
+    // A kept node being written into a slot (F84), in place of this script's copy.
+    private (GameSave Save, string Script, string Music, string Env)? exporting;
 
     /// <summary>Each story script as the game loads it, before any of it runs.</summary>
     public void ScriptLoaded(string? friendlyName)
@@ -67,6 +71,7 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
             music = sound == null || musicSilent ? "" : R.Field<string>(sound, "_currentMusic", "") ?? "";
             env = sound == null || envSilent ? "" : R.Field<string>(sound, "_currentEnvSound", "") ?? "";
             if (loaded) Check(save);
+            Kept?.Invoke(script, save, music, env);
         }
         catch (Exception ex) { snapshot = null; log.LogWarning("SEGMENT_SAVE " + ex.GetBaseException().Message); }
     }
@@ -84,28 +89,38 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
     /// <summary>Before SaveSystem.SaveGameData(slot): in a story, away from the game's own save points, write the copy.</summary>
     public void BeforeSave()
     {
+        if (exporting != null) { writing = true; return; }
         writing = Enabled && snapshot != null && !nativeOpen && StoryManager.Instance != null && FreeManager.Instance == null;
         if (writing) snapshot!.TimeTick = DateTime.Now.Ticks;
     }
 
     /// <summary>In place of SaveSystem.CreateSaveData while that save is written.</summary>
-    public GameSave? Substitute() => writing ? snapshot : null;
+    public GameSave? Substitute() => writing ? exporting?.Save ?? snapshot : null;
+
+    /// <summary>剧情回顾 (F84): a kept node written into a slot through the game's own save, as one of these saves.</summary>
+    public void Export(GameSave save, string start, string heard, string ambience, string slot)
+    {
+        exporting = (save, start, heard, ambience);
+        try { SaveSystem.Instance.SaveGameData(slot); }
+        finally { exporting = null; writing = false; }
+    }
 
     public void AfterSave(string slot)
     {
-        NoteMusic(slot, writing);
+        var (save, start, heard, ambience) = exporting ?? (snapshot!, script, music, env);
+        NoteMusic(slot, writing, start, heard, ambience);
         if (!writing) return;
         writing = false;
         try
         {
-            File.WriteAllText(checkFile, slot + "\n" + script + "\n" + Normalized(snapshot!), new UTF8Encoding(false));
-            log.LogInfo($"SEGMENT_SAVE slot={slot} start={script} music={music} env={env}");
+            File.WriteAllText(checkFile, slot + "\n" + start + "\n" + Normalized(save), new UTF8Encoding(false));
+            log.LogInfo($"SEGMENT_SAVE slot={slot} start={start} music={heard} env={ambience}");
         }
         catch (Exception ex) { log.LogWarning("SEGMENT_SAVE note " + ex.GetBaseException().Message); }
     }
 
     /// <summary>One line per slot written by these saves; any other save to that slot drops its line.</summary>
-    private void NoteMusic(string slot, bool segment)
+    private void NoteMusic(string slot, bool segment, string start, string music, string env)
     {
         try
         {
@@ -114,7 +129,7 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
             var lines = File.Exists(musicFile)
                 ? File.ReadAllLines(musicFile, Encoding.UTF8).Where(line => !line.StartsWith(slot + "\t", StringComparison.Ordinal)).ToList()
                 : new List<string> { "# 赵活系统：剧情中随时存档读档时补放的背景音乐。只有本模组读取，游戏存档不受影响。" };
-            if (note) lines.Add(string.Join("\t", slot, script, music, env));
+            if (note) lines.Add(string.Join("\t", slot, start, music, env));
             File.WriteAllLines(musicFile, lines, new UTF8Encoding(false));
         }
         catch (Exception ex) { log.LogWarning("SEGMENT_SAVE music " + ex.GetBaseException().Message); }

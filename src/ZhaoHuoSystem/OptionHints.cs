@@ -388,6 +388,8 @@ internal sealed class OptionHints : IDisposable
         }
         return count;
     }
+    /// <summary>A script's options as analysed (cached), for 剧情回顾 (F84).</summary>
+    public Dictionary<string, OptionPreview>? Map(string name) => ScriptMap(name);
     private Dictionary<string, OptionPreview>? ScriptMap(string name)
     {
         if (!scriptMaps.TryGetValue(name, out var map)) scriptMaps[name] = map = ScriptText(name) is string text ? LuaOptions.Analyze(text) : null;
@@ -610,6 +612,14 @@ internal sealed class OptionHints : IDisposable
         var items = R.Items(R.Field(data, "_items")).Select(item => Flatten(Conditions.Read(item))).Where(text => text.Length > 0).ToList();
         return items.Count == 0 ? "" : items.Count == 1 ? L.Format("未满足 {0}", items[0]) : L.Format("{0} 都不满足", string.Join("、", items));
     }
+    /// <summary>A switch arm as 剧情树 names it (F87): 「若 …」, or for the default arm 「否则（…）」.</summary>
+    internal static string ArmText(string name, int arm)
+    {
+        string own = SwitchArm(name, arm).Key;
+        return own.Length > 0 ? L.Format("若 {0}", Tone.Plain(own)) : L.Format("否则（{0}）", Tone.Plain(Otherwise(name)));
+    }
+    /// <summary>A requirement as the row's hint reads it now (剧情回顾 keeps it with the node, F84).</summary>
+    internal static string RequirementText(string name) => Requirement(name).Key;
     private static KeyValuePair<string, int> Requirement(string name)
     {
         var config = R.Field(CheckPointManager.Instance, "_condition");

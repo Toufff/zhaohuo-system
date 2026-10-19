@@ -10,6 +10,9 @@
   <ItemGroup>
     <Compile Include="../../src/ZhaoHuoSystem/LuaGate.cs" Link="LuaGate.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/LuaOptions.cs" Link="LuaOptions.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/StoryGraph.cs" Link="StoryGraph.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/RouteMapDefs.cs" Link="RouteMapDefs.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/RouteMapBuilder.cs" Link="RouteMapBuilder.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/ValueSemantics.cs" Link="ValueSemantics.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/NativeEnumSemantics.cs" Link="NativeEnumSemantics.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/FieldIdentityIndex.cs" Link="FieldIdentityIndex.cs" />

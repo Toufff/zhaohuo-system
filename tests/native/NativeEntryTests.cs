@@ -40,6 +40,13 @@ internal static partial class Program
             Has(combat, "Mortal.Combat", "CombatManager", "EnableHotKey", "_combatLevel", "_uiManager");
             Signature(combat, "Mortal.Combat", "CombatManager", "GameOver", "win");
             Signature(combat, "Mortal.Combat", "CombatUIManager", "HideAction");
+            // 直接僵持 (F85): a level's events, their conditions and actions, and the round and scene-leaving kinds.
+            Has(combat, "Mortal.Combat", "CombatLevel", "Events");
+            Has(combat, "Mortal.Combat", "CombatEventData", "_conditionAction");
+            Has(combat, "Mortal.Combat", "CombatEventConditionAction", "_logic", "_conditions", "_actions", "_afterActions", "_afterResult");
+            Signature(combat, "Mortal.Combat", "CombatEventConditionRound", "Check", "combatManager");
+            Signature(combat, "Mortal.Combat", "CombatEventActionLoadScene", "Action", "combatManager");
+            Has(combat, "Mortal.Combat", "CombatEventConditionStat", "_character");
             // 决斗加速: the toggle's entry and the two speeds it copies between.
             Signature(combat, "Mortal.Combat", "CombatManager", "EnableSpeedTime", "active");
             Has(combat, "Mortal.Combat", "CombatManager", "_speedTime", "_currentSpeedTime");
@@ -106,6 +113,10 @@ internal static partial class Program
             // 跳过本旬 one point at a time: the check a story's return to the map runs, and the story scene steps around it.
             Signature(mortalCore, "Mortal.Core", "MissionManagerData", "UpdateCheckMissions");
             Signature(mortalCore, "Mortal.Core", "MissionManagerData", "HasAnyMissionTrigger");
+            // 剧情回顾 (F84): the slot's own file name, the main mission's description and a date to name a node by.
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "GetSaveDataFile", "name");
+            Has(mortalCore, "Mortal.Core", "MissionCheckData", "_desc");
+            Has(mortalCore, "Mortal.Core", "MissionManagerData", "MainCheckData");
             // ...and inside a story-scene loop, its entry script (F80).
             Has(mortalCore, "Mortal.Core", "PlayerStatManagerData", "CurrentTravelScript");
             Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryMainUI", "Hide");

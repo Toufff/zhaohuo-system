@@ -182,7 +182,7 @@ internal static class Program
                 }
             // UI helpers translate exact labels centrally, so their plain literals
             // must also be catalogued even when no L.Text appears at the call site.
-            if (new[] { "ToolWindow.cs", "NativeDicePresenter.cs", "MapIndicators.cs" }.Contains(Path.GetFileName(path)))
+            if (Path.GetFileName(path).StartsWith("ToolWindow", StringComparison.Ordinal) || new[] { "NativeDicePresenter.cs", "MapIndicators.cs" }.Contains(Path.GetFileName(path)))
             {
                 foreach (Match literal in Regex.Matches(source, "\"(?<key>(?:\\\\.|[^\"\\\\])*)\""))
                 {

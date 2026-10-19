@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -18,6 +20,9 @@ namespace ZhaoHuoSystem;
 /// flag; a loss is the losing result the story goes on from where the level has one (lose on defeat or on time, or a
 /// scripted enemy win), and otherwise the death panel (retry or title), the same as being killed. 战役 locks and hides the
 /// mouse while it runs and frees it only in its pause menu, so there the buttons show while paused and unpause first.
+/// 「直接僵持」 (F85) joins them only in a duel that can end in a draw: the level has an event that, on a set round,
+/// leaves the fight without a result (its actions load the next scene). It runs that event's own actions (lines, flags,
+/// the next scene), as reaching that round would. Exits on HP or 气 thresholds are not draws and do not count.
 /// Resolved by name like <see cref="CombatCheats"/>; anything missing only hides the buttons.
 /// </summary>
 internal sealed class CombatResult : IDisposable
@@ -32,6 +37,10 @@ internal sealed class CombatResult : IDisposable
     private int ended = -1; // the duel this mod already ended, until its scene goes
     private int pending = -1;
     private float pendingUntil;
+    // Whether the duel's level has a draw (F85), worked out once per level.
+    private object? drawLevel;
+    private bool drawAvailable;
+    private const int Win = 0, Lose = 1, Stalemate = 2;
     private float styleScale = -1;
     private long revision = -1;
     private Font? font;
@@ -82,18 +91,24 @@ internal sealed class CombatResult : IDisposable
         var fight = hidden ? null : Active();
         if (fight == null) { Rect = default; pending = -1; return; }
         EnsureStyles();
+        int[] choices = !fight.Value.Battle && HasDraw(fight.Value.Manager) ? new[] { Win, Stalemate, Lose } : new[] { Win, Lose };
         float k = UiScale.Current, width = 96 * k, height = 28 * k, gap = 8 * k;
-        float x = (Screen.width - width * 2 - gap) / 2, y = 6 * k;
-        Rect = new Rect(x, y, width * 2 + gap, height);
+        float x = (Screen.width - width * choices.Length - gap * (choices.Length - 1)) / 2, y = 6 * k;
+        Rect = new Rect(x, y, width * choices.Length + gap * (choices.Length - 1), height);
         if (pending >= 0 && Time.unscaledTime > pendingUntil) pending = -1;
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < choices.Length; i++)
         {
-            bool asking = pending == i;
-            string label = asking ? L.Text("再点一次确认") : L.Text(i == 0 ? "直接胜利" : "直接失败");
+            int choice = choices[i];
+            bool asking = pending == choice;
+            string label = asking ? L.Text("再点一次确认") : L.Text(choice == Win ? "直接胜利" : choice == Stalemate ? "直接僵持" : "直接失败");
             if (!GUI.Button(new Rect(x + i * (width + gap), y, width, height), label, asking ? confirming : button)) continue;
-            if (!asking) { pending = i; pendingUntil = Time.unscaledTime + ConfirmTime; continue; }
+            if (!asking) { pending = choice; pendingUntil = Time.unscaledTime + ConfirmTime; continue; }
             pending = -1;
-            try { Finish(fight.Value.Manager, fight.Value.Battle, i == 0); }
+            try
+            {
+                if (choice == Stalemate) FinishDraw(fight.Value.Manager);
+                else Finish(fight.Value.Manager, fight.Value.Battle, choice == Win);
+            }
             catch (Exception ex) { log.LogWarning("COMBAT_RESULT " + ex.GetBaseException().Message); }
         }
         var e = Event.current;
@@ -117,6 +132,60 @@ internal sealed class CombatResult : IDisposable
         ended = manager.GetInstanceID();
         manager.StartCoroutine((IEnumerator)combatGameOver!.Invoke(manager, new object[] { win }));
         log.LogInfo($"COMBAT_RESULT duel win={win}");
+    }
+
+    private bool HasDraw(MonoBehaviour manager)
+    {
+        var level = R.Field(manager, "_combatLevel");
+        if (!ReferenceEquals(level, drawLevel)) { drawLevel = level; drawAvailable = Draws(manager).Any(); }
+        return drawAvailable;
+    }
+
+    /// <summary>The level's draw events: on a set round (a flag may pick which), leaving the fight by loading the next scene.</summary>
+    private static IEnumerable<object> Draws(MonoBehaviour manager)
+    {
+        if (R.Field(manager, "_combatLevel") is not object level) yield break;
+        foreach (var data in R.Items(R.Field(level, "Events")))
+            foreach (var item in R.Items(R.Field(data, "_conditionAction")))
+            {
+                if (item == null) continue;
+                var conditions = R.Items(R.Field(item, "_conditions")).Where(condition => condition != null).ToList();
+                if (!conditions.Exists(condition => condition.GetType().Name == "CombatEventConditionRound") || conditions.Exists(condition => condition.GetType().Name == "CombatEventConditionStat")) continue;
+                if (Exit(item).Exists(action => action.GetType().Name == "CombatEventActionLoadScene")) yield return item;
+            }
+    }
+
+    /// <summary>The event's actions in the order the duel runs them (round start, after the action, after the result), up to leaving.</summary>
+    private static List<object> Exit(object item)
+    {
+        var actions = new List<object>();
+        foreach (string list in new[] { "_actions", "_afterActions", "_afterResult" })
+            foreach (var action in R.Items(R.Field(item, list)))
+            {
+                if (action == null) continue;
+                actions.Add(action);
+                if (action.GetType().Name == "CombatEventActionLoadScene") return actions;
+            }
+        return actions;
+    }
+
+    /// <summary>The draw whose other conditions hold now (the round is the one this skips to), run as the duel would run it.</summary>
+    private void FinishDraw(MonoBehaviour manager)
+    {
+        bool Holds(object condition) => AccessTools.Method(condition.GetType(), "Check")?.Invoke(condition, new object[] { manager }) is true;
+        var draw = Draws(manager).FirstOrDefault(item => R.Field(item, "_logic") is LogicOperatorType.OR
+            || R.Items(R.Field(item, "_conditions")).Where(condition => condition != null && condition.GetType().Name != "CombatEventConditionRound").All(Holds));
+        if (draw == null) { log.LogWarning("COMBAT_RESULT duel draw: none applies now"); return; }
+        manager.StopAllCoroutines();
+        if (R.Field(manager, "_uiManager") is object ui) hideAction?.Invoke(ui, null);
+        ended = manager.GetInstanceID();
+        manager.StartCoroutine(Run(manager, Exit(draw)));
+        log.LogInfo("COMBAT_RESULT duel draw " + R.Name(draw));
+    }
+    private static IEnumerator Run(MonoBehaviour manager, List<object> actions)
+    {
+        foreach (var action in actions)
+            if (AccessTools.Method(action.GetType(), "Action")?.Invoke(action, new object[] { manager }) is IEnumerator step) yield return step;
     }
 
     /// <summary>Whether the level has a loss the story goes on from: lose on defeat or on time, or a scripted enemy win.</summary>

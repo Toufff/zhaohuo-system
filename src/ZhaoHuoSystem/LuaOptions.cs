@@ -55,10 +55,17 @@ public sealed class OptionPreview
     public bool Menu, Unknown;
     /// <summary>Shown for a locked row (F57): its requirement is named even when it cannot be checked.</summary>
     public bool Locked;
-    /// <summary>The option's branch sets the main mission (F80): choosing it moves the main story on.</summary>
-    public bool SetsMain;
+    /// <summary>The main mission the option's branch sets (F80): choosing it moves the main story on.</summary>
+    public string MainMission = "";
+    public bool SetsMain => MainMission.Length > 0;
+    /// <summary>The branch returns to the map (F87).</summary>
+    public bool ToMap;
+    /// <summary>Story lines the branch shows (GetStoryText keys); on the script level, those outside any option (F84).</summary>
+    public List<string> TextKeys = new();
     /// <summary>On the script level only: every option table the script offers, by 1-based row (F57).</summary>
     public List<Dictionary<int, OptionSlot>> Menus = new();
+    /// <summary>On the script level only: every dice result table, by 1-based row; a row's text keeps its threshold (F87).</summary>
+    public List<Dictionary<int, OptionSlot>> Rolls = new();
     public bool Empty => Effects.Count == 0 && Cases.Count == 0 && Pool.Length == 0 && Dice.Length == 0 && NextScript.Length == 0 && !Menu && !Unknown;
 }
 
@@ -219,7 +226,11 @@ public static class LuaOptions
                     Mark(p => p.Menu = true); i = j + 4; continue;
                 }
                 if (Matches(tokens, j, "dicemenudialog", ".", "ResultSelection"))
-                { choices[var] = lastRoll ?? new Dictionary<int, Entry>(); i = j + 3; continue; }
+                {
+                    choices[var] = lastRoll ?? new Dictionary<int, Entry>();
+                    result[ScriptLevel].Rolls.Add(choices[var].ToDictionary(pair => pair.Key, pair => new OptionSlot { Key = pair.Value.Key, Requirement = pair.Value.Requirement, Locked = pair.Value.Locked, Text = pair.Value.Text }));
+                    i = j + 3; continue;
+                }
                 if (Matches(tokens, j, "checkpointmanager", ".") && j + 5 < tokens.Count && tokens[j + 3].Is("(") && tokens[j + 4].Type == T.String && tokens[j + 5].Is(")"))
                 {
                     string api = tokens[j + 2].Text, name = tokens[j + 4].Text;
@@ -247,8 +258,12 @@ public static class LuaOptions
                 if (i + 5 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 5].Is(")")) { string next = tokens[i + 4].Text; Mark(p => { if (p.NextScript.Length == 0) { p.NextScript = next; p.AfterScene = true; } }); Jump(next); }
                 i += 4; continue;
             }
-            if (Matches(tokens, i, "statmodifymanager", ".", "Mission", "(") && i + 4 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 4].Text == "Main")
-                Mark(p => p.SetsMain = true);
+            if (Matches(tokens, i, "luamanager", ".", "GetStoryText", "(") && i + 4 < tokens.Count && tokens[i + 4].Type == T.String)
+            { string line = tokens[i + 4].Text; Mark(p => p.TextKeys.Add(line)); i += 5; continue; }
+            if (Matches(tokens, i, "statmodifymanager", ".", "Mission", "(") && i + 6 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 4].Text == "Main" && tokens[i + 6].Type == T.String)
+            { string mission = tokens[i + 6].Text; Mark(p => p.MainMission = mission); }
+            if (Matches(tokens, i, "luamanager", ".", "ChangeScene", "(") && i + 4 < tokens.Count && tokens[i + 4].Type == T.String && tokens[i + 4].Text == "Free")
+                Mark(p => p.ToMap = true);
             if (Matches(tokens, i, "statmodifymanager", ".") && i + 3 < tokens.Count && tokens[i + 2].Type == T.Name && tokens[i + 3].Is("("))
             {
                 var args = new List<Token>(); int j = i + 4, depth = 0;
@@ -431,6 +446,11 @@ public static class LuaOptions
         return text(travel) is string entry && StorySceneCall.IsMatch(entry)
             && Regex.IsMatch(entry, "luamanager\\s*\\.\\s*SetCurrentStoryScript\\s*\\(\\s*\"" + Regex.Escape(menu) + "\"\\s*\\)", RegexOptions.IgnoreCase);
     }
+    /// <summary>剧情回顾 (F84): a script where the story branches: a menu, a dice roll or a fight.</summary>
+    public static bool IsBranch(string text) => MenuCall.IsMatch(text) || DiceCall.IsMatch(text) || FightCall.IsMatch(text);
+    private static readonly Regex MenuCall = new("\\bchoose\\s*\\(");
+    public static readonly Regex DiceCall = new("dicemenudialog\\s*\\.\\s*ExecuteRoll\\s*\\(");
+    public static readonly Regex FightCall = new("luamanager\\s*\\.\\s*ChangeScene\\s*\\(\\s*\"(?:Combat|Battle)\"");
     private static readonly Regex StorySceneCall = new("luamanager\\s*\\.\\s*ChangeScene\\s*\\(\\s*\"Story\"");
     private static readonly Regex NextScriptCall = new("luamanager\\s*\\.\\s*(?:SetNextScript|SetCurrentStoryScript)\\s*\\(\\s*\"([^\"]+)\"");
     /// <summary>

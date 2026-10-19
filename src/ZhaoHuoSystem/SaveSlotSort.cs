@@ -17,7 +17,7 @@ namespace ZhaoHuoSystem;
 /// </summary>
 internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
 {
-    public static readonly string[] Modes = { "排序：编号", "排序：最新在前", "排序：最早在前", "排序：收藏优先" };
+    public static readonly string[] Modes = { "排序：编号", "排序：最新在前", "排序：最早在前", "排序：收藏优先", "排序：最早在前（排除收藏）" };
     /// <summary>Whether a slot number is starred (F76: 收藏优先 puts those first, each group by number).</summary>
     public Func<string, bool>? IsFavourite;
     public int LoadMode, SaveMode;
@@ -41,11 +41,14 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
         var list = slots.Cast<MonoBehaviour>().Where(slot => slot != null).ToList();
         int Number(MonoBehaviour slot) => int.TryParse(R.Field<string>(slot, "_slot", ""), out int n) ? n : int.MaxValue;
         long Saved(MonoBehaviour slot) => R.Field(slot, "_currentData") is GameSave data ? data.TimeTick : long.MinValue;
+        bool Starred(MonoBehaviour slot) => IsFavourite?.Invoke(R.Field<string>(slot, "_slot", "")) == true;
         var ordered = ModeOf(panel) switch
         {
             1 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenByDescending(Saved).ThenBy(Number).ToList(),
             2 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(Saved).ThenBy(Number).ToList(),
-            3 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(slot => IsFavourite?.Invoke(R.Field<string>(slot, "_slot", "")) == true ? 0 : 1).ThenBy(Number).ToList(),
+            3 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(slot => Starred(slot) ? 0 : 1).ThenBy(Number).ToList(),
+            // F88: the oldest saves that are not starred first (the ones to write over), then the starred ones by number.
+            4 => list.OrderBy(slot => Saved(slot) == long.MinValue).ThenBy(slot => Starred(slot) ? 1 : 0).ThenBy(slot => Starred(slot) ? 0 : Saved(slot)).ThenBy(Number).ToList(),
             _ => list.OrderBy(Number).ToList()
         };
         if (ordered.SequenceEqual(list)) return;
@@ -76,11 +79,11 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
         entries.Add(new Entry { Panel = panel, Heading = heading, Button = button, Label = label });
     }
 
-    /// <summary>A star changed: pages sorted with 收藏优先 put the slots in order again.</summary>
+    /// <summary>A star changed: pages sorted by stars (收藏优先, 排除收藏) put the slots in order again.</summary>
     public void StarsChanged()
     {
         foreach (var entry in entries)
-            if (entry.Panel != null && entry.Panel.isActiveAndEnabled && ModeOf(entry.Panel) == 3) Refreshed(entry.Panel);
+            if (entry.Panel != null && entry.Panel.isActiveAndEnabled && ModeOf(entry.Panel) >= 3) Refreshed(entry.Panel);
     }
 
     private void Step(MonoBehaviour panel)

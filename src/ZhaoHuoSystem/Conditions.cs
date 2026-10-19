@@ -226,5 +226,91 @@ internal static class Conditions
         _ => ""
     };
     internal static string Expression(ConditionSnapshot condition) => condition.Children.Count == 0 ? condition.Text : string.Join(" " + condition.Operator + " ", condition.Children.Select(x => "(" + Expression(x) + ")"));
+    /// <summary>
+    /// 剧情路线图 (F89): a condition group worded by what it asks, without the current values, with what the map reasons
+    /// about: dates compared with now, flags it needs set, a series' scheduled time, and its opposite when it is a single
+    /// comparison with a number.
+    /// </summary>
+    internal static RouteGroup RouteGroupOf(object? item)
+    {
+        var group = new RouteGroup();
+        if (item == null) return group;
+        try
+        {
+            var parts = new List<string>();
+            var items = R.Items(R.Field(item, "_items")).Where(x => x != null).ToList();
+            foreach (var part in items)
+            {
+                if (part is not StatCompareItem) { parts.Add("(" + Expression(Read(part)) + ")"); continue; }
+                object? v1 = R.Field(part, "_value1"), v2 = R.Field(part, "_value2");
+                string n1 = R.Name(v1), n2 = R.Name(v2);
+                var left = Group(v1, 0); var right = Group(v2, 0);
+                // Bookkeeping by the value's name or by the flag's own words (the prototype read both).
+                if (NoiseName.IsMatch(n1) || NoiseName.IsMatch(n2) || NoiseName.IsMatch(left.Text) || NoiseName.IsMatch(right.Text)) group.Noise = true;
+                string op = Symbol(R.RequiredField<StatCompareType>(part, "_compareOp"));
+                parts.Add(RouteText(left, op, right, n1));
+                bool number = right.Literal && right.FieldId.Length == 0 && right.TimeText.Length == 0;
+                bool clock = left.TimeText.Length > 0 && !left.Literal;
+                if (left.FieldId.StartsWith("flag:", StringComparison.Ordinal) && number && right.Value >= 1 && op is "=" or ">=") group.Requires.Add((left.FieldId.Substring(5), left.Text));
+                if (clock && right.Literal && right.TimeText.Length > 0) group.Times.Add((op, Date(right.Value)));
+                if (clock && op == "=" && n2.StartsWith("時間_S", StringComparison.Ordinal)) group.Scheduled = true;
+                if (items.Count == 1 && number && left.FieldId.Length > 0) group.Flip = RouteText(left, Flipped(op), right, n1);
+            }
+            group.Text = string.Join(R.Field(item, "_logicOp") is LogicOperatorType.OR ? L.Text(" 或 ") : L.Text("，"), parts);
+        }
+        catch { /* A condition that cannot be read stays without words. */ }
+        return group;
+    }
+    private static readonly System.Text.RegularExpressions.Regex NoiseName = new("旗標暫存|旗标暂存|決鬥泛用|决斗泛用|通用決鬥成敗|通用决斗成败");
+    private static int[] Date(int rounds) { int v = Math.Max(0, rounds - 1); return new[] { v / 36 + 1, v % 36 / 3 + 1, v % 3 + 1 }; }
+    private static string Flipped(string op) => op switch { ">=" => "<", "<=" => ">", ">" => "<=", "<" => ">=", "=" => "!=", _ => "=" };
+    private static string RouteText(Variable left, string op, Variable right, string leftName = "")
+    {
+        // A named sum of values (數值_丐幫談判) reads by its name, as the game's designers called it.
+        if (left.FieldId.Length == 0 && left.Text.StartsWith("(", StringComparison.Ordinal) && leftName.StartsWith("數值_", StringComparison.Ordinal))
+            left = new Variable { Text = L.DisplayText(leftName.Substring(3)), Value = left.Value, Known = left.Known, Literal = left.Literal };
+        if (left.TimeText.Length > 0 && !left.Literal && right.TimeText.Length > 0)
+            return L.Format(op switch { ">=" => "时间不早于{0}", "<=" => "时间不晚于{0}", "=" => "时间为{0}", ">" => "时间晚于{0}", "<" => "时间早于{0}", _ => "时间不是{0}" }, right.TimeText);
+        bool flag = left.FieldId.StartsWith("flag:", StringComparison.Ordinal);
+        string name = left.FieldId.StartsWith("relation:", StringComparison.Ordinal) ? L.Format("{0}好感", left.Text) : left.Text;
+        if (right.Literal && right.FieldId.Length == 0 && right.TimeText.Length == 0)
+        {
+            if (flag && op == "=" && right.Value == 0) return L.Format("未{0}", name);
+            if (flag && op == "=" && right.Value == 1) return name;
+            return name + op + right.Value.ToString(CultureInfo.InvariantCulture);
+        }
+        return name + op + right.Text;
+    }
+
+    /// <summary>Flags a condition reads, through its groups, value groups and nested conditions (剧情路线图, F89).</summary>
+    internal static IEnumerable<string> FlagsRead(object? condition, int depth = 0)
+    {
+        var flags = new HashSet<string>(StringComparer.Ordinal);
+        void Value(object? group, int level)
+        {
+            if (group == null || level > 12) return;
+            foreach (var reference in R.Items(R.Field(group, "_value")))
+            {
+                if (reference == null) continue;
+                switch (R.Property(reference, "CheckType")?.ToString())
+                {
+                    case "旗標": if (R.Field<FlagData>(reference, "_flag") is FlagData f && f != null) flags.Add(f.name); break;
+                    case "數值群組": Value(R.Field(reference, "_statGroup"), level + 1); break;
+                    case "條件設定": Walk(R.Field(reference, "_condition"), level + 1); break;
+                }
+            }
+        }
+        void Walk(object? node, int level)
+        {
+            if (node == null || level > 12) return;
+            foreach (var part in R.Items(R.Field(node, "_items")))
+            {
+                if (part is StatCompareItem) { Value(R.Field(part, "_value1"), level + 1); Value(R.Field(part, "_value2"), level + 1); }
+                else Walk(part, level + 1);
+            }
+        }
+        try { Walk(condition, depth); } catch { }
+        return flags;
+    }
     internal static string Symbol(StatCompareType op) => op switch { StatCompareType.Equal => "=", StatCompareType.NotEqual => "!=", StatCompareType.Less => "<", StatCompareType.LessEqual => "<=", StatCompareType.Greater => ">", _ => ">=" };
 }
