@@ -85,13 +85,15 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Faster flow**: returning to the free-play map, opening the save and load pages and skipping through the story are all faster (saves are no longer read in full over and over, and skipping no longer idles between commands), and the story log is no longer rebuilt on every line. Auto mode waits until a line is fully shown, then turns the page after a time based on its length. On the 设置 (Settings) tab, 数值变化停顿 (pause after stat changes: 0.5 s original / 0.2 s / none) and 自由行动过场 (free-play transitions: original / 3× faster) speed things up further; both default to the original.
 
+- **Global speed**: 全局加速 on the 设置 (Settings) tab runs the whole game at 1.5×/2×/3× — story, free-roam map, turn-based duels and real-time battles (in fights it multiplies the game's own speed; pausing still pauses). Music is unchanged and auto-play still leaves full reading time. A toggle hotkey (加速快捷键) can be bound in settings (unbound by default).
+
 - **Lift the cap once**: the training, forging and alchemy panels get a 本次取消上限 (lift the cap this time) button next to the per-visit count. It removes the count cap for this visit only (shown as ∞); close and reopen the panel to get the normal cap back. Points and silver are still spent.
 
 - **Screenshots**: hide everything the mod draws with one switch or a hotkey of your choice.
 
 ## Install
 
-Built and tested on the Steam release, build 26021712.
+Built and tested on the Steam release, build 26073097.
 
 1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
 2. Close the game and double-click `install.bat`.
