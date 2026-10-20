@@ -12,6 +12,8 @@ internal sealed class MapIndicators : IDisposable
     private GUIStyle? marker, readyMarker, tooltip;
     private long revision = -1;
     private float scale = -1;
+    private Texture2D? warmBackground;
+    private int skinKey = int.MinValue;
     private sealed class Line { public string Text = ""; public Color Color = Color.white; public bool Ready; }
     public void Draw(ToolSnapshot snapshot)
     {
@@ -23,18 +25,21 @@ internal sealed class MapIndicators : IDisposable
     private void DrawCore(ToolSnapshot snapshot)
     {
         float k = UiScale.Current;
-        if (revision != L.Revision || marker == null || Mathf.Abs(scale - k) > .01f)
+        if (revision != L.Revision || marker == null || Mathf.Abs(scale - k) > .01f || skinKey != OverlaySkin.Key)
         {
-            scale = k;
+            scale = k; skinKey = OverlaySkin.Key;
             if (font != null) UnityEngine.Object.Destroy(font);
             font = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
             if (background == null) { background = new Texture2D(1, 1, TextureFormat.RGBA32, false); background.SetPixel(0, 0, new Color(0, 0, 0, .78f)); background.Apply(); }
-            marker = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(13 * k), alignment = TextAnchor.MiddleCenter };
-            marker.normal.background = background; marker.normal.textColor = Color.white;
+            // 界面风格 (F103): too small for a frame; the game's serif in gold on a warm dark ground. Ready ones stay green.
+            bool skinned = OverlaySkin.On;
+            if (warmBackground == null) { warmBackground = new Texture2D(1, 1, TextureFormat.RGBA32, false); warmBackground.SetPixel(0, 0, new Color(.17f, .12f, .08f, .88f)); warmBackground.Apply(); }
+            marker = new GUIStyle { font = OverlaySkin.Font(font!), fontSize = Mathf.RoundToInt(13 * k), alignment = TextAnchor.MiddleCenter };
+            marker.normal.background = skinned ? warmBackground : background; marker.normal.textColor = skinned ? OverlaySkin.Gold : Color.white;
             // Fully satisfied events stand out on the map count and in the hover list.
             if (readyBackground == null) { readyBackground = new Texture2D(1, 1, TextureFormat.RGBA32, false); readyBackground.SetPixel(0, 0, new Color(.18f, .45f, .27f, .92f)); readyBackground.Apply(); }
-            readyMarker = new GUIStyle(marker); readyMarker.normal.background = readyBackground;
-            tooltip = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(14 * k), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
+            readyMarker = new GUIStyle(marker); readyMarker.normal.background = readyBackground; readyMarker.normal.textColor = Color.white;
+            tooltip = new GUIStyle { font = OverlaySkin.Font(font!), fontSize = Mathf.RoundToInt(14 * k), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
             revision = L.Revision;
         }
         List<Line>? hovered = null;
@@ -60,7 +65,7 @@ internal sealed class MapIndicators : IDisposable
         foreach (var line in hovered) { float h = Mathf.Max(20 * k, tooltip!.CalcHeight(new GUIContent(line.Text), innerWidth)); heights.Add(h); height += h; }
         height = Mathf.Min(Screen.height - 24, height);
         var box = new Rect(Mathf.Clamp(pointer.x + 14 * k, 12, Screen.width - width - 12), Mathf.Clamp(pointer.y + 18 * k, 12, Screen.height - height - 12), width, height);
-        GUI.DrawTexture(box, background!);
+        if (!OverlaySkin.Panel(box, k)) GUI.DrawTexture(box, background!);
         GUI.BeginGroup(box);
         try
         {
@@ -90,5 +95,6 @@ internal sealed class MapIndicators : IDisposable
         if (font != null) UnityEngine.Object.Destroy(font);
         if (background != null) UnityEngine.Object.Destroy(background);
         if (readyBackground != null) UnityEngine.Object.Destroy(readyBackground);
+        if (warmBackground != null) UnityEngine.Object.Destroy(warmBackground);
     }
 }

@@ -5,6 +5,7 @@ using System.Reflection;
 using Fungus;
 using HarmonyLib;
 using Mortal.Core;
+using Mortal.Story;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -67,6 +68,25 @@ internal sealed class StoryLog : IDisposable
 
     /// <summary>The game's 回想 is open (it covers the story and its menus).</summary>
     public static bool Open => ActiveField?.GetValue(null) is true;
+
+    /// <summary>
+    /// F104: the game keeps whether 回想 is open in one static switch that each open or close flips. A scene left with 回想
+    /// open (a jump from its links) leaves the switch set, and every later 回想 then fades its text out instead of in while
+    /// the story pauses: it looks frozen until Esc. Before a jump the log is closed the game's own way; a story scene that
+    /// starts with its log closed puts a stray switch back.
+    /// </summary>
+    public static void CloseForJump()
+    {
+        if (StoryManager.Instance is not StoryManager story || story == null || R.Field(story, "_logOpen") is not true) return;
+        if (R.Field(story, "_logButton") is Toggle button && button != null) button.isOn = false;
+    }
+    public static bool Repair(StoryManager story)
+    {
+        if (ActiveField?.GetValue(null) is not true || R.Field(story, "_logOpen") is true) return false;
+        ActiveField.SetValue(null, false);
+        if (R.Field(story, "_narrativeLogMenu") is NarrativeLogMenu menu && menu != null && R.Field(menu, "narrativeLogMenuGroup") is CanvasGroup group && group != null) group.alpha = 0;
+        return true;
+    }
 
     /// <summary>
     /// After the game's own Switch: its line in 回想, from the same reading as the branch box. Branches with no story line

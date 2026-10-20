@@ -40,6 +40,8 @@ internal sealed class BranchNotice : IDisposable
     private Font? font;
     private Texture2D? background, line, highlight, accent;
     private GUIStyle? text, title, close;
+    private Texture2D? warmLine, warmAccent;
+    private int skinKey = int.MinValue;
     private long revision = -1;
     /// <summary>The box in GUI coordinates, empty while nothing is shown. The input guard keeps game clicks out of it.</summary>
     public Rect Rect { get; private set; }
@@ -151,22 +153,25 @@ internal sealed class BranchNotice : IDisposable
             var box = new Rect(Rect.x, Rect.y - 10 * K * k, Rect.width, Rect.height);
             if (k > 0) GUIUtility.ScaleAroundPivot(new Vector2(1 + .07f * k, 1 + .07f * k), box.center);
             GUI.color = Color.white;
-            GUI.DrawTexture(box, background!);
-            if (flash) GUI.DrawTexture(new Rect(box.x, box.y, Width, Head), accent!);
-            title!.normal.textColor = flash ? Color.white : Palette.Text;
+            // 界面风格 (F103): the game's small frame, warm lines and a warm flash.
+            bool skinned = OverlaySkin.Panel(box, K);
+            if (!skinned) GUI.DrawTexture(box, background!);
+            var rule = skinned ? warmLine! : line!;
+            if (flash) GUI.DrawTexture(new Rect(box.x, box.y, Width, Head), skinned ? warmAccent! : accent!);
+            title!.normal.textColor = flash ? Color.white : skinned ? OverlaySkin.Gold : Palette.Text;
             title.fontSize = Mathf.RoundToInt((flash ? 16 : 15) * K);
             GUI.Label(new Rect(box.x + Pad, box.y + 4 * K, Width - Pad * 2 - 32 * K, Head - 4 * K), L.Text("剧情分支"), title);
             var closeRect = new Rect(box.xMax - 32 * K, box.y + 1, 30 * K, Head - 2);
             close!.normal.textColor = closeRect.Contains(Event.current.mousePosition) ? Color.white : new Color(.72f, .75f, .78f);
             GUI.Label(closeRect, "×", close);
-            GUI.DrawTexture(new Rect(box.x, box.y + Head, Width, 1), line!);
+            GUI.DrawTexture(new Rect(box.x, box.y + Head, Width, 1), rule);
             float y = box.y + Head + 6 * K, inner = Width - Pad * 2 - Marker;
             GUI.BeginGroup(new Rect(0, 0, Screen.width, box.yMax - 2));
             try
             {
                 for (int j = 0; j < judgments.Count; j++)
                 {
-                    if (j > 0) { GUI.color = Color.white; GUI.DrawTexture(new Rect(box.x + Pad, y + Gap / 2, Width - Pad * 2, 1), line!); y += Gap; }
+                    if (j > 0) { GUI.color = Color.white; GUI.DrawTexture(new Rect(box.x + Pad, y + Gap / 2, Width - Pad * 2, 1), rule); y += Gap; }
                     // The latest branch reads at full strength; earlier ones are kept for context.
                     GUI.color = j == 0 ? Color.white : new Color(1, 1, 1, .62f);
                     foreach (var row in judgments[j])
@@ -190,8 +195,8 @@ internal sealed class BranchNotice : IDisposable
 
     private void EnsureStyles()
     {
-        if (text != null && revision == L.Revision && Mathf.Abs(styleScale - K) < .01f) return;
-        styleScale = K;
+        if (text != null && revision == L.Revision && Mathf.Abs(styleScale - K) < .01f && skinKey == OverlaySkin.Key) return;
+        styleScale = K; skinKey = OverlaySkin.Key;
         if (font != null) UnityEngine.Object.Destroy(font);
         font = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
         background ??= Solid(new Color(0, 0, 0, .78f));
@@ -199,8 +204,10 @@ internal sealed class BranchNotice : IDisposable
         highlight ??= Solid(new Color(1, 1, 1, .09f));
         // The panel's own accent, so the flash reads as "look here" rather than as a red / green meaning.
         accent ??= Solid(new Color(.29f, .46f, .61f, .95f));
-        text = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(15 * K), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
-        title = new GUIStyle(text) { fontStyle = FontStyle.Bold, wordWrap = false }; title.normal.textColor = Palette.Text;
+        warmLine ??= Solid(new Color(.80f, .70f, .52f, .30f));
+        warmAccent ??= Solid(new Color(.62f, .45f, .24f, .85f));
+        text = new GUIStyle { font = OverlaySkin.Font(font!), fontSize = Mathf.RoundToInt(15 * K), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = false };
+        title = new GUIStyle(text) { font = OverlaySkin.Font(font!, true), fontStyle = OverlaySkin.On ? FontStyle.Normal : FontStyle.Bold, wordWrap = false }; title.normal.textColor = Palette.Text;
         close = new GUIStyle(text) { fontSize = Mathf.RoundToInt(20 * K), alignment = TextAnchor.MiddleCenter, wordWrap = false };
         revision = L.Revision;
     }
@@ -211,6 +218,6 @@ internal sealed class BranchNotice : IDisposable
     public void Dispose()
     {
         if (font != null) UnityEngine.Object.Destroy(font);
-        foreach (var texture in new[] { background, line, highlight, accent }) if (texture != null) UnityEngine.Object.Destroy(texture);
+        foreach (var texture in new[] { background, line, highlight, accent, warmLine, warmAccent }) if (texture != null) UnityEngine.Object.Destroy(texture);
     }
 }

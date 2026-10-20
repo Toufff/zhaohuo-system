@@ -55,6 +55,7 @@ internal sealed class PinballScore(ManualLogSource log) : IDisposable
             place.anchorMin = place.anchorMax = place.pivot = new Vector2(0, 1);
             place.sizeDelta = new Vector2(Mathf.Max(label.preferredWidth + height * .8f, height * 1.4f), height);
             place.anchoredPosition = new Vector2(x, 0);
+            InlineButton.Skin(button, height);
             x += place.sizeDelta.x + gap;
         }
         row.sizeDelta = new Vector2(x, height);

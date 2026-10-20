@@ -38,6 +38,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     private bool focusDraft;
     private Texture2D? dim, background, input, buttonFill, buttonHover, primary, primaryHover;
     private GUIStyle? title, hint, field, plain, accent;
+    private int skinKey = int.MinValue;
     private float styleScale = -1;
     private const string DraftControl = "zh.note.draft";
 
@@ -200,7 +201,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
 
     private void Style(Text label, string? text, int size, Color color, TextAnchor alignment)
     {
-        label.font = font; label.fontSize = Mathf.Max(10, size); label.color = color; label.alignment = alignment;
+        label.font = font == null ? null : OverlaySkin.Font(font); label.fontSize = Mathf.Max(10, size); label.color = color; label.alignment = alignment;
         if (text != null) label.text = text;
     }
 
@@ -285,18 +286,19 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape) { e.Use(); Finish(false); return; }
         // Enter while an IME is composing only finishes the word.
         if (e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter) && !Composing()) { e.Use(); Finish(true); return; }
-        if (e.type == EventType.Repaint) { GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), dim!); GUI.DrawTexture(box, background!); }
+        if (e.type == EventType.Repaint) { GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), dim!); if (!OverlaySkin.Panel(box, k)) GUI.DrawTexture(box, background!); }
         float pad = 16 * k, x = box.x + pad, inner = width - pad * 2, y = box.y + pad;
         GUI.Label(new Rect(x, y, inner, 26 * k), editingTitle, title);
         y += 34 * k;
         GUI.SetNextControlName(DraftControl);
-        draft = GUI.TextField(new Rect(x, y, inner, 36 * k), draft, SaveNoteStore.MaxNote, field);
+        var fieldRect = new Rect(x, y, inner, 36 * k);
+        draft = GUI.TextField(fieldRect, draft, SaveNoteStore.MaxNote, OverlaySkin.Field(fieldRect, k) ? OverlaySkin.Bare(field!) : field);
         if (focusDraft && e.type == EventType.Repaint) { GUI.FocusControl(DraftControl); focusDraft = false; }
         y += 44 * k;
         GUI.Label(new Rect(x, y, inner, 22 * k), L.Text("回车保存，Esc 取消；留空保存即删除备注。"), hint);
         float bw = 96 * k, bh = 32 * k, by = box.yMax - pad - bh;
-        if (GUI.Button(new Rect(box.xMax - pad - bw, by, bw, bh), L.Text("保存"), accent)) { Finish(true); return; }
-        if (GUI.Button(new Rect(box.xMax - pad - bw * 2 - 10 * k, by, bw, bh), L.Text("取消"), plain)) { Finish(false); return; }
+        if (FramedButton(new Rect(box.xMax - pad - bw, by, bw, bh), L.Text("保存"), accent!, true, k)) { Finish(true); return; }
+        if (FramedButton(new Rect(box.xMax - pad - bw * 2 - 10 * k, by, bw, bh), L.Text("取消"), plain!, false, k)) { Finish(false); return; }
         if (e.isMouse || e.type == EventType.ScrollWheel) e.Use();
     }
     /// <summary>The overwrite question, laid out like the editor: 覆盖 writes the held save, 取消 (or Esc) drops it.</summary>
@@ -308,7 +310,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         var e = Event.current;
         var box = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
         if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape) { e.Use(); AnswerOverwrite(false); return; }
-        if (e.type == EventType.Repaint) { GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), dim!); GUI.DrawTexture(box, background!); }
+        if (e.type == EventType.Repaint) { GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), dim!); if (!OverlaySkin.Panel(box, k)) GUI.DrawTexture(box, background!); }
         float x = box.x + pad, y = box.y + pad;
         GUI.Label(new Rect(x, y, inner, 26 * k), L.Text("覆盖收藏的存档？"), title);
         y += 34 * k;
@@ -316,10 +318,12 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         wrap.normal.textColor = Palette.Text;
         GUI.Label(new Rect(x, y, inner, textHeight), overwriteText, wrap);
         float bw = 96 * k, bh = 32 * k, by = box.yMax - pad - bh;
-        if (GUI.Button(new Rect(box.xMax - pad - bw, by, bw, bh), L.Text("覆盖"), accent)) { AnswerOverwrite(true); return; }
-        if (GUI.Button(new Rect(box.xMax - pad - bw * 2 - 10 * k, by, bw, bh), L.Text("取消"), plain)) { AnswerOverwrite(false); return; }
+        if (FramedButton(new Rect(box.xMax - pad - bw, by, bw, bh), L.Text("覆盖"), accent!, true, k)) { AnswerOverwrite(true); return; }
+        if (FramedButton(new Rect(box.xMax - pad - bw * 2 - 10 * k, by, bw, bh), L.Text("取消"), plain!, false, k)) { AnswerOverwrite(false); return; }
         if (e.isMouse || e.type == EventType.ScrollWheel) e.Use();
     }
+    /// <summary>界面风格 (F103): the game's framed button (the main one lit) behind the text; the flat one otherwise.</summary>
+    private static bool FramedButton(Rect r, string text, GUIStyle style, bool main, float k) => GUI.Button(r, text, OverlaySkin.Frame(r, k, main) ? OverlaySkin.Bare(style) : style);
     private void Finish(bool save)
     {
         if (save) Commit(); else Close();
@@ -335,8 +339,8 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     private void EnsureStyles()
     {
         float k = UiScale.Current;
-        if (title != null && Mathf.Abs(styleScale - k) < .01f && revision == L.Revision && font != null) return;
-        styleScale = k;
+        if (title != null && Mathf.Abs(styleScale - k) < .01f && revision == L.Revision && font != null && skinKey == OverlaySkin.Key) return;
+        styleScale = k; skinKey = OverlaySkin.Key;
         if (font == null || revision != L.Revision)
         {
             if (font != null) UnityEngine.Object.Destroy(font);
@@ -347,10 +351,10 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         primary ??= Solid(new Color(.22f, .37f, .51f, 1)); primaryHover ??= Solid(new Color(.29f, .46f, .61f, 1));
         GUIStyle TextStyle(int size, Color color)
         {
-            var style = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(size * k), alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip };
+            var style = new GUIStyle { font = OverlaySkin.Font(font!), fontSize = Mathf.RoundToInt(size * k), alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip };
             style.normal.textColor = color; return style;
         }
-        title = TextStyle(17, Palette.Text); title.fontStyle = FontStyle.Bold;
+        title = TextStyle(17, OverlaySkin.On ? OverlaySkin.Gold : Palette.Text); title.fontStyle = FontStyle.Bold;
         hint = TextStyle(13, new Color(.73f, .76f, .79f, 1));
         field = TextStyle(17, Palette.Text); field.padding = new RectOffset((int)(9 * k), (int)(9 * k), 0, 0);
         field.normal.background = field.focused.background = field.hover.background = input;

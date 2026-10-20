@@ -43,6 +43,8 @@ internal sealed class DuelSpeedButtons(ManualLogSource log) : IDisposable
             label.font = font; label.fontSize = 20; label.text = speed + "×";
             var colors = button.colors; var want = CombatCheats.DuelSpeed == speed ? Chosen : Idle;
             if (colors.normalColor != want) { colors.normalColor = want; button.colors = colors; }
+            // 界面风格 (F103): the game's framed button, the chosen speed lit.
+            InlineButton.Skin(button, Height, CombatCheats.DuelSpeed == speed);
         }
     }
 

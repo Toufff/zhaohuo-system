@@ -60,17 +60,19 @@ internal static class InlineButton
     }
 
     /// <summary>
-    /// 界面风格: the game's framed button behind the label, lit under the pointer, as in the panel; the flat colours when the
-    /// skin is off or not found. The frame's clear margin reaches outside the button, so the frame shows at the button's size.
+    /// 界面风格: the game's framed button behind the label, lit under the pointer (or while <paramref name="chosen"/>), as in
+    /// the panel, dimmed while the button cannot be pressed; the flat colours when the skin is off or not found. The frame's
+    /// clear margin reaches outside the button, so the frame shows at the button's size. Cheap to call every frame: only a
+    /// change is written.
     /// </summary>
-    private static void Skin(Button button, float height)
+    internal static void Skin(Button button, float height, bool chosen = false)
     {
         var normal = GameSkin.Sliced(GameSkin.Part.Button, out float scale, out float pad);
         var root = button.GetComponent<Image>();
         var existing = button.transform.Find("Frame");
         if (normal == null)
         {
-            if (existing != null) existing.gameObject.SetActive(false);
+            if (existing != null && existing.gameObject.activeSelf) existing.gameObject.SetActive(false);
             button.transition = Selectable.Transition.ColorTint; button.targetGraphic = root; root.color = Color.white;
             return;
         }
@@ -82,15 +84,20 @@ internal static class InlineButton
             frame = made.GetComponent<Image>(); frame.type = Image.Type.Sliced; frame.raycastTarget = false;
             var stretch = (RectTransform)made.transform; stretch.anchorMin = Vector2.zero; stretch.anchorMax = Vector2.one;
         }
-        else { frame = existing.GetComponent<Image>(); existing.gameObject.SetActive(true); }
+        else { frame = existing.GetComponent<Image>(); if (!existing.gameObject.activeSelf) existing.gameObject.SetActive(true); }
+        var lit = GameSkin.Sliced(GameSkin.Part.ButtonLit, out _, out _);
+        if (chosen && lit != null) normal = lit;
         // The panel draws it at its scale on a 30-pixel button; the same proportion here.
         float k = scale * height / 30;
-        frame.sprite = normal; frame.pixelsPerUnitMultiplier = 1 / k;
+        frame.sprite = normal;
+        if (Mathf.Abs(frame.pixelsPerUnitMultiplier - 1 / k) > .0001f) frame.pixelsPerUnitMultiplier = 1 / k;
         var frameRect = (RectTransform)frame.transform;
-        frameRect.offsetMin = new Vector2(-pad * k, -pad * k); frameRect.offsetMax = new Vector2(pad * k, pad * k);
-        var lit = GameSkin.Sliced(GameSkin.Part.ButtonLit, out _, out _);
+        var margin = new Vector2(pad * k, pad * k);
+        if (frameRect.offsetMax != margin || frameRect.offsetMin != -margin) { frameRect.offsetMin = -margin; frameRect.offsetMax = margin; }
+        frame.color = button.interactable ? Color.white : new Color(1, 1, 1, .45f);
         button.transition = Selectable.Transition.SpriteSwap; button.targetGraphic = frame;
-        button.spriteState = new SpriteState { highlightedSprite = lit, pressedSprite = lit, selectedSprite = lit };
+        var state = new SpriteState { highlightedSprite = lit, pressedSprite = lit, selectedSprite = lit };
+        if (!button.spriteState.Equals(state)) button.spriteState = state;
         // Still catches the pointer; a little dark under the frame's see-through middle keeps the label clear on bright maps.
         root.color = new Color(0, 0, 0, .45f);
     }

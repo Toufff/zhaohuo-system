@@ -46,6 +46,7 @@ internal sealed class CombatResult : IDisposable
     private Font? font;
     private Texture2D? normal, hover, confirm;
     private GUIStyle? button, confirming;
+    private int skinKey = int.MinValue;
     /// <summary>Both buttons in GUI coordinates, empty while hidden. The input guard keeps game clicks out of it.</summary>
     public Rect Rect { get; private set; }
 
@@ -101,7 +102,10 @@ internal sealed class CombatResult : IDisposable
             int choice = choices[i];
             bool asking = pending == choice;
             string label = asking ? L.Text("再点一次确认") : L.Text(choice == Win ? "直接胜利" : choice == Stalemate ? "直接僵持" : "直接失败");
-            if (!GUI.Button(new Rect(x + i * (width + gap), y, width, height), label, asking ? confirming : button)) continue;
+            var place = new Rect(x + i * (width + gap), y, width, height);
+            var style = asking ? confirming! : button!;
+            // 界面风格 (F103): the game's framed button, lit while it asks to be pressed again.
+            if (!GUI.Button(place, label, OverlaySkin.Frame(place, k, asking) ? OverlaySkin.Bare(style) : style)) continue;
             if (!asking) { pending = choice; pendingUntil = Time.unscaledTime + ConfirmTime; continue; }
             pending = -1;
             try
@@ -202,8 +206,8 @@ internal sealed class CombatResult : IDisposable
     private void EnsureStyles()
     {
         float k = UiScale.Current;
-        if (button != null && Mathf.Abs(styleScale - k) < .01f && revision == L.Revision) return;
-        styleScale = k;
+        if (button != null && Mathf.Abs(styleScale - k) < .01f && revision == L.Revision && skinKey == OverlaySkin.Key) return;
+        styleScale = k; skinKey = OverlaySkin.Key;
         if (font == null || revision != L.Revision)
         {
             if (font != null) UnityEngine.Object.Destroy(font);
@@ -213,7 +217,7 @@ internal sealed class CombatResult : IDisposable
         normal ??= Solid(new Color(.15f, .18f, .21f, .92f)); hover ??= Solid(new Color(.25f, .32f, .39f, .95f)); confirm ??= Solid(new Color(.29f, .46f, .61f, .95f));
         GUIStyle Style(Texture2D background, Texture2D over)
         {
-            var style = new GUIStyle { font = font, fontSize = Mathf.RoundToInt(14 * k), alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip };
+            var style = new GUIStyle { font = OverlaySkin.Font(font!), fontSize = Mathf.RoundToInt(14 * k), alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip };
             style.normal.background = background; style.hover.background = style.active.background = over;
             style.normal.textColor = style.hover.textColor = style.active.textColor = Palette.Text;
             return style;

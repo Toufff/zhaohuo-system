@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.41")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.42")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -453,6 +453,7 @@ public sealed class Plugin : BaseUnityPlugin
         finally { SaveNotes.Allow(null); }
         if (system.GetSaveData(slot) is not GameSave written || written.TimeTick != save.TimeTick) return OperationResult.Fail(L.Text("写入失败，详见日志"));
         Logger.LogInfo($"JUMP {(direct ? "direct" : target.Save != null ? "log" : "kept")} slot={slot} start={start} title={target.Title}");
+        StoryLog.CloseForJump();
         window.Visible = false;
         system.SetSlot(slot);
         SoundManager.Instance?.StopMusic();
@@ -931,6 +932,16 @@ internal static class UpgradeUnlimitedPatch
 }
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Switch))]
 internal static class BranchPatch { private static void Postfix(string name, int __result) => Plugin.Instance?.BranchTaken(name, __result); }
+// F104: a story scene starting with its 回想 closed clears the game's open switch left by a scene that ended with it open.
+[HarmonyPatch(typeof(StoryManager), "Start")]
+internal static class StoryLogStatePatch
+{
+    private static void Postfix(StoryManager __instance)
+    {
+        try { if (StoryLog.Repair(__instance)) Plugin.Instance?.Log.LogInfo("STORY_LOG cleared the open switch a jump from 回想 left behind"); }
+        catch (Exception ex) { Plugin.Instance?.Log.LogWarning("STORY_LOG " + ex.GetBaseException().Message); }
+    }
+}
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Dice))]
 internal static class DicePatch
 {

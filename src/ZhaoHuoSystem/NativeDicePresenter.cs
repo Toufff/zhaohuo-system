@@ -128,6 +128,7 @@ internal sealed class NativeDicePresenter : IDisposable
             if (!branches[i].gameObject.activeSelf) continue;
             var row = VisualBounds(nativeRows[i]);
             Place(branches[i].transform as RectTransform, columnX, row.center.y + 16, columnWidth, 32);
+            InlineButton.Skin(branches[i], 32, dice.PendingRawValue.HasValue && i < dice.Branches.Count && dice.PendingRawValue == dice.Branches[i].RawValue);
             lowest = Mathf.Min(lowest, row.center.y - 16);
         }
         bool showMessage = message.Length > 0 && Time.unscaledTime < messageUntil && lowest < float.MaxValue;

@@ -142,6 +142,7 @@ internal sealed class OptionHints : IDisposable
     private Texture2D? tipBackground;
     private GUIStyle? tipStyle;
     private long tipRevision = -1;
+    private int tipSkin = int.MinValue;
     private float tipScale = -1;
     private void Forget(Component row) => hints.RemoveAll(hint => hint.Row == null || hint.Row == row.transform);
     private void Remember(Component row, List<HintSegment> segments, bool cut)
@@ -169,13 +170,13 @@ internal sealed class OptionHints : IDisposable
         }
         if (shown == null) return;
         float k = UiScale.Current;
-        if (tipStyle == null || tipRevision != L.Revision || Mathf.Abs(tipScale - k) > .01f)
+        if (tipStyle == null || tipRevision != L.Revision || Mathf.Abs(tipScale - k) > .01f || tipSkin != OverlaySkin.Key)
         {
-            tipScale = k;
+            tipScale = k; tipSkin = OverlaySkin.Key;
             if (tipFont != null) UnityEngine.Object.Destroy(tipFont);
             tipFont = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
             if (tipBackground == null) { tipBackground = new Texture2D(1, 1, TextureFormat.RGBA32, false); tipBackground.SetPixel(0, 0, new Color(0, 0, 0, .78f)); tipBackground.Apply(); }
-            tipStyle = new GUIStyle { font = tipFont, fontSize = Mathf.RoundToInt(15 * k), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = true };
+            tipStyle = new GUIStyle { font = OverlaySkin.Font(tipFont!), fontSize = Mathf.RoundToInt(15 * k), alignment = TextAnchor.UpperLeft, wordWrap = true, richText = true };
             tipRevision = L.Revision;
         }
         float indent = 18 * k, gap = 7 * k;
@@ -196,7 +197,8 @@ internal sealed class OptionHints : IDisposable
         try
         {
             GUI.color = Color.white; GUI.depth = -9998;
-            GUI.DrawTexture(box, tipBackground!);
+            // 界面风格 (F103): the game's small frame.
+            if (!OverlaySkin.Panel(box, k)) GUI.DrawTexture(box, tipBackground!);
             GUI.BeginGroup(box);
             try
             {
