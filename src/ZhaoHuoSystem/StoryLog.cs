@@ -65,6 +65,9 @@ internal sealed class StoryLog : IDisposable
 
     public void Clear() { starts.Clear(); lines.Clear(); links.Clear(); laidOut = null; Hover = default; }
 
+    /// <summary>The game's 回想 is open (it covers the story and its menus).</summary>
+    public static bool Open => ActiveField?.GetValue(null) is true;
+
     /// <summary>
     /// After the game's own Switch: its line in 回想, from the same reading as the branch box. Branches with no story line
     /// between them (a script checks several at once) share one entry, one row each.

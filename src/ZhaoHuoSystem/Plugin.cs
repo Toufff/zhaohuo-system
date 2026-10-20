@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.40")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.41")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -85,10 +85,10 @@ public sealed class Plugin : BaseUnityPlugin
         var managed = Path.Combine(Paths.GameRootPath, "Mortal_Data", "Managed");
         var expected = new Dictionary<string, string>
         {
-            ["Mortal.Core.dll"] = "0C20EE36782666F3AB70EC8889068BDF230ACC2D630446EA1DB551836866E8FA",
-            ["Mortal.Story.dll"] = "EE9139A5E4631DC275B80CC3FF6A81A4959F3C908A3FE751E778A42350372249",
-            ["Mortal.Free.dll"] = "0ABC19100F216515BCA88975E52051AFCE11955A8439FFACF4FF02118FD27920"
-            ,["Fungus.dll"] = "BCB6D47EB31DEDC5D23D0DA281E0835AF0F939F30B64A39AAE7D5F6DAB96CAD2"
+            ["Mortal.Core.dll"] = "4F0E6C53F31B786BECEAF66BF2649C0DE414E36D440113603C5196C10CB54B4F",
+            ["Mortal.Story.dll"] = "907F42E06624A2B0C603757DC22DE3A4F33C26CB3CEBE8017A24CA6FF27DCF56",
+            ["Mortal.Free.dll"] = "F82558A87E1A735E5DCA71A106B27128BE9FC376A0120CCFC8DD0D50158F54C9"
+            ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
         };
         // Diagnostics only. Game updates are mostly small fixes that leave the mod working, so nothing is switched off here;
         // a patch that no longer fits is skipped on its own (PatchEach) and the rest keep working.
@@ -169,12 +169,16 @@ public sealed class Plugin : BaseUnityPlugin
         Adapter.ScriptText = OptionHints.ScriptText; Adapter.EventFlagChanges = OptionHints.EventFlagChanges;
         var panelKey = Config.Bind("界面", "面板快捷键", "F8", "打开/收起面板的按键（UnityEngine.KeyCode 名称，None 为不绑定）。");
         var hideKey = Config.Bind("界面", "隐藏快捷键", "None", "切换「隐藏全部悬浮窗」的按键；默认不绑定。");
+        var speedKey = Config.Bind("界面", "加速快捷键", "None", "开关「全局加速」的按键（UnityEngine.KeyCode 名称）；默认不绑定，免得和截图、录屏工具的热键冲突。");
+        var globalSpeed = Config.Bind("工具", "全局加速", false, "整个游戏按倍数变快（剧情、地图、回合制决斗和即时战斗）。");
+        var globalSpeedLevel = Config.Bind("工具", "全局加速倍数", 1, "全局加速的倍数：0 为 1.5 倍，1 为 2 倍，2 为 3 倍。");
+        GlobalSpeed.On = globalSpeed.Value; GlobalSpeed.Level = Mathf.Clamp(globalSpeedLevel.Value, 0, GlobalSpeed.Multiples.Length - 1);
         var hidden = Config.Bind("界面", "隐藏全部悬浮窗", false, "隐藏本模组在游戏内的全部悬浮显示，便于截图；用面板或隐藏快捷键恢复。");
         var uiScale = Config.Bind("界面", "界面缩放", 1f, "在按屏幕高度自动缩放的基础上再乘的倍数（0.5–2.5）。");
         var skinStyle = Config.Bind("界面", "界面风格", 0, "0 用游戏自己的边框、按钮和字体绘制面板，1 为原来的纯色样式。");
         GameSkin.Enabled = skinStyle.Value != 1;
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
-        var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框，回想里也记一行走了哪支；关闭后两者都不显示，其他悬浮显示不受影响。");
+        var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框，回想里也记一行；关闭后两者都不显示，其他悬浮显示不受影响。");
         var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
@@ -183,20 +187,21 @@ public sealed class Plugin : BaseUnityPlugin
         var statPause = Config.Bind("工具", "数值变化停顿", 0, "剧情里数值变化弹出提示后的停顿：0 原版 0.5 秒，1 为 0.2 秒，2 不停；没有弹出提示的变化一律不停。");
         var fastFree = Config.Bind("工具", "自由行动过场加快", false, "地点行动后的停顿、转场遮罩和回到地图时的淡入快 3 倍。");
         Speedups.Log = Logger; Speedups.StatPause = Mathf.Clamp(statPause.Value, 0, 2); Speedups.FastFree = fastFree.Value;
-        window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value);
+        window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value, ParseKey(speedKey.Value, KeyCode.None));
         window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots;
         window.StatPause = Speedups.StatPause; window.FastFreeTransitions = Speedups.FastFree;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
         {
             panelKey.Value = window.PanelKey.ToString(); hideKey.Value = window.HideKey.ToString(); hidden.Value = window.Hidden;
+            speedKey.Value = window.SpeedKey.ToString(); globalSpeed.Value = GlobalSpeed.On; globalSpeedLevel.Value = GlobalSpeed.Level;
             uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons; directDice.Value = Adapter.DirectDiceResult;
             SaveSlots = window.SaveSlots; saveSlots.Value = SaveSlots;
             statPause.Value = Speedups.StatPause = window.StatPause; fastFree.Value = Speedups.FastFree = window.FastFreeTransitions;
             skinStyle.Value = GameSkin.Enabled ? 0 : 1;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -274,11 +279,14 @@ public sealed class Plugin : BaseUnityPlugin
         using var timing = Perf.Time("update");
         try
         {
+            // First, so the rest of the frame runs on the clock the player asked for (F102).
+            GlobalSpeed.Tick();
             routeMap.Update();
             // Typing in a mod field or binding a new key never fires a hotkey.
             bool typing = window.CapturingKey || window.HasTextFocus || SaveNotes.Editing;
             if (Pressed(window.PanelKey) && !typing) TogglePanel();
             if (Pressed(window.HideKey) && !typing) ToggleHidden();
+            if (Pressed(window.SpeedKey) && !typing) ToggleSpeed();
             if (wasVisible && !window.Visible) Adapter.ContinueAction();
             using (Perf.Time("dice-ui")) dicePresenter.Update(window.Hidden);
             try { Practice.Update(window.Hidden); } catch (Exception ex) { Logger.LogWarning("PRACTICE_CAP " + ex.GetBaseException().Message); }
@@ -319,7 +327,7 @@ public sealed class Plugin : BaseUnityPlugin
     /// <summary>The key just pressed to bind a hotkey must not also fire it on the next frame's native poll.</summary>
     private void PrimeKeys()
     {
-        foreach (var key in new[] { window.PanelKey, window.HideKey })
+        foreach (var key in new[] { window.PanelKey, window.HideKey, window.SpeedKey })
         {
             int vk = NativeUiState.VirtualKey(key.ToString());
             if (vk != 0) nativeKeyDown[vk] = (GetAsyncKeyState(vk) & 0x8000) != 0;
@@ -358,6 +366,7 @@ public sealed class Plugin : BaseUnityPlugin
         {
             if (key.keyCode == window.PanelKey) { TogglePanel(); key.Use(); }
             else if (key.keyCode == window.HideKey) { ToggleHidden(); key.Use(); }
+            else if (key.keyCode == window.SpeedKey) { ToggleSpeed(); key.Use(); }
         }
         try
         {
@@ -389,7 +398,8 @@ public sealed class Plugin : BaseUnityPlugin
                 window.Draw();
             }
             try { Branches.Paint(); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
-            try { if (!window.Hidden) OptionHints.DrawTooltip(window.Visible && window.IsPointerOver); } catch (Exception ex) { OverlayFailed("tooltip", ex); }
+            // 回想 covers the menu rows; their hover hints stay hidden under it.
+            try { if (!window.Hidden) OptionHints.DrawTooltip(window.Visible && window.IsPointerOver || StoryLog.Open); } catch (Exception ex) { OverlayFailed("tooltip", ex); }
             if (mouseDown) inputGuard.FocusResolved(); else inputGuard.Tick();
         }
         catch (Exception ex)
@@ -520,6 +530,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
+        GlobalSpeed.Release();
         dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); storyLog?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
@@ -548,11 +559,19 @@ public sealed class Plugin : BaseUnityPlugin
         if (window.Hidden) Adapter.ContinueAction();
         Logger.LogInfo($"OVERLAY hidden={window.Hidden}");
     }
+    private void ToggleSpeed()
+    {
+        if (!Debounced()) return;
+        GlobalSpeed.On = !GlobalSpeed.On;
+        window.SettingsChanged?.Invoke();
+        window.Message(GlobalSpeed.On ? L.Format("全局加速 {0} 已开启", GlobalSpeed.Label(GlobalSpeed.Level)) : L.Text("全局加速已关闭"), false);
+    }
     internal void ShowForAction() { if (window.Hidden) return; window.ShowEvents(true); inputGuard.Tick(); }
     private void MenuEnded(MenuDialog menu) => Adapter?.ClearPreview();
     // A choice menu takes over from the branch that led to it.
     private void MenuStarted(MenuDialog menu) { Branches?.Clear(); OptionHints?.MenuStarted(); Logger.LogInfo("MENU start"); }
     /// <summary>Called after the game's own Switch ran; reads the same data, evaluates nothing for the game.</summary>
+    private readonly HashSet<string> unreadSwitches = new(StringComparer.Ordinal);
     internal void BranchTaken(string name, int result)
     {
         using var timing = Perf.Time("branch");
@@ -561,7 +580,8 @@ public sealed class Plugin : BaseUnityPlugin
         if (!window.ShowBranches) return;
         try
         {
-            if (OptionHints.FindSwitch(name) is not object data) return;
+            // Not found where the game found it: said once per switch, so a box or 回想 line that never came can be traced.
+            if (OptionHints.FindSwitch(name) is not object data) { if (unreadSwitches.Add(name)) Logger.LogWarning("BRANCH unread " + name); return; }
             Branches.Record(data, result);
             storyLog.Branch(data, result);
         }
@@ -654,7 +674,7 @@ public sealed class Plugin : BaseUnityPlugin
     private string StatusText()
     {
         var s = Adapter.Snapshot; var text = new StringBuilder();
-        text.AppendLine($"time={DateTime.Now:O}\nversion={s.Version}\nready={s.Ready}\nrevision={s.Revision}\nscene={SceneManager.GetActiveScene().name}\nlocation={s.Location}\naction={s.Action}\nstatus={s.Status}\npanel={window.Visible}\nselectionEnabled={s.ActionSelectionEnabled}\nactionWaiting={s.ActionWaiting}\npointerBlocked={inputGuard.BlocksPointer}\nkeyboardBlocked={inputGuard.BlocksKeyboard}\npendingEvent={s.PendingEventId}");
+        text.AppendLine($"time={DateTime.Now:O}\nversion={s.Version}\nready={s.Ready}\nrevision={s.Revision}\nscene={SceneManager.GetActiveScene().name}\nlocation={s.Location}\naction={s.Action}\nstatus={s.Status}\npanel={window.Visible}\nselectionEnabled={s.ActionSelectionEnabled}\nactionWaiting={s.ActionWaiting}\npointerBlocked={inputGuard.BlocksPointer}\nkeyboardBlocked={inputGuard.BlocksKeyboard}\npendingEvent={s.PendingEventId}\ntimeScale={Time.timeScale:0.####} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")}");
         foreach (var e in s.Events) text.AppendLine($"EVENT\t{e.Id}\t{e.Title}\teligible={e.Eligible}\tweight={e.Weight}");
         foreach (var v in s.Values) text.AppendLine($"VALUE\t{v.Id}\t{v.Name}\t{v.Value}\t{v.Min}\t{v.Max}\twritable={v.Writable}");
         text.AppendLine($"DICE\tactive={s.Dice.Active}\tmanual={s.Dice.ManualStart}\tname={s.Dice.Name}\trange={s.Dice.Min}..{s.Dice.Max}\taddition={s.Dice.Addition}\traw={s.Dice.RawValue}\tpending={s.Dice.PendingRawValue}");

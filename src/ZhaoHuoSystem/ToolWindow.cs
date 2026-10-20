@@ -105,6 +105,8 @@ public sealed partial class ToolWindow : IDisposable
     /// <summary>Panel and hide hotkeys (KeyCode.None = unbound) and the screenshot-friendly hidden mode.</summary>
     public KeyCode PanelKey { get; private set; } = KeyCode.F8;
     public KeyCode HideKey { get; private set; } = KeyCode.None;
+    /// <summary>Turns 全局加速 on and off (F102).</summary>
+    public KeyCode SpeedKey { get; private set; } = KeyCode.None;
     public bool Hidden { get; private set; }
     /// <summary>The story-branch box alone (F45); every other overlay is unaffected.</summary>
     public bool ShowBranches { get; set; } = true;
@@ -126,11 +128,12 @@ public sealed partial class ToolWindow : IDisposable
     public Action? CombatChanged;
     /// <summary>Writes the diagnostics folder and returns its path.</summary>
     public Func<string>? ExportDiagnostics;
-    private int _capturing; // 0 none, 1 panel key, 2 hide key
+    private int _capturing; // 0 none, 1 panel key, 2 hide key, 3 speed key
     public bool CapturingKey => _capturing != 0;
-    public void LoadSettings(KeyCode panelKey, KeyCode hideKey, bool hidden)
+    public void LoadSettings(KeyCode panelKey, KeyCode hideKey, bool hidden, KeyCode speedKey)
     {
         PanelKey = panelKey; HideKey = hideKey == panelKey ? KeyCode.None : hideKey;
+        SpeedKey = speedKey == PanelKey || speedKey == HideKey ? KeyCode.None : speedKey;
         Hidden = hidden && (PanelKey != KeyCode.None || HideKey != KeyCode.None);
     }
     /// <summary>Hides every floating mod surface. Refused when no hotkey could bring it back.</summary>
@@ -166,6 +169,8 @@ public sealed partial class ToolWindow : IDisposable
         }
         else LauncherRect = LauncherWanted(_adapter.Snapshot) ? ComputeLauncherRect(scale) : default;
     }
+    // While 全局加速 is on, its multiple shows on the launcher.
+    private static string LauncherText => L.Text("赵活系统") + (GlobalSpeed.On ? " " + GlobalSpeed.Label(GlobalSpeed.Level) : "");
     private Rect ComputeLauncherRect(float scale)
     {
         float width = 116 * scale, height = 34 * scale, margin = 14 * scale;
@@ -262,8 +267,11 @@ public sealed partial class ToolWindow : IDisposable
             if (current.keyCode == KeyCode.Escape) _capturing = 0;
             else if (NativeUiState.IsBindableKey(current.keyCode.ToString()))
             {
-                if (_capturing == 1) { PanelKey = current.keyCode; if (HideKey == PanelKey) HideKey = KeyCode.None; }
-                else { HideKey = current.keyCode; if (PanelKey == HideKey) PanelKey = KeyCode.None; }
+                var key = current.keyCode;
+                if (PanelKey == key) PanelKey = KeyCode.None;
+                if (HideKey == key) HideKey = KeyCode.None;
+                if (SpeedKey == key) SpeedKey = KeyCode.None;
+                if (_capturing == 1) PanelKey = key; else if (_capturing == 2) HideKey = key; else SpeedKey = key;
                 _capturing = 0; SettingsChanged?.Invoke();
             }
             else Message(L.Text("该按键不可用"), true);
@@ -669,7 +677,7 @@ public sealed partial class ToolWindow : IDisposable
             y += S(52);
         }
         // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
-        note = "剧情按条件分支时弹出，可拖到别处并记住位置；回想里也记一行走了哪支。关闭后两者都不显示，其他悬浮显示照常。";
+        note = "剧情按条件分支时弹出，可拖到别处并记住位置；回想里也记一行。关闭后两者都不显示。";
         if (Shown("显示剧情分支小框", "重置位置", note))
         {
             Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);
@@ -729,6 +737,21 @@ public sealed partial class ToolWindow : IDisposable
             }
             Label(new Rect(x + pauseWidth + S(14), y + S(3), Mathf.Max(S(80), r.xMax - x - pauseWidth - S(14)), S(44)), note, _muted);
             y += S(52);
+        }
+        // F102: the whole clock, fights included; the player turns it off if a fight goes wrong.
+        note = "整个游戏按倍数变快：剧情出字、等待和动画，自由行动地图，回合制决斗和即时战斗都会变快，战斗里叠加在游戏自己的速度上，暂停照旧。背景音乐不变，自动播放仍留足阅读时间。即时战斗的敌人也会变快，不合适随时关掉。";
+        if (Shown("全局加速", "加速快捷键", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "全局加速", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), GlobalSpeed.On ? "开启" : "关闭", "settings.speed", GlobalSpeed.On ? _tabSelected : _button)) { GlobalSpeed.On = !GlobalSpeed.On; SettingsChanged?.Invoke(); }
+            float levelX = x + S(118), levelWidth = ButtonWidth("1.5×", 64);
+            for (int i = 0; i < GlobalSpeed.Multiples.Length; i++)
+                if (Button(new Rect(levelX + i * (levelWidth + S(6)), y, levelWidth, S(30)), GlobalSpeed.Label(i), "settings.speed." + i, GlobalSpeed.Level == i ? _tabSelected : _button))
+                { GlobalSpeed.Level = i; SettingsChanged?.Invoke(); }
+            y += S(40);
+            Label(new Rect(r.x, y, r.width, S(66)), note, _muted);
+            y += S(72);
+            KeyRow(r.x, x, ref y, labelWidth, "加速快捷键", SpeedKey, 3);
         }
         note = "地点行动后的停顿、转场遮罩和回到地图时的淡入；加快后快 3 倍，约 3.5 秒缩到 1.2 秒。";
         if (Shown("自由行动过场", note))
@@ -1066,7 +1089,7 @@ public sealed partial class ToolWindow : IDisposable
     }
     private void ClearKey(int slot)
     {
-        if (slot == 1) PanelKey = KeyCode.None; else HideKey = KeyCode.None;
+        if (slot == 1) PanelKey = KeyCode.None; else if (slot == 2) HideKey = KeyCode.None; else SpeedKey = KeyCode.None;
         _capturing = 0; SettingsChanged?.Invoke();
     }
     private string KeyLabel(KeyCode key)
@@ -1420,7 +1443,7 @@ public sealed partial class ToolWindow : IDisposable
         return result;
     }
 
-    private void Message(string message, bool error)
+    internal void Message(string message, bool error)
     { _message = message; _messageError = error; _messageUntil = Time.realtimeSinceStartup + 9; }
 
     private bool Previewing => _snapshot.Events.Count == 0 && _snapshot.PreviewEvents.Count > 0;
@@ -1547,8 +1570,8 @@ public sealed partial class ToolWindow : IDisposable
                 ShowEvents(); return true;
             case EventType.Repaint:
                 if (GameSkin.Draw(LauncherRect, LauncherRect.Contains(current.mousePosition) && GameSkin.Has(GameSkin.Part.ButtonLit) ? GameSkin.Part.ButtonLit : GameSkin.Part.Button, scale, Color.white))
-                    Bare(_launcher).Draw(LauncherRect, new GUIContent(L.Text("赵活系统")), id);
-                else _launcher.Draw(LauncherRect, new GUIContent(L.Text("赵活系统")), id);
+                    Bare(_launcher).Draw(LauncherRect, new GUIContent(LauncherText), id);
+                else _launcher.Draw(LauncherRect, new GUIContent(LauncherText), id);
                 break;
         }
         return false;

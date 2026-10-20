@@ -262,13 +262,14 @@ internal static class AutoDialoguePatch
             if (!Auto(manager) || writer == null || !writer.IsWaitingForInput) { yield return null; continue; }
             string text = say!.StoryText ?? "";
             bool Same() => Auto(manager) && !Skip(manager) && writer != null && writer.IsWaitingForInput && say != null && say.StoryText == text;
-            float until = Time.time + ReadingTime(text);
-            while (Time.time < until && Same()) yield return null;
+            // Reading time is the player's own, whatever 全局加速 does to the game's clock (F102).
+            float until = Time.unscaledTime + ReadingTime(text);
+            while (Time.unscaledTime < until && Same()) yield return null;
             if (!Same()) continue;
             Next!.Invoke(manager, null);
             // Until the page has turned (a press the dialog did not take is made again after a while, as the game would).
-            float release = Time.time + 2f;
-            while (Same() && Time.time < release) yield return null;
+            float release = Time.unscaledTime + 2f;
+            while (Same() && Time.unscaledTime < release) yield return null;
         }
     }
 }
