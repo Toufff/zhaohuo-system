@@ -12,7 +12,8 @@ namespace ZhaoHuoSystem;
 /// Each new branch places it in the game window's bottom-left corner (its own bottom-left on the window's, growing
 /// upwards), or where the player last dragged it (F68: kept across branches and restarts, 「重置位置」 in settings), and
 /// announces itself with a short pop and a flashing title. Drag by the title, close with ×; the next branch brings it
-/// back. Cleared when a choice menu opens or the scene changes.
+/// back. Cleared when a choice menu opens or the scene changes. The same branch also goes into the game's 回想 as one line
+/// (F101, <see cref="LogBody"/>).
 /// </summary>
 internal sealed class BranchNotice : IDisposable
 {
@@ -45,6 +46,29 @@ internal sealed class BranchNotice : IDisposable
 
     public void Record(object data, int result)
     {
+        judgments.Insert(0, Read(data, result));
+        if (judgments.Count > Kept) judgments.RemoveRange(Kept, judgments.Count - Kept);
+        // A new branch returns to the player's place (or the corner) and announces itself.
+        closed = false; follow = true; dragging = false; pulse = Time.unscaledTime;
+    }
+
+    /// <summary>
+    /// The branch for the game's 回想 (F101), in its rich text: the arm taken with its condition's current values, green; for
+    /// 否则, the conditions the other arms missed, red.
+    /// </summary>
+    public static string LogBody(object data, int result)
+    {
+        var rows = Read(data, result);
+        var taken = rows.FirstOrDefault(row => row.Taken);
+        bool fallback = taken == null || taken == rows[rows.Count - 1];
+        var shown = fallback ? rows.Take(rows.Count - 1) : new[] { taken! };
+        string body = string.Join(" · ", shown.Select(row => row.State == 0 ? row.Text : $"<color={(row.State > 0 ? Tone.PositiveOnDark : Tone.NegativeOnDark)}>{row.Text}</color>"));
+        if (fallback) body = L.Text("否则") + (body.Length > 0 ? " · " + body : "");
+        return body;
+    }
+
+    private static List<Row> Read(object data, int result)
+    {
         var rows = new List<Row>();
         if (R.Field(data, "_useCount") is true)
         {
@@ -69,10 +93,7 @@ internal sealed class BranchNotice : IDisposable
         }
         bool fallback = result < 1 || result > rows.Count;
         rows.Add(new Row { Text = L.Text("否则"), State = fallback ? 1 : 0, Taken = fallback });
-        judgments.Insert(0, rows);
-        if (judgments.Count > Kept) judgments.RemoveRange(Kept, judgments.Count - Kept);
-        // A new branch returns to the player's place (or the corner) and announces itself.
-        closed = false; follow = true; dragging = false; pulse = Time.unscaledTime;
+        return rows;
     }
 
     public void Clear() { judgments.Clear(); closed = true; dragging = false; Rect = default; }

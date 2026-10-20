@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Mortal.Core;
 using UnityEngine;
 
 namespace ZhaoHuoSystem;
@@ -12,6 +14,18 @@ internal sealed class JumpTarget
     public StoryReview.Node? Node;
     public string Script = "", MainMission = "";
     public int[]? Date;
+    /// <summary>A start kept in memory this scene (回想's 回到这段开头, F101), written in place of a kept node, with its music.</summary>
+    public GameSave? Save;
+    public string Music = "", Env = "";
+}
+
+/// <summary>One option that sets a flag a branch reads, as 决定它的选项 lists it (F101).</summary>
+internal sealed class SourceRow
+{
+    public string Text = "";
+    /// <summary>The kept start of the script where the option is chosen; null when it was never kept.</summary>
+    public StoryReview.Node? Node;
+    public string Title = "";
 }
 
 /// <summary>One manual slot as the slot picker shows it.</summary>
@@ -25,7 +39,7 @@ internal sealed class SlotLine
 // and loaded at once. 直接跳转 first says what may break. The dialogs sit over the whole window; nothing behind them reacts.
 public sealed partial class ToolWindow
 {
-    private enum JumpDialog { None, Help, Warning, Slots, Overwrite }
+    private enum JumpDialog { None, Help, Warning, Slots, Overwrite, Sources }
     private JumpDialog _dialog;
     private JumpTarget? _jumpTarget;
     private bool _jumpDirect;
@@ -37,6 +51,26 @@ public sealed partial class ToolWindow
     /// <summary>What 直接跳转 starts from: 当前进度, or on the title the 最近存档 it read.</summary>
     internal Func<string>? JumpBase;
     private bool InGame => _snapshot.Ready || CombatCheats.Current != CombatCheats.Mode.None;
+    // 决定它的选项 (F101): the branch, the flags it reads, and for each the options that set it once they are found.
+    private string _sourceBranch = "";
+    private List<StoryLog.Flag> _sourceFlags = new();
+    private List<List<SourceRow>>? _sourceRows;
+    internal Func<bool>? SourcesReady;
+    internal Func<float>? SourcesProgress;
+    internal Func<string, List<SourceRow>>? FindSources;
+
+    // Opened from 回想 with the panel closed: closing the dialog closes the panel again, uncovering the log.
+    private bool _closeWithDialog;
+    /// <summary>From the game's 回想 (F101): the panel opens on 跳转's slot picker for a start kept this scene.</summary>
+    internal void JumpFromLog(JumpTarget target) { OpenFromLog(); OpenJump(target, false); }
+    private void OpenFromLog() { if (!_visible) { _closeWithDialog = true; Visible = true; } }
+    /// <summary>From the game's 回想 (F101): the panel opens on the options that set the flags this branch reads.</summary>
+    internal void SourcesFromLog(string branch, List<StoryLog.Flag> flags)
+    {
+        OpenFromLog();
+        _sourceBranch = branch; _sourceFlags = flags; _sourceRows = null;
+        _dialog = JumpDialog.Sources; _dialogScroll = Vector2.zero; GUI.FocusControl(null);
+    }
 
     private void OpenJump(JumpTarget target, bool direct)
     {
@@ -50,7 +84,11 @@ public sealed partial class ToolWindow
         _dialog = JumpDialog.Slots; _dialogScroll = Vector2.zero;
     }
     private void OpenHelp() { _dialog = JumpDialog.Help; _dialogScroll = Vector2.zero; GUI.FocusControl(null); }
-    private void CloseDialog() { _dialog = JumpDialog.None; _slotPick = null; }
+    private void CloseDialog()
+    {
+        _dialog = JumpDialog.None; _slotPick = null;
+        if (_closeWithDialog) { _closeWithDialog = false; Visible = false; }
+    }
 
     private void JumpInto(SlotLine line)
     {
@@ -64,10 +102,11 @@ public sealed partial class ToolWindow
     private void DrawDialog(float width, float height)
     {
         Fill(new Rect(0, 0, width, height), new Color(0, 0, 0, .55f));
-        float boxWidth = Mathf.Min(S(_dialog == JumpDialog.Help || _dialog == JumpDialog.Slots ? 640 : 520), width - S(40));
+        bool tall = _dialog == JumpDialog.Help || _dialog == JumpDialog.Slots || _dialog == JumpDialog.Sources;
+        float boxWidth = Mathf.Min(S(tall ? 640 : 520), width - S(40));
         float boxHeight = _dialog switch
         {
-            JumpDialog.Help or JumpDialog.Slots => Mathf.Min(S(560), height - S(60)),
+            JumpDialog.Help or JumpDialog.Slots or JumpDialog.Sources => Mathf.Min(S(560), height - S(60)),
             _ => Mathf.Min(height - S(40), DialogTextHeight(boxWidth - S(40)) + S(136))
         };
         var box = new Rect((width - boxWidth) / 2, Mathf.Max(S(20), (height - boxHeight) / 2), boxWidth, boxHeight);
@@ -81,6 +120,7 @@ public sealed partial class ToolWindow
             case JumpDialog.Warning: DrawWarning(inner); break;
             case JumpDialog.Slots: DrawSlots(inner); break;
             case JumpDialog.Overwrite: DrawOverwrite(inner); break;
+            case JumpDialog.Sources: DrawSources(inner); break;
         }
         // A press outside the box goes nowhere.
         var current = Event.current;
@@ -279,6 +319,67 @@ public sealed partial class ToolWindow
             "上方「分岔点」按钮移到主线分开的地方；「显示下一个节点」移到这一局的下一站；「其他内容」列出没画在时间轴上的闲聊、地点和会议事件；「刷新」重新读取游戏数据生成路线图。"
         })
     };
+
+    /// <summary>
+    /// 决定它的选项 (F101): each flag the branch reads with its value then, and the options that set it; one kept by 剧情回顾
+    /// can be jumped back to (跳转's slot picker), the rest are named only.
+    /// </summary>
+    private void DrawSources(Rect r)
+    {
+        Label(new Rect(r.x, r.y, r.width, S(30)), "决定这个分支的选项", _heading);
+        string intro = _sourceBranch + "\n" + L.Text("下面是这个分支读的标记，和剧本里设置它们的选项。回到那一段重新选，之后就可能走另一支；只有收录过的段落能跳转（每段只留最新一份），之后的进度要重新玩。");
+        float introHeight = TextHeight(_small, intro, r.width);
+        Label(new Rect(r.x, r.y + S(34), r.width, introHeight), intro, _small);
+        float top = r.y + S(42) + introHeight, close = ButtonWidth("取消", 80);
+        var list = new Rect(r.x, top, r.width, r.yMax - S(42) - top);
+        GUI.DrawTexture(new Rect(list.x, list.y - S(4), list.width, 1), _line);
+        if (SourcesReady?.Invoke() != true)
+            Label(new Rect(list.x, list.y + S(8), list.width, S(26)), L.Format("正在查找设置这些标记的剧本……{0}%", Mathf.RoundToInt((SourcesProgress?.Invoke() ?? 0) * 100)), _muted);
+        else
+        {
+            if (_sourceRows == null)
+            {
+                try { _sourceRows = _sourceFlags.Select(flag => FindSources?.Invoke(flag.Id) ?? new List<SourceRow>()).ToList(); }
+                catch (Exception ex) { _sourceRows = _sourceFlags.Select(_ => new List<SourceRow>()).ToList(); Message(L.Format("查找失败：{0}", ex.GetBaseException().Message), true); }
+            }
+            float row = S(34), heading = S(34), content = list.width - S(18), jump = ButtonWidth("跳转", 72), textWidth = content - jump - S(24), total = 0;
+            // A long option wraps; its row grows to hold it.
+            float RowHeight(SourceRow source) => Mathf.Max(row, TextHeight(_label, source.Text, textWidth) + S(8));
+            for (int i = 0; i < _sourceFlags.Count; i++) total += heading + (_sourceRows[i].Count == 0 ? row : _sourceRows[i].Sum(RowHeight)) + S(6);
+            _dialogScroll = BeginScroll(list, _dialogScroll, new Rect(0, 0, content, Mathf.Max(list.height, total)));
+            try
+            {
+                float y = 0;
+                for (int i = 0; i < _sourceFlags.Count; i++)
+                {
+                    var flag = _sourceFlags[i];
+                    Label(new Rect(0, y + S(6), content, S(26)), L.Format("{0} · 当时 {1}", flag.Name, flag.Value), _caption, flag.Id);
+                    y += heading;
+                    if (_sourceRows[i].Count == 0)
+                    {
+                        Label(new Rect(S(10), y + S(5), content - S(10), S(24)), "剧本里没找到设置它的选项：可能由任务或游戏系统设置。", _muted);
+                        y += row;
+                    }
+                    foreach (var source in _sourceRows[i])
+                    {
+                        float height = RowHeight(source);
+                        Label(new Rect(S(10), y + S(4), textWidth, height - S(4)), source.Text, source.Node != null ? _label : _muted, source.Text);
+                        if (source.Node is { } node)
+                        {
+                            if (Button(new Rect(content - jump, y + S(2), jump, S(30)), "跳转", "source.jump." + i + "." + node.Id, tooltip: L.Text("选一个存档格，写好后直接进入这一段")))
+                            { OpenJump(new JumpTarget { Title = source.Title, Node = node, Script = node.Script }, false); break; }
+                        }
+                        else Label(new Rect(content - jump, y + S(7), jump, S(22)), "未收录", _small, L.Text("没玩到过这一段，或收录在装模组之前"));
+                        GUI.DrawTexture(new Rect(S(10), y + height - 1, content - S(10), 1), _line);
+                        y += height;
+                    }
+                    y += S(6);
+                }
+            }
+            finally { EndScroll(); }
+        }
+        if (DialogButton(new Rect(r.xMax - close, r.yMax - S(32), close, S(32)), "取消", "sources.close")) CloseDialog();
+    }
 
     private void DrawHelp(Rect r)
     {

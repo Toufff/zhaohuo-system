@@ -77,14 +77,13 @@ internal sealed class StoryReview(ManualLogSource log, string folder)
             using (var file = File.Create(NodeFile(script)))
             using (var zip = new GZipStream(file, CompressionMode.Compress))
                 zip.Write(bytes, 0, bytes.Length);
-            var main = MissionManagerData.Instance?.MainCheckData;
             var tags = new List<string>();
             if (LuaOptions.DiceCall.IsMatch(text)) tags.Add(L.Text("掷骰"));
             if (LuaOptions.FightCall.IsMatch(text)) tags.Add(L.Text("战斗"));
             nodes[script] = new Node
             {
                 Id = script, Script = script, Year = save.CurrentYear, Month = save.CurrentMonth, Stage = (int)save.CurrentStage,
-                Mission = main == null ? "" : FirstLine(R.Field<string>(main, "_desc", "")), Music = music, Env = env, Kept = DateTime.Now.Ticks,
+                Mission = MissionNow(), Music = music, Env = env, Kept = DateTime.Now.Ticks,
                 Rows = Rows(script), Tags = string.Join(" · ", tags)
             };
             reading.Remove(script);
@@ -154,6 +153,8 @@ internal sealed class StoryReview(ManualLogSource log, string folder)
         catch (Exception ex) { log.LogWarning("REVIEW index " + ex.GetBaseException().Message); }
     }
     private static int Number(string text) => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;
+    /// <summary>The main mission as a node shows it: its description's first line, or "".</summary>
+    public static string MissionNow() => MissionManagerData.Instance?.MainCheckData is { } main ? FirstLine(R.Field<string>(main, "_desc", "") ?? "") : "";
     private static string FirstLine(string desc)
     {
         string first = desc.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";

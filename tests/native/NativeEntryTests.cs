@@ -205,6 +205,14 @@ internal static partial class Program
             foreach (string action in new[] { "ExecuteMainStoryAction", "ExecuteSubStoryAction", "ExecuteActivityAction" }) Signature(free, "Mortal.Free", "PositionController", action);
             Signature(free, "Mortal.Free", "FreeManager", "Start");
             Signature(fungus, "Fungus", "LuaEnvironment", "RunUnityCoroutine", "coroutine");
+            // 回想 (F101): a line for each branch, through the game's own log.
+            Signature(fungus, "Fungus", "NarrativeLog", "AddLine", "entry");
+            Has(fungus, "Fungus", "NarrativeLogEntry", "name", "text");
+            Has(fungus, "Fungus", "FungusManager", "Instance", "NarrativeLog");
+            // Its links (F101): the log menu that shows it, its one text and the entries it is written from.
+            Has(fungus, "Fungus", "NarrativeLogMenu", "instance", "narrativeLogActive", "narrativeLogView", "_maxLogEntry");
+            Has(fungus, "Fungus", "NarrativeLog", "history");
+            Has(fungus, "Fungus", "NarrativeData", "entries");
             // 跳转 (F98): the save it writes and the game's own load it then runs, as the load page does.
             Signature(core, "Mortal.Core", "SaveSystem", "SetSlot", "slot");
             Signature(core, "Mortal.Core", "SaveSystem", "LoadGameData");

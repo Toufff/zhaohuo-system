@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.39")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.40")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -46,6 +46,9 @@ public sealed class Plugin : BaseUnityPlugin
     internal SegmentSaves Segments = null!;
     private StoryReview Review = null!;
     private RouteMapRunner routeMap = null!;
+    // 回想 (F101): a line for each branch with links back, and where the story sets the flags a branch reads.
+    private StoryLog storyLog = null!;
+    private readonly FlagSources flagSources = new();
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
     private NativeDicePresenter dicePresenter = null!;
@@ -116,11 +119,21 @@ public sealed class Plugin : BaseUnityPlugin
         Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt"), Path.Combine(diagnostics, "segment-save-music.txt")) { Enabled = storySaves.Value };
         // 剧情回顾 (F84): branch scripts' copies kept as they start, written into an empty slot from the panel.
         Review = new StoryReview(Logger, Path.Combine(diagnostics, "review")) { ScriptText = name => OptionHints.ScriptText(name), ScriptMap = name => OptionHints.Map(name) };
-        Segments.Kept = Review.Keep;
+        storyLog = new StoryLog();
+        Segments.Kept = (script, save, music, env) => { Review.Keep(script, save, music, env); storyLog.Kept(script, save, music, env); };
         window.Review = Review;
         window.ReadSlots = ReadSlots;
         window.Jump = JumpTo;
         window.JumpBase = () => Adapter.Snapshot.Title && TitleSave.Base.Length > 0 ? TitleSave.Base : L.Text("当前进度");
+        storyLog.BackClicked = start => window.JumpFromLog(new JumpTarget { Title = start.Title, Script = start.Script, Save = start.Save, Music = start.Music, Env = start.Env });
+        storyLog.SourceClicked = (branch, flags) =>
+        {
+            if (!flagSources.Ready && !flagSources.Building) StartCoroutine(flagSources.Build(Logger));
+            window.SourcesFromLog(branch, flags);
+        };
+        window.SourcesReady = () => flagSources.Ready;
+        window.SourcesProgress = () => flagSources.Progress;
+        window.FindSources = SourceRows;
         window.ReviewStar = node => Review.Star(node);
         // 剧情树 (F87): the main story's segments, read from the scripts as they are opened.
         window.Tree = new StoryTree(Logger, new StoryGraph(name => OptionHints.ScriptText(name), name => OptionHints.Map(name)));
@@ -161,7 +174,7 @@ public sealed class Plugin : BaseUnityPlugin
         var skinStyle = Config.Bind("界面", "界面风格", 0, "0 用游戏自己的边框、按钮和字体绘制面板，1 为原来的纯色样式。");
         GameSkin.Enabled = skinStyle.Value != 1;
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
-        var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框；关闭后不再弹出，其他悬浮显示不受影响。");
+        var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框，回想里也记一行走了哪支；关闭后两者都不显示，其他悬浮显示不受影响。");
         var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
@@ -209,7 +222,7 @@ public sealed class Plugin : BaseUnityPlugin
         combatResult = new CombatResult(Logger);
         speedButtons = new DuelSpeedButtons(Logger) { Changed = () => window.CombatChanged?.Invoke() };
         inputGuard = new NativeInputGuard(window, Logger, () => SaveNotes.Editing,
-            () => SaveNotes.Editing ? new Rect(0, 0, Screen.width, Screen.height) : Branches.Rect, () => combatResult.Rect);
+            () => SaveNotes.Editing ? new Rect(0, 0, Screen.width, Screen.height) : Branches.Rect, () => combatResult.Rect, () => storyLog.Hover);
         LocalizationManager.OnLanguageChanged += LanguageChanged;
         window.ExportDiagnostics = ExportDiagnostics;
         harmony = new Harmony("local.zhaohuo.system");
@@ -251,7 +264,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void SceneChanged(Scene before, Scene after)
     {
         Diagnostics.Scene = after.name; Logger.LogInfo("SCENE " + before.name + " -> " + after.name);
-        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear(); SaveNotes?.Close(); Segments?.SceneChanged();
+        inputGuard?.Reset(); dicePresenter?.Dispose(); Branches?.Clear(); SaveNotes?.Close(); Segments?.SceneChanged(); storyLog?.Clear();
         if (after.name == "Title") RoundUnlimited.Reset();
         Adapter.Invalidate("场景已变化，旧指定已清除", true, after.name == "Free" || after.name == "Title");
     }
@@ -361,6 +374,7 @@ public sealed class Plugin : BaseUnityPlugin
             // because a paused action waits for the panel. The branch notice handles its clicks first, paints last.
             try { Branches.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
             try { combatResult.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("combat-result", ex); }
+            try { storyLog.Draw(window.Hidden || window.Visible && window.IsPointerOver); } catch (Exception ex) { OverlayFailed("story-log", ex); }
             if (!window.Visible)
             {
                 try { if (!window.Hidden && window.ShowMapCounts) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
@@ -420,14 +434,15 @@ public sealed class Plugin : BaseUnityPlugin
         var scenes = SceneController.Instance;
         if (system == null || scenes == null) return OperationResult.Fail(L.Text("存档系统未就绪"));
         if (scenes.IsPrepare || scenes.IsLoading) return OperationResult.Fail(L.Text("正在切换场景，请稍后再试"));
-        GameSave? save = direct ? DirectSave(target) : target.Node != null ? Review.Read(target.Node) : null;
+        GameSave? save = direct ? DirectSave(target) : target.Save != null ? Copy(target.Save) : target.Node != null ? Review.Read(target.Node) : null;
         if (save == null) return OperationResult.Fail(L.Text(direct ? "当前进度读不出来" : "节点文件读不出来"));
-        string start = direct ? target.Script : target.Node!.Script;
+        string start = direct || target.Node == null ? target.Script : target.Node.Script;
+        string music = direct ? "" : target.Node?.Music ?? target.Music, env = direct ? "" : target.Node?.Env ?? target.Env;
         SaveNotes.Allow(slot);
-        try { Segments.Export(save, start, direct ? "" : target.Node!.Music, direct ? "" : target.Node!.Env, slot); }
+        try { Segments.Export(save, start, music, env, slot); }
         finally { SaveNotes.Allow(null); }
         if (system.GetSaveData(slot) is not GameSave written || written.TimeTick != save.TimeTick) return OperationResult.Fail(L.Text("写入失败，详见日志"));
-        Logger.LogInfo($"JUMP {(direct ? "direct" : "kept")} slot={slot} start={start} title={target.Title}");
+        Logger.LogInfo($"JUMP {(direct ? "direct" : target.Save != null ? "log" : "kept")} slot={slot} start={start} title={target.Title}");
         window.Visible = false;
         system.SetSlot(slot);
         SoundManager.Instance?.StopMusic();
@@ -436,6 +451,33 @@ public sealed class Plugin : BaseUnityPlugin
         MissionManagerData.Instance?.UpdateCheckMissions();
         scenes.LoadCurrentScene();
         return OperationResult.Ok(L.Format("正在进入第 {0} 格", int.Parse(slot, CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>A start kept in memory, as its own copy written now (回想's 回到这段开头, F101).</summary>
+    private static GameSave? Copy(GameSave save)
+    {
+        var copy = JsonUtility.FromJson<GameSave>(JsonUtility.ToJson(save));
+        if (copy != null) copy.TimeTick = DateTime.Now.Ticks;
+        return copy;
+    }
+
+    /// <summary>决定它的选项 (F101): the options setting this flag, those kept by 剧情回顾 first.</summary>
+    private List<SourceRow> SourceRows(string flag)
+    {
+        var kept = Review.Latest();
+        string OptionText(string key) => Regex.Replace(L.GameText("Story/" + key, key), "<[^>]+>", "").Trim();
+        var rows = new List<SourceRow>();
+        foreach (var source in flagSources.Find(flag, name => OptionHints.Map(name), OptionText))
+        {
+            kept.TryGetValue(source.Script, out var node);
+            string where = node != null ? StoryReview.Title(node) : source.Script;
+            string change = source.Set ? L.Format("设为 {0}", source.Value) : source.Value >= 0 ? "+" + source.Value : source.Value.ToString(CultureInfo.InvariantCulture);
+            string text = source.NoChoice ? L.Format("进入「{0}」时就会{1}（不经选择）", where, change)
+                : source.Via.Length > 0 ? L.Format("「{0}」选「{1}」，进入 {2} 时{3}", where, source.Text, source.Via, change)
+                : L.Format("「{0}」选「{1}」：{2}", where, source.Text, change);
+            rows.Add(new SourceRow { Text = text, Node = source.NoChoice ? null : node, Title = where });
+        }
+        return rows.OrderBy(row => row.Node == null).ToList();
     }
 
     /// <summary>直接跳转: the game as it stands now (on the title, its 最近存档), moved to the start, date and main mission asked for.</summary>
@@ -478,7 +520,7 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnDestroy()
     {
         Adapter?.ContinueAction();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); storyLog?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();
@@ -515,9 +557,14 @@ public sealed class Plugin : BaseUnityPlugin
     {
         using var timing = Perf.Time("branch");
         Logger.LogInfo($"BRANCH name={name} result={result}");
-        // Switched off in settings: the branch is still logged, the box is never filled.
+        // Switched off in settings: the branch is still logged, the box is never filled and 回想 gets no line.
         if (!window.ShowBranches) return;
-        try { if (OptionHints.FindSwitch(name) is object data) Branches.Record(data, result); }
+        try
+        {
+            if (OptionHints.FindSwitch(name) is not object data) return;
+            Branches.Record(data, result);
+            storyLog.Branch(data, result);
+        }
         catch (Exception ex) { Logger.LogWarning("BRANCH " + name + " " + ex.GetBaseException().Message); }
     }
     /// <summary>Appends a short effect line under the merchant's description; the item and shop state are untouched.</summary>

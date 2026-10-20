@@ -9,6 +9,20 @@ var values = new List<ValueSnapshot> {
     new() { Id = "library:achievement:one", Name = "见闻", GroupId = "library", Group = "风云史", Writable = false }
 };
 void Assert(bool value, string name) { if (!value) throw new Exception(name); Console.WriteLine("PASS " + name); }
+{
+    // 回想 (F101): offsets into the log as GetPrettyHistory writes it, and the drawn index past rich-text tags.
+    var log = new List<KeyValuePair<string, string>> { new("唐布衣", "师弟。"), new("", "旁白"), new("赵活系统", "<size=24>剧情分支：A</size>\n<color=#D9B077>↩ 回</color>") };
+    string pretty = "\n";
+    foreach (var e in log) { if (e.Key.Length > 0) pretty += "<size=28><color=#D9B077>" + e.Key + "</color></size>\n"; pretty += e.Value + "\n\n"; }
+    var starts = NativeUiState.LogTextStarts(log, 1000);
+    Assert(starts.Select((at, i) => pretty.Substring(at, log[i].Value.Length) == log[i].Value).All(x => x), "log offsets match the pretty history exactly");
+    var last = NativeUiState.LogTextStarts(log, 2);
+    Assert(last[0] == -1 && last[1] == 1, "entries past the log's limit are left out and the rest start after its line break");
+    string rich = "<size=24>剧情分支：<color=#8FDEA3>X 3>=1</color></size>";
+    int raw = rich.IndexOf("X", StringComparison.Ordinal);
+    Assert(NativeUiState.DrawnIndex(rich, raw) == "剧情分支：".Length, "tags take no place before the drawn character");
+    Assert(NativeUiState.DrawnIndex("a<5b", 3) == 3 && NativeUiState.DrawnIndex("x 3>=1", 6) == 6, "angle brackets that are not tags are drawn");
+}
 Assert(string.Join(",", NativeUiState.Groups(values)) == "all,attributes,sect,alignment,relationships,factions,library", "player-facing groups keep sect state, relations and library distinct");
 Assert(NativeUiState.MatchesValue(values[3], "attributes", "PlayerStat/karma") && !NativeUiState.MatchesValue(values[3], "alignment", ""), "moved attribute is searchable exactly once in its player-facing group");
 Assert(NativeUiState.MatchesValue(values[4], "sect", "stat:門派規模") && !NativeUiState.MatchesValue(values[4], "factions", ""), "sect state is searchable by stable ID without becoming diplomatic relations");

@@ -85,7 +85,7 @@ public sealed partial class ToolWindow : IDisposable
             // On the title screen the events and values wait for a game; the panel opens on 回顾 instead (F96).
             if (value && !_visible && _adapter.Snapshot.Title && _tab <= 1) _tab = 4;
             _visible = value;
-            if (!value) { CancelInputCapture(); IsPointerOver = false; _dialog = JumpDialog.None; }
+            if (!value) { CancelInputCapture(); IsPointerOver = false; _dialog = JumpDialog.None; _closeWithDialog = false; }
         }
     }
     /// <summary>Story and map scenes, the fights (F64: their 战斗 tab is what the panel is for there) and the title (F96).</summary>
@@ -669,7 +669,7 @@ public sealed partial class ToolWindow : IDisposable
             y += S(52);
         }
         // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
-        note = "剧情按条件分支时弹出，可拖到别处并记住位置；关闭后不再弹出，其他悬浮显示照常。";
+        note = "剧情按条件分支时弹出，可拖到别处并记住位置；回想里也记一行走了哪支。关闭后两者都不显示，其他悬浮显示照常。";
         if (Shown("显示剧情分支小框", "重置位置", note))
         {
             Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);

@@ -176,6 +176,53 @@ public static class NativeUiState
         return raws;
     }
     /// <summary><see cref="Tone"/> marks as rich-text colours, or removed when a colour is null. Always balanced, even after a cut.</summary>
+    /// <summary>
+    /// 回想 (F101): where each entry's text starts in the log's one text, as Fungus' GetPrettyHistory writes it: a line break,
+    /// then for each of the last <paramref name="max"/> entries its name line (in its own size and colour) if it has a name,
+    /// its text and a blank line. -1 for an entry left out.
+    /// </summary>
+    public static int[] LogTextStarts(IReadOnlyList<KeyValuePair<string, string>> entries, int max)
+    {
+        var starts = new int[entries.Count];
+        int first = Math.Max(0, entries.Count - Math.Max(0, max)), at = 1;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (i < first) { starts[i] = -1; continue; }
+            if (!string.IsNullOrEmpty(entries[i].Key)) at += LogNameOpen.Length + entries[i].Key.Length + LogNameClose.Length;
+            starts[i] = at;
+            at += (entries[i].Value ?? "").Length + 2;
+        }
+        return starts;
+    }
+    private const string LogNameOpen = "<size=28><color=#D9B077>", LogNameClose = "</color></size>\n";
+
+    /// <summary>
+    /// Index among the characters a Unity Text lays out of the character at <paramref name="raw"/> in its rich text: tags it
+    /// understands take no place. Anything else in angle brackets is drawn as written.
+    /// </summary>
+    public static int DrawnIndex(string rich, int raw)
+    {
+        int drawn = 0;
+        for (int i = 0; i < raw && i < rich.Length;)
+        {
+            int tag = rich[i] == '<' ? RichTagLength(rich, i) : 0;
+            if (tag > 0 && i + tag <= raw) { i += tag; continue; }
+            drawn++; i++;
+        }
+        return drawn;
+    }
+    private static readonly string[] RichTags = { "b", "i", "size", "color", "material", "quad" };
+    private static int RichTagLength(string text, int at)
+    {
+        int close = text.IndexOf('>', at);
+        if (close < 0) return 0;
+        string inner = text.Substring(at + 1, close - at - 1);
+        if (inner.StartsWith("/", StringComparison.Ordinal)) inner = inner.Substring(1);
+        int equals = inner.IndexOf('=');
+        string name = (equals >= 0 ? inner.Substring(0, equals) : inner).Trim();
+        return Array.IndexOf(RichTags, name) >= 0 ? close - at + 1 : 0;
+    }
+
     public static string ToneColors(string text, string? positive, string? negative)
     {
         if (text.IndexOf(Tone.Positive) < 0 && text.IndexOf(Tone.Negative) < 0 && text.IndexOf(Tone.End) < 0) return text;

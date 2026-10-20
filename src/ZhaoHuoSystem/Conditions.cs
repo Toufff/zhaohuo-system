@@ -36,6 +36,35 @@ internal static class Conditions
         }
         catch (Exception ex) { return new() { Text = L.Text("条件未核验"), Detail = ex.GetBaseException().Message, Satisfied = false, Known = false }; }
     }
+    /// <summary>
+    /// 决定它的选项 (F101): the story flags a condition (or a switch, whose items are conditions) reads, with their values now,
+    /// in the order first met. Nothing is evaluated.
+    /// </summary>
+    public static List<FlagData> Flags(object? condition)
+    {
+        var found = new List<FlagData>();
+        void Condition(object? node, int depth)
+        {
+            if (node == null || depth > 12) return;
+            foreach (var item in R.Items(R.Field(node, "_items")))
+                if (item is StatCompareItem) { Group(R.Field(item, "_value1"), depth + 1); Group(R.Field(item, "_value2"), depth + 1); }
+                else Condition(item, depth + 1);
+        }
+        void Group(object? group, int depth)
+        {
+            if (group == null || depth > 12) return;
+            foreach (var reference in R.Items(R.Field(group, "_value")))
+                switch (R.Property(reference, "CheckType")?.ToString())
+                {
+                    case "旗標": if (R.Field<FlagData>(reference, "_flag") is FlagData flag && flag != null && !found.Contains(flag)) found.Add(flag); break;
+                    case "數值群組": Group(R.Field(reference, "_statGroup"), depth + 1); break;
+                    case "條件設定": Condition(R.Field(reference, "_condition"), depth + 1); break;
+                }
+        }
+        try { Condition(condition, 0); } catch { }
+        return found;
+    }
+
     private static ConditionSnapshot Compare(object item, int depth)
     {
         var left = Group(R.Field(item, "_value1"), depth);
