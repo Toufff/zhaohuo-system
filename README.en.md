@@ -79,7 +79,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **UI scale**: the mod grows automatically on 4K and other high resolutions; adjust it further with 界面缩放 (UI scale) on the 设置 (Settings) tab.
 
-- **UI style**: 界面风格 (UI style) on the 设置 (Settings) tab chooses between 游戏素材 (game assets, the default) and 简洁 (plain). Game assets draws the panel and the mod's buttons with the game's own frames, buttons and fonts (taken from what the game has already loaded; the mod ships no game files). Plain is the original flat look.
+- **UI style**: 界面风格 (UI style) on the 设置 (Settings) tab chooses between 游戏素材 (game assets, the default) and 简洁 (plain). Game assets draws the panel and the mod's buttons with the game's own frames, buttons and fonts (taken from what the game has already loaded; the mod ships no game files). Plain is the original flat look. The branch box, fight result buttons, duel speed buttons, option hover notes, map event counts and the save-note dialog follow the same style.
 
 - **Settings search**: a search box at the top of the 设置 (Settings) tab filters the settings by name and description.
 
