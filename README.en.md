@@ -47,7 +47,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Dice**: each outcome gets a 指定 N% button, where N is its natural chance. Click one to roll that outcome. Outcomes your bonuses make impossible (shown as 0%) can be picked too: the dice face is worked back from the total, so the shown sum still adds up. If you click nothing, the roll stays random as usual. By default, clicking 指定 gives the result at once, without the wheel or the game's continue prompt; the game still settles it. Turn off 指定后直接出结果 (result right after 指定) on the 设置 (Settings) tab for the old flow.
 
-  <img src="media/dice.webp" width="520" alt="Clicking 指定 50% makes the wheel stop on that outcome">
+  <img src="media/dice.webp" width="520" alt="Clicking 指定 0% makes the wheel stop on an outcome a normal roll cannot reach">
 
 - **Pinball**: a 总分改为 (set total to) 100 60 30 0 row sits below the total score. The story after the pinball table only checks which band the total falls in (100+, 60+, 30+ or lower), so click a value to set the total to it, then leave with the game's own button.
 
@@ -68,6 +68,8 @@ The in-game panel follows the game's language and is available in Simplified Chi
 - **Story tree**: switch the 回顾 tab to 剧情树 (story tree) to see the main story's stretches by main-mission date, with where each option, dice result, condition and fight leads; open one level at a time.
 
 - **Story route map**: switch the 回顾 tab to 路线图 (route map) to see the main story as stations on lanes along the game's calendar, with the side routes that replace part of it (Xiangyang, Ye Yunshang's nine days in the cave, the snow mountain) and the prologue drawn as a loop that rewinds. Colours show how much you have read; a blue ring marks stations this playthrough passed, a gold ring the next one. Open a station to see its sections, the conditions into each branch and the side stories that start there; side stories are grouped by how they are entered. Search by character, place, event or dialogue, and browse the free-play chats, places and meetings that are not on the timeline. Drag the map to move it, Shift + wheel to move along the calendar, and zoom with Ctrl + wheel or the − and + above it; buttons above the map jump to the stations where the main story forks, and the line between the map and the side column can be dragged to resize them. Select a station or story: one with a kept start (marked ▶ on the map) can be entered with 跳转 (jump); elsewhere 直接跳转 (direct jump) moves your progress there without the flags of the story in between, which can break things, and warns you first. 说明 (help) explains the rules. The first opening takes about 6 seconds.
+
+  <img src="media/route-map.webp" width="720" alt="The story route map: the main story along the game calendar, with shortcuts to the forks above it">
 
 - **Save sorting**: manual saves on the load and save pages can be listed by slot number, newest first or oldest first. The button sits to the right of the 手动存档 (manual saves) heading on the load page and the 储存游戏 (save game) title on the save page; empty slots go last. The load and save pages each remember the order you last used. Sorting also offers 收藏优先 (starred first), which puts starred saves at the top, and 最早在前（排除收藏） (oldest first, excluding starred), which lists unstarred saves from oldest to newest with the starred ones after them.
 
