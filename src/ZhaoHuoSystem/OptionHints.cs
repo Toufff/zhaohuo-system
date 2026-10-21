@@ -344,6 +344,74 @@ internal sealed class OptionHints : IDisposable
         return R.Items(R.Field(config, "_list")).FirstOrDefault(item => item is UnityEngine.Object asset && asset != null && asset.name == name);
     }
 
+    /// <summary>A break-menu option the game left out because its condition fails (F107): its name and what it needs now.</summary>
+    internal sealed class HiddenRow { public string Text = "", Need = "", Source = ""; public bool Unreachable, Met; public BreakOptionButton? Row; }
+    /// <summary>
+    /// The options of a break menu (议题, 走访) that the game added unmet and then hid: they keep their place among the
+    /// menu's buttons, so each is matched to its row of the script's option table as the locked rows are. Rows not
+    /// matched to a table are left out.
+    /// </summary>
+    internal List<HiddenRow> HiddenRows(Fungus.MenuDialog menu)
+    {
+        var rows = new List<HiddenRow>();
+        try
+        {
+            var buttons = menu.CachedButtons;
+            int used = Math.Min(R.Field(menu, "nextOptionIndex") is int count ? count : 0, buttons.Length);
+            var shown = new Dictionary<int, string>();
+            for (int j = 0; j < used; j++)
+            {
+                if (buttons[j] == null || !buttons[j].gameObject.activeSelf || !buttons[j].interactable) continue;
+                string key = LuaOptions.OptionKey(R.Field<Text>(buttons[j].GetComponent<BreakOptionButton>(), "_source")?.text ?? "");
+                if (key.Length > 0) shown[j + 1] = key;
+            }
+            var scripts = recent.Select(pair => (IEnumerable<Dictionary<int, OptionSlot>>)pair.Value[LuaOptions.ScriptLevel].Menus).ToList();
+            for (int j = 0; j < used; j++)
+            {
+                if (buttons[j] == null || buttons[j].gameObject.activeSelf || buttons[j].interactable || buttons[j].GetComponent<BreakOptionButton>() is not BreakOptionButton row) continue;
+                string source = R.Field<Text>(row, "_source")?.text ?? "";
+                var slot = LuaOptions.LockedSlot(scripts, j + 1, source.TrimStart('~'), shown);
+                if (slot == null) continue;
+                string name = System.Text.RegularExpressions.Regex.Replace(L.GameText("Story/" + slot.Key, slot.Key), "<[^>]+>", "").Trim();
+                var condition = slot.Requirement.Length == 0 ? null : FindCondition(slot.Requirement);
+                // A requirement with no condition asset behind it (a placeholder such as 「XXX」) never holds.
+                if (condition == null) { rows.Add(new HiddenRow { Text = name, Unreachable = true }); continue; }
+                var now = Conditions.Read(condition);
+                rows.Add(new HiddenRow { Text = name, Need = Rich(now), Met = now.Known && now.Satisfied, Row = row, Source = slot.Text });
+            }
+            if (rows.Count > 0 && logged.Add("hidden:" + rows.Count)) log.LogInfo("OPTION_HIDDEN " + string.Join("；", rows.Select(row => row.Text + (row.Unreachable ? " unreachable" : " " + System.Text.RegularExpressions.Regex.Replace(row.Need, "<[^>]+>", "")))));
+        }
+        catch (Exception ex) { log.LogWarning("OPTION_HIDDEN " + ex.GetBaseException().Message); rows.Clear(); }
+        return rows;
+    }
+    /// <summary>
+    /// A hidden option whose condition holds now (the player changed values through the panel) is shown in its place as
+    /// the open option: the game's own listener for it is on the button already, so choosing it runs its own branch (as F74).
+    /// </summary>
+    internal bool Reveal(HiddenRow hidden)
+    {
+        try
+        {
+            if (!hidden.Met || hidden.Row == null || hidden.Source.Length == 0 || hidden.Row.GetComponent<Button>() is not Button button) return false;
+            button.interactable = true;
+            if (R.Field<Text>(hidden.Row, "_source") is Text source) source.text = hidden.Source;
+            hidden.Row.gameObject.SetActive(true);
+            hidden.Row.UpdateContent();
+            log.LogInfo("OPTION_REVEAL " + LuaOptions.OptionKey(hidden.Source));
+            return true;
+        }
+        catch (Exception ex) { log.LogWarning("OPTION_REVEAL " + ex.GetBaseException().Message); return false; }
+    }
+    // Flatten with each condition in its own colour: green holds, red fails, grey unknown.
+    private static string Rich(ConditionSnapshot condition)
+    {
+        if (condition.Children.Count == 1) return Rich(condition.Children[0]);
+        if (condition.Children.Count == 0)
+            return "<color=" + (!condition.Known ? "#C2C9CF" : condition.Satisfied ? Tone.PositiveOnDark : Tone.NegativeOnDark) + ">" + Tone.Plain(condition.Text) + "</color>";
+        string op = " " + L.Text(condition.Operator == "OR" ? "或" : "且") + " ";
+        return string.Join(op, condition.Children.Select(child => child.Children.Count > 1 ? "(" + Rich(child) + ")" : Rich(child)));
+    }
+
     /// <summary>
     /// A menu waits whose rows spend action points: the free phase's choice of where to go (F60). Not while a row would
     /// set the main mission (F80, e.g. 第三章客栈夜晚「出门散心」): that choice moves the story on, and skipping the

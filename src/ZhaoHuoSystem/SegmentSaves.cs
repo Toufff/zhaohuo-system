@@ -37,7 +37,7 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
     private static readonly Regex Volatile = new("\"(TimeTick|Version)\":(\"[^\"]*\"|-?\\d+),?|\"FreeRandomState\":\\{[^}]*\\},?");
     private GameSave? snapshot;
     private string script = "";
-    private bool nativeOpen, writing, justLoaded;
+    private bool nativeOpen, writing, justLoaded, roundCheck;
     // Heard as this script started; a fade to 0 is heard as none.
     private string music = "", env = "";
     private bool musicSilent, envSilent;
@@ -154,8 +154,25 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
     }
 
     /// <summary>A save was loaded: the next story script is compared with what that save wrote, if it was one of these.</summary>
-    public void Loaded() => justLoaded = true;
-    public void SceneChanged() { nativeOpen = false; }
+    public void Loaded() { justLoaded = true; roundCheck = true; }
+    public void SceneChanged() { nativeOpen = false; roundCheck = false; }
+    /// <summary>
+    /// F108: a load runs the game's mission check (MissionManagerData.UpdateCheckMissions) before entering the save's
+    /// scene, and that check starts the next 旬 whenever no action is left. A story entered from the map with the last
+    /// action is saved here with none left, so loading it moved the time on and set the main mission's start (empty)
+    /// as the script, and the story scene then waited on 「读取中」 for good. Right after a load into a story with no
+    /// action left the check is skipped once: the story plays from its start, and when it goes back to the map the game
+    /// runs the check itself, moving to the next 旬 then as it would have.
+    /// </summary>
+    public bool KeepRound()
+    {
+        if (!roundCheck) return false;
+        roundCheck = false;
+        var player = PlayerStatManagerData.Instance;
+        if (player == null || player.CurrentScene != "Story" || player.CurrentActionCount != 0 || string.IsNullOrEmpty(player.CurrentStoryScript)) return false;
+        log.LogInfo("LOAD_KEEP_ROUND start=" + player.CurrentStoryScript);
+        return true;
+    }
 
     private void Check(GameSave now)
     {

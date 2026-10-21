@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Fungus;
 using HarmonyLib;
 using Mortal.Core;
@@ -18,6 +19,8 @@ namespace ZhaoHuoSystem;
 /// the flags the branch reads). The log is one Text in a scroll view, rebuilt from its entries; the links are found in it by
 /// character and drawn over by the mod, which takes their clicks. The log lives in memory only and is cleared as each story
 /// scene starts; the starts kept here go with it (the scene change).
+/// F106: by default each line is one small summary (no name line), its full conditions in a note under the pointer;
+/// 设置/回想中的剧情分支 also offers the full lines or none.
 /// </summary>
 internal sealed class StoryLog : IDisposable
 {
@@ -33,11 +36,18 @@ internal sealed class StoryLog : IDisposable
         /// <summary>Each branch taken between two of the story's lines.</summary>
         public List<string> Rows = new();
         public string Branch = "", Back = "", Source = "";
+        /// <summary>Raw length of the summary at the start of the entry's text (简略), the part the note shows under the pointer.</summary>
+        public int Summary;
     }
-    private sealed class Link { public Line Line = null!; public bool Back; public List<Rect> Local = new(); }
+    private enum Kind { Back, Source, Summary }
+    private sealed class Link { public Line Line = null!; public Kind Kind; public List<Rect> Local = new(); }
+    /// <summary>设置/回想中的剧情分支 (F106): 0 简略, 1 完整, 2 不显示.</summary>
+    public int Mode;
 
     private const int KeptStarts = 40, KeptLines = 300;
-    private const string LinkColor = "#D9B077";
+    private const string LinkColor = "#D9B077", MutedColor = "#A39580";
+    // A summary's first condition, cut to this many characters.
+    private const int SummaryChars = 18;
     private static readonly AccessTools.FieldRef<NarrativeLog, NarrativeData> History = AccessTools.FieldRefAccess<NarrativeLog, NarrativeData>("history");
     private static readonly AccessTools.FieldRef<NarrativeLogMenu, ScrollRect> View = AccessTools.FieldRefAccess<NarrativeLogMenu, ScrollRect>("narrativeLogView");
     private static readonly FieldInfo? MenuField = AccessTools.Field(typeof(NarrativeLogMenu), "instance");
@@ -49,7 +59,12 @@ internal sealed class StoryLog : IDisposable
     private List<Link> links = new();
     private string? laidOut;
     private int laidCount;
-    private Texture2D? glow, underline;
+    private Texture2D? glow, underline, noteFill;
+    private Font? noteFont;
+    private GUIStyle? noteText;
+    private float noteScale = -1;
+    private long noteRevision = -1;
+    private int noteSkin = int.MinValue;
     /// <summary>The link under the pointer, in GUI coordinates; the input guard keeps the game's clicks out of it.</summary>
     public Rect Hover { get; private set; }
     public Action<Start>? BackClicked;
@@ -94,7 +109,7 @@ internal sealed class StoryLog : IDisposable
     /// </summary>
     public void Branch(object data, int result)
     {
-        if (FungusManager.Instance?.NarrativeLog is not NarrativeLog log || log == null) return;
+        if (Mode == 2 || FungusManager.Instance?.NarrativeLog is not NarrativeLog log || log == null) return;
         // The branch runs in the latest script the story moved to; its start is what the story replays from.
         var start = starts.Count > 0 ? starts[starts.Count - 1] : null;
         var flags = Conditions.Flags(data).Select(flag => new Flag { Id = flag.name, Name = L.FlagName(flag), Value = flag.State }).ToList();
@@ -115,13 +130,45 @@ internal sealed class StoryLog : IDisposable
         if (lines.Count > KeptLines) lines.RemoveAt(0);
         log.AddLine(line.Entry);
     }
-    private static void Compose(Line line)
+    private void Compose(Line line)
     {
         line.Branch = "<size=24>" + (line.Rows.Count == 1 ? L.Format("剧情分支：{0}", line.Rows[0]) : L.Format("剧情分支：{0}", "") + string.Concat(line.Rows.Select(row => "\n　· " + row))) + "</size>";
         line.Back = line.Start != null ? "【" + L.Text("回到这段开头") + "】" : "";
         line.Source = line.Flags.Count > 0 ? "【" + L.Text("决定它的选项") + "】" : "";
         string shown = string.Join("　", new[] { line.Back, line.Source }.Where(text => text.Length > 0));
+        if (Mode == 0)
+        {
+            // 简略 (F106): one small muted line, no name line; the first branch only, cut short.
+            line.Entry.name = "";
+            string head = "<color=" + MutedColor + ">◇ " + (line.Rows.Count > 1 ? L.Format("分支×{0}：", line.Rows.Count) : L.Text("分支：")) + "</color>";
+            string summary = "<size=21>" + head + Short(line.Rows[0]) + (line.Rows.Count > 1 ? "<color=" + MutedColor + ">" + L.Text(" 等") + "</color>" : "") + "</size>";
+            line.Summary = summary.Length;
+            line.Entry.text = summary + (shown.Length > 0 ? "<size=21><color=" + LinkColor + ">　" + shown + "</color></size>" : "");
+            return;
+        }
+        line.Entry.name = L.Text("赵活系统"); line.Summary = 0;
         line.Entry.text = line.Branch + (shown.Length > 0 ? "\n<size=24><color=" + LinkColor + ">" + shown + "</color></size>" : "");
+    }
+    // A branch row cut to its first characters, in its first colour.
+    private static string Short(string row)
+    {
+        string plain = Regex.Replace(row, "</?(size|color)[^>]*>", "");
+        if (plain.Length <= SummaryChars) return row;
+        var color = Regex.Match(row, "<color=([^>]+)>");
+        string cut = plain.Substring(0, char.IsHighSurrogate(plain[SummaryChars - 1]) ? SummaryChars - 1 : SummaryChars) + "…";
+        return color.Success ? "<color=" + color.Groups[1].Value + ">" + cut + "</color>" : cut;
+    }
+
+    /// <summary>设置/回想中的剧情分支 changed: the lines already in 回想 take the new look, or leave it.</summary>
+    public void SetMode(int mode)
+    {
+        if (mode == Mode) return;
+        Mode = mode;
+        if (FungusManager.Instance?.NarrativeLog is not NarrativeLog log || log == null) { lines.Clear(); return; }
+        if (mode == 2) { if (History(log)?.entries is { } entries) foreach (var line in lines) entries.Remove(line.Entry); lines.Clear(); }
+        else foreach (var line in lines) Compose(line);
+        laidOut = null;
+        if (MenuField?.GetValue(null) is NarrativeLogMenu menu && menu != null) Rebuild?.Invoke(menu, null);
     }
 
     /// <summary>While 回想 is open: the links under the pointer light up and take the click.</summary>
@@ -152,17 +199,44 @@ internal sealed class StoryLog : IDisposable
         }
         if (over == null) return;
         Hover = lit[0];
+        if (over.Kind == Kind.Summary) { if (e.type == EventType.Repaint) DrawNote(over.Line, e.mousePosition); return; }
         if (e.type == EventType.MouseDown && e.button == 0)
         {
             e.Use();
-            if (over.Back) { if (over.Line.Start != null) BackClicked?.Invoke(over.Line.Start); }
-            else SourceClicked?.Invoke(System.Text.RegularExpressions.Regex.Replace(over.Line.Branch, "</?(size|color)[^>]*>", ""), over.Line.Flags);
+            if (over.Kind == Kind.Back) { if (over.Line.Start != null) BackClicked?.Invoke(over.Line.Start); }
+            else SourceClicked?.Invoke(Regex.Replace(over.Line.Branch, "</?(size|color)[^>]*>", ""), over.Line.Flags);
             return;
         }
         if (e.type != EventType.Repaint) return;
         glow ??= Solid(new Color(.85f, .69f, .47f, .16f));
         underline ??= Solid(new Color(.85f, .69f, .47f, .9f));
         foreach (var r in lit) { GUI.DrawTexture(r, glow); GUI.DrawTexture(new Rect(r.x, r.yMax - 2, r.width, 2), underline); }
+    }
+
+    /// <summary>简略's note under the pointer (F106): every branch of the line with its values, red and green as in 完整.</summary>
+    private void DrawNote(Line line, Vector2 pointer)
+    {
+        float k = UiScale.Current;
+        if (noteText == null || noteRevision != L.Revision || Mathf.Abs(noteScale - k) > .01f || noteSkin != OverlaySkin.Key)
+        {
+            noteScale = k; noteRevision = L.Revision; noteSkin = OverlaySkin.Key;
+            if (noteFont != null) UnityEngine.Object.Destroy(noteFont);
+            noteFont = Font.CreateDynamicFontFromOSFont(L.FontNames, 16);
+            noteText = new GUIStyle { font = OverlaySkin.Font(noteFont), fontSize = Mathf.RoundToInt(15 * k), wordWrap = true, richText = true, alignment = TextAnchor.UpperLeft };
+            noteText.normal.textColor = Palette.Text;
+        }
+        string body = L.Text("剧情分支") + string.Concat(line.Rows.Select(row => "\n· " + Regex.Replace(row, "</?size[^>]*>", "")));
+        float width = Mathf.Min(440 * k, Screen.width - 24), pad = 10 * k;
+        float height = noteText.CalcHeight(new GUIContent(body), width - pad * 2) + pad * 2 + 4 * k;
+        var box = new Rect(Mathf.Clamp(pointer.x + 14 * k, 12, Screen.width - width - 12), Mathf.Clamp(pointer.y + 18 * k, 12, Screen.height - height - 12), width, height);
+        var old = GUI.color; int depth = GUI.depth;
+        try
+        {
+            GUI.color = Color.white; GUI.depth = -9998;
+            if (!OverlaySkin.Panel(box, k)) GUI.DrawTexture(box, noteFill ??= Solid(new Color(0, 0, 0, .82f)));
+            GUI.Label(new Rect(box.x + pad, box.y + pad, width - pad * 2, height - pad * 2), body, noteText);
+        }
+        finally { GUI.color = old; GUI.depth = depth; }
     }
 
     private (Text Text, ScrollRect View, NarrativeLogMenu Menu)? Shown()
@@ -194,17 +268,24 @@ internal sealed class StoryLog : IDisposable
         foreach (var line in lines)
         {
             if (!index.TryGetValue(line.Entry, out int i) || starts[i] < 0) continue;
-            foreach (var (label, back) in new[] { (line.Back, true), (line.Source, false) })
+            var spans = new List<(int From, int To, Kind Kind)>();
+            foreach (var (label, kind) in new[] { (line.Back, Kind.Back), (line.Source, Kind.Source) })
             {
                 int at = label.Length == 0 ? -1 : line.Entry.text.IndexOf(label, StringComparison.Ordinal);
                 if (at < 0) continue;
                 int raw = starts[i] + at;
                 if (raw + label.Length > shown.Length || string.CompareOrdinal(shown, raw, label, 0, label.Length) != 0) continue;
-                int first = tagsLaidOut ? raw : NativeUiState.DrawnIndex(shown, raw);
-                var link = new Link { Line = line, Back = back };
-                // One rectangle for each laid-out row the label takes.
+                spans.Add((raw, raw + label.Length, kind));
+            }
+            // 简略's summary: the note under the pointer (F106).
+            if (line.Summary > 0 && starts[i] + line.Summary <= shown.Length) spans.Add((starts[i], starts[i] + line.Summary, Kind.Summary));
+            foreach (var (from, to, kind) in spans)
+            {
+                int first = tagsLaidOut ? from : NativeUiState.DrawnIndex(shown, from), end = tagsLaidOut ? to : NativeUiState.DrawnIndex(shown, to);
+                var link = new Link { Line = line, Kind = kind };
+                // One rectangle for each laid-out row the span takes.
                 int row = -1; float left = 0, right = 0;
-                for (int c = first; c < first + label.Length && c < chars.Length; c++)
+                for (int c = first; c < end && c < chars.Length; c++)
                 {
                     int r = RowOf(rows, c);
                     if (r != row) { if (row >= 0) link.Local.Add(RowRect(rows[row], left, right, ppu)); row = r; left = chars[c].cursorPos.x; }
@@ -236,6 +317,7 @@ internal sealed class StoryLog : IDisposable
     }
     public void Dispose()
     {
-        foreach (var texture in new[] { glow, underline }) if (texture != null) UnityEngine.Object.Destroy(texture);
+        foreach (var texture in new[] { glow, underline, noteFill }) if (texture != null) UnityEngine.Object.Destroy(texture);
+        if (noteFont != null) UnityEngine.Object.Destroy(noteFont);
     }
 }

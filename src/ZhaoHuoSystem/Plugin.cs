@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.43")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.44")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -54,6 +54,7 @@ public sealed class Plugin : BaseUnityPlugin
     private RouteMapRunner routeMap = null!;
     // 回想 (F101): a line for each branch with links back, and where the story sets the flags a branch reads.
     private StoryLog storyLog = null!;
+    internal HiddenOptions HiddenOptions = null!;
     private readonly FlagSources flagSources = new();
     internal readonly Dictionary<Closure, long> LuaTokens = new();
     private ToolWindow window = null!;
@@ -128,6 +129,7 @@ public sealed class Plugin : BaseUnityPlugin
         // 剧情回顾 (F84): branch scripts' copies kept as they start, written into an empty slot from the panel.
         Review = new StoryReview(Logger, Path.Combine(diagnostics, "review")) { ScriptText = name => OptionHints.ScriptText(name), ScriptMap = name => OptionHints.Map(name) };
         storyLog = new StoryLog();
+        HiddenOptions = new HiddenOptions(OptionHints);
         Segments.Kept = (script, save, music, env) => { Review.Keep(script, save, music, env); storyLog.Kept(script, save, music, env); };
         window.Review = Review;
         window.ReadSlots = ReadSlots;
@@ -187,8 +189,11 @@ public sealed class Plugin : BaseUnityPlugin
         var skinStyle = Config.Bind("界面", "界面风格", 0, "0 用游戏自己的边框、按钮和字体绘制面板，1 为原来的纯色样式。");
         GameSkin.Enabled = skinStyle.Value != 1;
         UiScale.User = Mathf.Clamp(uiScale.Value, UiScale.MinUser, UiScale.MaxUser);
-        var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框，回想里也记一行；关闭后两者都不显示，其他悬浮显示不受影响。");
+        var showBranches = Config.Bind("界面", "显示剧情分支小框", true, "剧情按条件分支时弹出的小框；关闭后不再弹出，回想里的分支记录另由「回想中的剧情分支」控制。");
+        var logBranches = Config.Bind("界面", "回想中的剧情分支", 0, "回想里每次剧情分支的记录：0 简略（一行，鼠标移上去看完整条件），1 完整，2 不显示。");
+        storyLog.Mode = Mathf.Clamp(logBranches.Value, 0, 2);
         var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
+        var showHiddenOptions = Config.Bind("界面", "显示被隐藏的选项", true, "议题、走访等菜单的标题旁显示「另有 N 个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
         var directDice = Config.Bind("工具", "指定后直接出结果", true, "骰子界面点「指定」后不播转盘、不等「继续」，直接给出结果；结果仍由游戏自己结算。");
@@ -197,7 +202,7 @@ public sealed class Plugin : BaseUnityPlugin
         var fastFree = Config.Bind("工具", "自由行动过场加快", false, "地点行动后的停顿、转场遮罩和回到地图时的淡入快 3 倍。");
         Speedups.Log = Logger; Speedups.StatPause = Mathf.Clamp(statPause.Value, 0, 2); Speedups.FastFree = fastFree.Value;
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value, ParseKey(speedKey.Value, KeyCode.None));
-        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots; window.SaveFeatures = SaveFeatures;
+        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots; window.SaveFeatures = SaveFeatures; window.LogBranches = storyLog.Mode; window.ShowHiddenOptions = showHiddenOptions.Value;
         window.StatPause = Speedups.StatPause; window.FastFreeTransitions = Speedups.FastFree;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
@@ -206,12 +211,13 @@ public sealed class Plugin : BaseUnityPlugin
             speedKey.Value = window.SpeedKey.ToString(); globalSpeed.Value = GlobalSpeed.On; globalSpeedLevel.Value = GlobalSpeed.Level;
             uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons; directDice.Value = Adapter.DirectDiceResult;
             SaveSlots = window.SaveSlots; saveSlots.Value = SaveSlots;
+            storyLog.SetMode(window.LogBranches); logBranches.Value = storyLog.Mode; showHiddenOptions.Value = window.ShowHiddenOptions;
             SaveFeatures = window.SaveFeatures; saveFeatures.Value = SaveFeatures; Segments.Enabled = storySavesSetting && SaveFeatures;
             statPause.Value = Speedups.StatPause = window.StatPause; fastFree.Value = Speedups.FastFree = window.FastFreeTransitions;
             skinStyle.Value = GameSkin.Enabled ? 0 : 1;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} saveFeatures={SaveFeatures} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} logBranches={storyLog.Mode} hiddenOptions={window.ShowHiddenOptions} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} saveFeatures={SaveFeatures} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -237,7 +243,7 @@ public sealed class Plugin : BaseUnityPlugin
         combatResult = new CombatResult(Logger);
         speedButtons = new DuelSpeedButtons(Logger) { Changed = () => window.CombatChanged?.Invoke() };
         inputGuard = new NativeInputGuard(window, Logger, () => SaveNotes.Editing,
-            () => SaveNotes.Editing ? new Rect(0, 0, Screen.width, Screen.height) : Branches.Rect, () => combatResult.Rect, () => storyLog.Hover);
+            () => SaveNotes.Editing ? new Rect(0, 0, Screen.width, Screen.height) : Branches.Rect, () => combatResult.Rect, () => storyLog.Hover, () => HiddenOptions.Rect);
         LocalizationManager.OnLanguageChanged += LanguageChanged;
         window.ExportDiagnostics = ExportDiagnostics;
         harmony = new Harmony("local.zhaohuo.system");
@@ -394,6 +400,7 @@ public sealed class Plugin : BaseUnityPlugin
             try { Branches.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
             try { combatResult.Draw(window.Hidden); } catch (Exception ex) { OverlayFailed("combat-result", ex); }
             try { storyLog.Draw(window.Hidden || window.Visible && window.IsPointerOver); } catch (Exception ex) { OverlayFailed("story-log", ex); }
+            try { HiddenOptions.Draw(window.Hidden || !window.ShowHiddenOptions || window.Visible && window.IsPointerOver); } catch (Exception ex) { OverlayFailed("hidden-options", ex); HiddenOptions.Clear(); }
             if (!window.Visible)
             {
                 try { if (!window.Hidden && window.ShowMapCounts) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
@@ -542,7 +549,7 @@ public sealed class Plugin : BaseUnityPlugin
     {
         Adapter?.ContinueAction();
         GlobalSpeed.Release();
-        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); storyLog?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
+        dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); storyLog?.Dispose(); HiddenOptions?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
         inputGuard?.Dispose(); SceneManager.activeSceneChanged -= SceneChanged; MenuSignals.OnMenuEnd -= MenuEnded; MenuSignals.OnMenuStart -= MenuStarted;
         LocalizationManager.OnLanguageChanged -= LanguageChanged;
         window?.Dispose();
@@ -578,7 +585,7 @@ public sealed class Plugin : BaseUnityPlugin
         window.Message(GlobalSpeed.On ? L.Format("全局加速 {0} 已开启", GlobalSpeed.Label(GlobalSpeed.Level)) : L.Text("全局加速已关闭"), false);
     }
     internal void ShowForAction() { if (window.Hidden) return; window.ShowEvents(true); inputGuard.Tick(); }
-    private void MenuEnded(MenuDialog menu) => Adapter?.ClearPreview();
+    private void MenuEnded(MenuDialog menu) { Adapter?.ClearPreview(); HiddenOptions?.Clear(); }
     // A choice menu takes over from the branch that led to it.
     private void MenuStarted(MenuDialog menu) { Branches?.Clear(); OptionHints?.MenuStarted(); Logger.LogInfo("MENU start"); }
     /// <summary>Called after the game's own Switch ran; reads the same data, evaluates nothing for the game.</summary>
@@ -587,13 +594,13 @@ public sealed class Plugin : BaseUnityPlugin
     {
         using var timing = Perf.Time("branch");
         Logger.LogInfo($"BRANCH name={name} result={result}");
-        // Switched off in settings: the branch is still logged, the box is never filled and 回想 gets no line.
-        if (!window.ShowBranches) return;
+        // Both switched off in settings: the branch is still logged, the box is never filled and 回想 gets no line.
+        if (!window.ShowBranches && storyLog.Mode == 2) return;
         try
         {
             // Not found where the game found it: said once per switch, so a box or 回想 line that never came can be traced.
             if (OptionHints.FindSwitch(name) is not object data) { if (unreadSwitches.Add(name)) Logger.LogWarning("BRANCH unread " + name); return; }
-            Branches.Record(data, result);
+            if (window.ShowBranches) Branches.Record(data, result);
             storyLog.Branch(data, result);
         }
         catch (Exception ex) { Logger.LogWarning("BRANCH " + name + " " + ex.GetBaseException().Message); }
@@ -842,7 +849,11 @@ internal static class NormalOptionHintPatch
 internal static class BreakOptionHintPatch
 {
     private static void Postfix(BreakOptionButton __instance)
-    { if (__instance.gameObject.activeSelf) using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_source"), R.Field<Text[]>(__instance, "_titleText")); }
+    {
+        // A row the game hides here (condition unmet) is listed under the menu instead (F107).
+        Plugin.Instance?.HiddenOptions.RowUpdated(__instance);
+        if (__instance.gameObject.activeSelf) using (Perf.Time("option-hint")) Plugin.Instance?.OptionHints.Decorate(__instance, R.Field<Text>(__instance, "_source"), R.Field<Text[]>(__instance, "_titleText"));
+    }
 }
 [HarmonyPatch(typeof(DiceOption), nameof(DiceOption.UpdateContent))]
 internal static class DiceOptionHintPatch
@@ -909,6 +920,9 @@ internal static class SegmentSaveCreatePatch
 }
 [HarmonyPatch(typeof(SaveSystem), nameof(SaveSystem.LoadGameData))]
 internal static class SegmentSaveLoadPatch { private static void Postfix() => Plugin.Instance?.Segments?.Loaded(); }
+// A load into a story with no action left keeps the 旬 until the story goes back to the map (F108).
+[HarmonyPatch(typeof(MissionManagerData), nameof(MissionManagerData.UpdateCheckMissions))]
+internal static class SegmentSaveRoundPatch { private static bool Prefix() => Plugin.Instance?.Segments?.KeepRound() != true; }
 [HarmonyPatch(typeof(LuaManager), nameof(LuaManager.ToggleSaveButton))]
 internal static class SegmentSaveNativePatch { private static void Postfix(int active) => Plugin.Instance?.Segments?.NativeToggle(active == 1); }
 // Whether the music and ambience can be heard, for the note a story save keeps of them (F78).

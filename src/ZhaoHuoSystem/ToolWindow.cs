@@ -110,12 +110,15 @@ public sealed partial class ToolWindow : IDisposable
     public bool Hidden { get; private set; }
     /// <summary>The story-branch box alone (F45); every other overlay is unaffected.</summary>
     public bool ShowBranches { get; set; } = true;
+    /// <summary>设置/回想中的剧情分支 (F106): 0 简略, 1 完整, 2 不显示.</summary>
+    public int LogBranches { get; set; }
     /// <summary>The branch box goes back to its bottom-left corner (F68).</summary>
     public Action? BranchPlaceReset;
     /// <summary>The map's event counts and their hover lists alone (F58).</summary>
     public bool ShowMapCounts { get; set; } = true;
     /// <summary>「跳过本旬」 and 「本旬行动点无限」 beside the date, together (F62).</summary>
     public bool ShowRoundButtons { get; set; } = true;
+    public bool ShowHiddenOptions { get; set; } = true;
     /// <summary>Manual save slots on the load and save pages (F51); a page built with another count builds them again when it opens (F90).</summary>
     public int SaveSlots { get; set; } = 50;
     /// <summary>设置/存档功能 (F105).</summary>
@@ -679,7 +682,7 @@ public sealed partial class ToolWindow : IDisposable
             y += S(52);
         }
         // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
-        note = "剧情按条件分支时弹出，可拖到别处并记住位置；回想里也记一行。关闭后两者都不显示。";
+        note = "剧情按条件分支时弹出，可拖到别处并记住位置；关闭后不再弹出。";
         if (Shown("显示剧情分支小框", "重置位置", note))
         {
             Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);
@@ -691,6 +694,31 @@ public sealed partial class ToolWindow : IDisposable
             if (Button(new Rect(x + S(118), y, resetWidth, S(30)), "重置位置", "settings.branches.reset", tooltip: L.Text("把小框放回左下角"))) BranchPlaceReset?.Invoke();
             float branchDetailX = x + S(118) + resetWidth + S(14);
             Label(new Rect(branchDetailX, y + S(3), Mathf.Max(S(80), r.xMax - branchDetailX), S(44)), note, _muted);
+            y += S(52);
+        }
+        // F106: 回想's branch lines, apart from the box.
+        note = "回想里记下每次剧情分支：简略为一行，鼠标移上去看完整条件；完整为原来的多行；也可以不显示。";
+        if (Shown("回想中的剧情分支", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "回想中的剧情分支", _label);
+            string[] modes = { "简略", "完整", "不显示" };
+            float modeWidth = modes.Max(text => ButtonWidth(text, 64)), modeX = x;
+            for (int i = 0; i < modes.Length; i++, modeX += modeWidth + S(6))
+                if (Button(new Rect(modeX, y, modeWidth, S(30)), modes[i], "settings.logbranches." + i, LogBranches == i ? _tabSelected : _button))
+                { LogBranches = i; SettingsChanged?.Invoke(); }
+            Label(new Rect(modeX + S(8), y + S(3), Mathf.Max(S(80), r.xMax - modeX - S(8)), S(44)), note, _muted);
+            y += S(52);
+        }
+        // F107: a button under 议题 / 走访 menus naming the options the game hid; never changes the menu.
+        note = "议题、走访等菜单的标题旁显示「另有 N 个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。";
+        if (Shown("显示被隐藏的选项", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "显示被隐藏的选项", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), ShowHiddenOptions ? "开启" : "关闭", "settings.hiddenoptions", ShowHiddenOptions ? _tabSelected : _button))
+            {
+                ShowHiddenOptions = !ShowHiddenOptions; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
             y += S(52);
         }
         // Only the map's counts (贴吧 36 楼); 隐藏全部悬浮窗 below still hides everything.
