@@ -4,6 +4,16 @@ internal static partial class Program
 {
     private static void SaveNoteTests()
     {
+        Test("按此改标记 writes the option's value at the segment start, and stays off where it cannot change the branch (F109)", () =>
+        {
+            Equal(FlagOverride.State.Ready, FlagOverride.Plan(true, false, 0, true, 1, out int after)); Equal(1, after);
+            Equal(FlagOverride.State.Ready, FlagOverride.Plan(true, false, 2, false, 3, out after)); Equal(5, after);
+            Equal(FlagOverride.State.Same, FlagOverride.Plan(true, false, 0, true, 0, out after));
+            Equal(FlagOverride.State.Same, FlagOverride.Plan(true, false, 4, false, 0, out after));
+            Equal(FlagOverride.State.NoStart, FlagOverride.Plan(false, false, 0, true, 1, out after));
+            Equal(FlagOverride.State.InSegment, FlagOverride.Plan(true, true, 0, true, 1, out after));
+            Equal(FlagOverride.State.InSegment, FlagOverride.Plan(false, true, 0, true, 1, out after));
+        });
         Test("save stars and notes survive a reload, per account and slot, and empty entries leave the file", () =>
         {
             string folder = Path.Combine(Path.GetTempPath(), "zhaohuo-notes-" + Guid.NewGuid().ToString("N"));

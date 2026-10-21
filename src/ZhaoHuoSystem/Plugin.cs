@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.44")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.45")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -136,11 +136,12 @@ public sealed class Plugin : BaseUnityPlugin
         window.Jump = JumpTo;
         window.JumpBase = () => Adapter.Snapshot.Title && TitleSave.Base.Length > 0 ? TitleSave.Base : L.Text("当前进度");
         storyLog.BackClicked = start => window.JumpFromLog(new JumpTarget { Title = start.Title, Script = start.Script, Save = start.Save, Music = start.Music, Env = start.Env });
-        storyLog.SourceClicked = (branch, flags) =>
+        storyLog.SourceClicked = (branch, flags, start) =>
         {
             if (!flagSources.Ready && !flagSources.Building) StartCoroutine(flagSources.Build(Logger));
-            window.SourcesFromLog(branch, flags);
+            window.SourcesFromLog(branch, flags, start);
         };
+        window.OverrideFlag = OverrideFlag;
         window.SourcesReady = () => flagSources.Ready;
         window.SourcesProgress = () => flagSources.Progress;
         window.FindSources = SourceRows;
@@ -489,6 +490,19 @@ public sealed class Plugin : BaseUnityPlugin
         return copy;
     }
 
+    /// <summary>按此改标记 (F109): a copy of a segment's start with one flag written as an option would have left it.</summary>
+    private GameSave? OverrideFlag(GameSave start, string flag, int value)
+    {
+        if (Copy(start) is not GameSave copy) return null;
+        copy.EventFlags ??= new List<EventFlagSave>();
+        var entry = copy.EventFlags.Find(item => item != null && item.Name == flag);
+        int before = entry?.State ?? 0;
+        if (entry == null) copy.EventFlags.Add(entry = new EventFlagSave { Name = flag });
+        entry.State = value;
+        Logger.LogInfo($"FLAG_OVERRIDE start={copy.StartStoryScript} {flag} {before}->{value}");
+        return copy;
+    }
+
     /// <summary>决定它的选项 (F101): the options setting this flag, those kept by 剧情回顾 first.</summary>
     private List<SourceRow> SourceRows(string flag)
     {
@@ -503,7 +517,7 @@ public sealed class Plugin : BaseUnityPlugin
             string text = source.NoChoice ? L.Format("进入「{0}」时就会{1}（不经选择）", where, change)
                 : source.Via.Length > 0 ? L.Format("「{0}」选「{1}」，进入 {2} 时{3}", where, source.Text, source.Via, change)
                 : L.Format("「{0}」选「{1}」：{2}", where, source.Text, change);
-            rows.Add(new SourceRow { Text = text, Node = source.NoChoice ? null : node, Title = where });
+            rows.Add(new SourceRow { Text = text, Node = source.NoChoice ? null : node, Title = where, Flag = flag, Value = source.Value, Set = source.Set, Script = source.Script, Via = source.Via });
         }
         return rows.OrderBy(row => row.Node == null).ToList();
     }

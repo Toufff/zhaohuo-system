@@ -69,7 +69,7 @@ internal sealed class StoryLog : IDisposable
     public Rect Hover { get; private set; }
     public Action<Start>? BackClicked;
     /// <summary>The branch as it reads (no colours) and the flags it reads.</summary>
-    public Action<string, List<Flag>>? SourceClicked;
+    public Action<string, List<Flag>, Start?>? SourceClicked;
 
     /// <summary>From SegmentSaves, as a story script starts with its copy at hand.</summary>
     public void Kept(string script, GameSave save, string music, string env)
@@ -204,7 +204,7 @@ internal sealed class StoryLog : IDisposable
         {
             e.Use();
             if (over.Kind == Kind.Back) { if (over.Line.Start != null) BackClicked?.Invoke(over.Line.Start); }
-            else SourceClicked?.Invoke(Regex.Replace(over.Line.Branch, "</?(size|color)[^>]*>", ""), over.Line.Flags);
+            else SourceClicked?.Invoke(Regex.Replace(over.Line.Branch, "</?(size|color)[^>]*>", ""), over.Line.Flags, over.Line.Start);
             return;
         }
         if (e.type != EventType.Repaint) return;

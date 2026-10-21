@@ -26,6 +26,10 @@ internal sealed class SourceRow
     /// <summary>The kept start of the script where the option is chosen; null when it was never kept.</summary>
     public StoryReview.Node? Node;
     public string Title = "";
+    /// <summary>The flag and what the option does to it (F109): set to Value, or add Value; where it is chosen, and the script it leads into.</summary>
+    public string Flag = "", Script = "", Via = "";
+    public int Value;
+    public bool Set;
 }
 
 /// <summary>One manual slot as the slot picker shows it.</summary>
@@ -58,6 +62,9 @@ public sealed partial class ToolWindow
     internal Func<bool>? SourcesReady;
     internal Func<float>? SourcesProgress;
     internal Func<string, List<SourceRow>>? FindSources;
+    /// <summary>按此改标记 (F109): the start's copy with the flag written; and the start of the segment the branch was decided in.</summary>
+    internal Func<GameSave, string, int, GameSave?>? OverrideFlag;
+    private StoryLog.Start? _sourceStart;
 
     // Opened from 回想 with the panel closed: closing the dialog closes the panel again, uncovering the log.
     private bool _closeWithDialog;
@@ -65,10 +72,10 @@ public sealed partial class ToolWindow
     internal void JumpFromLog(JumpTarget target) { OpenFromLog(); OpenJump(target, false); }
     private void OpenFromLog() { if (!_visible) { _closeWithDialog = true; Visible = true; } }
     /// <summary>From the game's 回想 (F101): the panel opens on the options that set the flags this branch reads.</summary>
-    internal void SourcesFromLog(string branch, List<StoryLog.Flag> flags)
+    internal void SourcesFromLog(string branch, List<StoryLog.Flag> flags, StoryLog.Start? start)
     {
         OpenFromLog();
-        _sourceBranch = branch; _sourceFlags = flags; _sourceRows = null;
+        _sourceBranch = branch; _sourceFlags = flags; _sourceStart = start; _sourceRows = null;
         _dialog = JumpDialog.Sources; _dialogScroll = Vector2.zero; GUI.FocusControl(null);
     }
 
@@ -327,7 +334,8 @@ public sealed partial class ToolWindow
     private void DrawSources(Rect r)
     {
         Label(new Rect(r.x, r.y, r.width, S(30)), "决定这个分支的选项", _heading);
-        string intro = _sourceBranch + "\n" + L.Text("下面是这个分支读的标记，和剧本里设置它们的选项。回到那一段重新选，之后就可能走另一支；只有收录过的段落能跳转（每段只留最新一份），之后的进度要重新玩。");
+        string intro = _sourceBranch + "\n" + L.Text("下面是这个分支读的标记，和剧本里设置它们的选项。回到那一段重新选，之后就可能走另一支；只有收录过的段落能跳转（每段只留最新一份），之后的进度要重新玩。")
+            + "\n" + L.Text("「按此改标记」：把标记改成该选项给的值，从这个分支所在那一段的开头重新播，到分支处由游戏重新判定。只改这一个标记，原路线上的其他结果不会补上。");
         float introHeight = TextHeight(_small, intro, r.width);
         Label(new Rect(r.x, r.y + S(34), r.width, introHeight), intro, _small);
         float top = r.y + S(42) + introHeight, close = ButtonWidth("取消", 80);
@@ -342,7 +350,7 @@ public sealed partial class ToolWindow
                 try { _sourceRows = _sourceFlags.Select(flag => FindSources?.Invoke(flag.Id) ?? new List<SourceRow>()).ToList(); }
                 catch (Exception ex) { _sourceRows = _sourceFlags.Select(_ => new List<SourceRow>()).ToList(); Message(L.Format("查找失败：{0}", ex.GetBaseException().Message), true); }
             }
-            float row = S(34), heading = S(34), content = list.width - S(18), jump = ButtonWidth("跳转", 72), textWidth = content - jump - S(24), total = 0;
+            float row = S(34), heading = S(34), content = list.width - S(18), jump = ButtonWidth("跳转", 72), take = ButtonWidth("按此改标记", 96), textWidth = content - jump - take - S(32), total = 0;
             // A long option wraps; its row grows to hold it.
             float RowHeight(SourceRow source) => Mathf.Max(row, TextHeight(_label, source.Text, textWidth) + S(8));
             for (int i = 0; i < _sourceFlags.Count; i++) total += heading + (_sourceRows[i].Count == 0 ? row : _sourceRows[i].Sum(RowHeight)) + S(6);
@@ -363,13 +371,27 @@ public sealed partial class ToolWindow
                     foreach (var source in _sourceRows[i])
                     {
                         float height = RowHeight(source);
-                        Label(new Rect(S(10), y + S(4), textWidth, height - S(4)), source.Text, source.Node != null ? _label : _muted, source.Text);
+                        // F109: the option's value written into the start of the segment this branch was decided in.
+                        var start = _sourceStart;
+                        bool inSegment = start != null && (string.Equals(source.Script, start.Script, StringComparison.OrdinalIgnoreCase) || string.Equals(source.Via, start.Script, StringComparison.OrdinalIgnoreCase));
+                        int before = start?.Save?.EventFlags?.Find(item => item != null && item.Name == source.Flag)?.State ?? 0;
+                        var plan = FlagOverride.Plan(start?.Save != null, inSegment, before, source.Set, source.Value, out int after);
+                        Label(new Rect(S(10), y + S(4), textWidth, height - S(4)), source.Text, source.Node != null || plan == FlagOverride.State.Ready ? _label : _muted, source.Text);
                         if (source.Node is { } node)
                         {
                             if (Button(new Rect(content - jump, y + S(2), jump, S(30)), "跳转", "source.jump." + i + "." + node.Id, tooltip: L.Text("选一个存档格，写好后直接进入这一段")))
                             { OpenJump(new JumpTarget { Title = source.Title, Node = node, Script = node.Script }, false); break; }
                         }
                         else Label(new Rect(content - jump, y + S(7), jump, S(22)), "未收录", _small, L.Text("没玩到过这一段，或收录在装模组之前"));
+                        var at = new Rect(content - jump - take - S(8), y + S(2), take, S(30));
+                        if (plan == FlagOverride.State.Ready)
+                        {
+                            if (Button(at, "按此改标记", "source.take." + i + "." + source.Script + "." + source.Via + "." + after, tooltip: L.Format("这一段开头 {0} 是 {1}，改为 {2} 后从这段开头重新播；只改这个标记，原路线的其他结果不会补上", flag.Name, before, after))
+                                && OverrideFlag?.Invoke(start!.Save, source.Flag, after) is GameSave changed)
+                            { OpenJump(new JumpTarget { Title = L.Format("{0}（{1} 改为 {2}）", start.Title, flag.Name, after), Script = start.Script, Save = changed, Music = start.Music, Env = start.Env }, false); break; }
+                        }
+                        else if (plan == FlagOverride.State.Same) Label(new Rect(at.x, y + S(7), take, S(22)), "已是这个值", _small, L.Format("这一段开头 {0} 已经是 {1}", flag.Name, after));
+                        else if (plan == FlagOverride.State.NoStart) Label(new Rect(at.x, y + S(7), take, S(22)), "开头未收录", _small, L.Text("这个分支所在那一段的开头没有收录（读档或换场景之前的回想），可以在面板「数值」页直接改当前标记"));
                         GUI.DrawTexture(new Rect(S(10), y + height - 1, content - S(10), 1), _line);
                         y += height;
                     }
