@@ -23,7 +23,10 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
     public int LoadMode, SaveMode;
     /// <summary>(save page?, new mode) after the player steps a page's order.</summary>
     public Action<bool, int>? Changed;
-    private int ModeOf(MonoBehaviour panel) => panel is SaveGamePanel ? SaveMode : LoadMode;
+    /// <summary>设置/存档功能 (F105): off, the pages keep the game's own order (by number) and show no button; the chosen
+    /// orders are kept for when it is on again.</summary>
+    public Func<bool> Active = () => true;
+    private int ModeOf(MonoBehaviour panel) => !Active() ? 0 : panel is SaveGamePanel ? SaveMode : LoadMode;
     private sealed class Entry { public MonoBehaviour Panel = null!; public Text Heading = null!; public Button Button = null!; public Text Label = null!; }
     private readonly List<Entry> entries = new();
     private Font? font;
@@ -107,7 +110,7 @@ internal sealed class SaveSlotSort(ManualLogSource log) : IDisposable
         }
         foreach (var entry in entries)
         {
-            bool show = !hidden && entry.Heading.isActiveAndEnabled;
+            bool show = !hidden && Active() && entry.Heading.isActiveAndEnabled;
             if (entry.Button.gameObject.activeSelf != show) entry.Button.gameObject.SetActive(show);
             // Headings are 50–69 units; the button reads at about the slot dates' size.
             if (show) InlineButton.Place(entry.Button, entry.Label, entry.Heading, font, L.Text(Modes[ModeOf(entry.Panel)]), 26f / entry.Heading.fontSize);

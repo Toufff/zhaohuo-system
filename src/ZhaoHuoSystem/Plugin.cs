@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.42")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.43")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -39,6 +39,12 @@ public sealed class Plugin : BaseUnityPlugin
     internal SaveSlotSort SaveSort = null!;
     internal SaveNotes SaveNotes = null!;
     internal int SaveSlots = 20;
+    /// <summary>设置/存档功能 (F105): the mod's save features (剧情中随时存档, more manual slots, the pages' order, stars and
+    /// notes) on, or the game's own saving. Nothing stored is removed either way.</summary>
+    internal bool SaveFeatures = true;
+    private bool storySavesSetting = true;
+    /// <summary>Manual slots the pages show and 跳转 offers: the chosen count, or the game's 20 with 存档功能 off.</summary>
+    internal int ShownSlots => SaveFeatures ? SaveSlots : ToolWindow.MinSaveSlots;
     internal BranchNotice Branches = null!;
     private CombatResult combatResult = null!;
     private DuelSpeedButtons speedButtons = null!;
@@ -116,7 +122,9 @@ public sealed class Plugin : BaseUnityPlugin
         unlimited = new RoundUnlimited(Logger, () => roundSkip.Button);
         // Saving anywhere in stories (F71); on by default, with no settings row, only this entry to switch it off.
         var storySaves = Config.Bind("工具", "剧情中随时存档", true, "剧情中任何时候都能用游戏自带的存档；存下的是当前这段剧情开头的状态，读档从这段开头重播。");
-        Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt"), Path.Combine(diagnostics, "segment-save-music.txt")) { Enabled = storySaves.Value };
+        var saveFeatures = Config.Bind("工具", "存档功能", true, "本模组的存档相关功能：剧情中随时存档、更多手动存档格、存档排序、收藏和备注。关闭后都按原版：读档、存档页只显示 20 格，第 21 格以后的存档、收藏和备注都保留，重新打开即恢复。");
+        SaveFeatures = saveFeatures.Value; storySavesSetting = storySaves.Value;
+        Segments = new SegmentSaves(Logger, Path.Combine(diagnostics, "segment-save-check.txt"), Path.Combine(diagnostics, "segment-save-music.txt")) { Enabled = storySaves.Value && SaveFeatures };
         // 剧情回顾 (F84): branch scripts' copies kept as they start, written into an empty slot from the panel.
         Review = new StoryReview(Logger, Path.Combine(diagnostics, "review")) { ScriptText = name => OptionHints.ScriptText(name), ScriptMap = name => OptionHints.Map(name) };
         storyLog = new StoryLog();
@@ -156,6 +164,7 @@ public sealed class Plugin : BaseUnityPlugin
         catch (Exception ex) { notes = new SaveNoteStore(null); Logger.LogWarning("SAVE_NOTE not loaded, changes this session are not kept: " + ex.GetBaseException().Message); }
         SaveNotes = new SaveNotes(Logger, notes);
         SaveSort.IsFavourite = slot => SaveNotes.IsFavourite(slot);
+        SaveSort.Active = () => SaveFeatures; SaveNotes.Active = () => SaveFeatures;
         SaveNotes.StarChanged = () => SaveSort.StarsChanged();
         // After an overwrite the player allowed, an open save page reads its slots again.
         SaveNotes.Overwritten = () =>
@@ -188,7 +197,7 @@ public sealed class Plugin : BaseUnityPlugin
         var fastFree = Config.Bind("工具", "自由行动过场加快", false, "地点行动后的停顿、转场遮罩和回到地图时的淡入快 3 倍。");
         Speedups.Log = Logger; Speedups.StatPause = Mathf.Clamp(statPause.Value, 0, 2); Speedups.FastFree = fastFree.Value;
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value, ParseKey(speedKey.Value, KeyCode.None));
-        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots;
+        window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots; window.SaveFeatures = SaveFeatures;
         window.StatPause = Speedups.StatPause; window.FastFreeTransitions = Speedups.FastFree;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
@@ -197,11 +206,12 @@ public sealed class Plugin : BaseUnityPlugin
             speedKey.Value = window.SpeedKey.ToString(); globalSpeed.Value = GlobalSpeed.On; globalSpeedLevel.Value = GlobalSpeed.Level;
             uiScale.Value = UiScale.User; showBranches.Value = window.ShowBranches; showMapCounts.Value = window.ShowMapCounts; showRoundButtons.Value = window.ShowRoundButtons; directDice.Value = Adapter.DirectDiceResult;
             SaveSlots = window.SaveSlots; saveSlots.Value = SaveSlots;
+            SaveFeatures = window.SaveFeatures; saveFeatures.Value = SaveFeatures; Segments.Enabled = storySavesSetting && SaveFeatures;
             statPause.Value = Speedups.StatPause = window.StatPause; fastFree.Value = Speedups.FastFree = window.FastFreeTransitions;
             skinStyle.Value = GameSkin.Enabled ? 0 : 1;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} saveFeatures={SaveFeatures} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");
@@ -419,7 +429,7 @@ public sealed class Plugin : BaseUnityPlugin
         SlotSetupPatch.Depth++;
         try
         {
-            for (int i = 1; i <= SaveSlots; i++)
+            for (int i = 1; i <= ShownSlots; i++)
             {
                 string slot = i.ToString("000", CultureInfo.InvariantCulture);
                 var save = system.GetSaveData(slot);
@@ -503,9 +513,9 @@ public sealed class Plugin : BaseUnityPlugin
 
     internal void ExpandSaveSlots(MonoBehaviour panel)
     {
-        if (R.Field(panel, "_slotCount") is not int count || count >= SaveSlots) return;
-        R.Set(panel, "_slotCount", SaveSlots);
-        Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} {count}->{SaveSlots}");
+        if (R.Field(panel, "_slotCount") is not int count || count >= ShownSlots) return;
+        R.Set(panel, "_slotCount", ShownSlots);
+        Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} {count}->{ShownSlots}");
     }
     /// <summary>
     /// Before a page opens (F90): one built with another count than 设置 now has builds its slots again, with the game's
@@ -513,13 +523,13 @@ public sealed class Plugin : BaseUnityPlugin
     /// </summary>
     internal void FitSaveSlots(MonoBehaviour panel)
     {
-        if (R.Field(panel, "_slotCount") is not int count || count == SaveSlots) return;
+        if (R.Field(panel, "_slotCount") is not int count || count == ShownSlots) return;
         try
         {
-            R.Set(panel, "_slotCount", SaveSlots);
+            R.Set(panel, "_slotCount", ShownSlots);
             AccessTools.Method(panel.GetType(), "CreateSlot")?.Invoke(panel, null);
             AccessTools.Method(panel.GetType(), "SetButtonNavigation")?.Invoke(panel, null);
-            Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} rebuilt {count}->{SaveSlots}");
+            Logger.LogInfo($"SAVE_SLOTS page={(panel is SaveGamePanel ? "save" : "load")} rebuilt {count}->{ShownSlots}");
         }
         catch (Exception ex) { Logger.LogWarning("SAVE_SLOTS " + ex.GetBaseException().Message); }
     }

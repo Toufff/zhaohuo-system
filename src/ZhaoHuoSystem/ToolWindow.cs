@@ -118,6 +118,8 @@ public sealed partial class ToolWindow : IDisposable
     public bool ShowRoundButtons { get; set; } = true;
     /// <summary>Manual save slots on the load and save pages (F51); a page built with another count builds them again when it opens (F90).</summary>
     public int SaveSlots { get; set; } = 50;
+    /// <summary>设置/存档功能 (F105).</summary>
+    public bool SaveFeatures { get; set; } = true;
     public const int MinSaveSlots = 20, MaxSaveSlots = 99;
     /// <summary>The pause after a shown stat change: 0 the game's 0.5 s, 1 short, 2 none (F95).</summary>
     public int StatPause { get; set; }
@@ -764,10 +766,24 @@ public sealed partial class ToolWindow : IDisposable
             Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
             y += S(52);
         }
+        // F105: one switch back to the game's own saving; nothing stored is removed, so turning it on again restores all.
+        note = "剧情中随时存档、更多手动存档格、存档排序、收藏和备注。关闭后都按原版：读档、存档页只显示 20 格；第 21 格以后的存档、收藏和备注都还在，重新开启就恢复。";
+        if (Shown("存档功能", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "存档功能", _label);
+            if (Button(new Rect(x, y, S(110), S(30)), SaveFeatures ? "开启" : "原版", "settings.savefeatures", SaveFeatures ? _tabSelected : _button))
+            {
+                SaveFeatures = !SaveFeatures; SettingsChanged?.Invoke();
+            }
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(66)), note, _muted);
+            y += S(74);
+        }
         // F90: typed, or ten at a time; a page builds its slots again the next time it opens.
         note = "读档、存档页的手动存档格数（20–99，游戏原为 20），可直接输入，下次打开读档或存档页时生效。调小或卸载模组后，多出的存档只是不显示，文件仍在。";
         if (Shown("手动存档数", note))
         {
+            // Only counts while 存档功能 is on.
+            bool slotsEnabled = GUI.enabled; GUI.enabled = slotsEnabled && SaveFeatures;
             Label(new Rect(r.x, y, labelWidth, S(32)), "手动存档数", _label);
             float field = S(56);
             if (Button(new Rect(x, y, step, S(30)), "−", "settings.slots.down")) { GUI.FocusControl(null); SetSaveSlots(((SaveSlots + 9) / 10 - 1) * 10); }
@@ -778,6 +794,7 @@ public sealed partial class ToolWindow : IDisposable
             if (int.TryParse(_slotsText, out int typed) && typed >= MinSaveSlots && typed <= MaxSaveSlots && typed != SaveSlots) SetSaveSlots(typed);
             if (Button(new Rect(x + step + field + S(16), y, step, S(30)), "+", "settings.slots.up")) { GUI.FocusControl(null); SetSaveSlots((SaveSlots / 10 + 1) * 10); }
             Label(new Rect(r.x, y + S(38), r.width, S(44)), note, _muted);
+            GUI.enabled = slotsEnabled;
             y += S(88);
         }
         if (Shown("面板快捷键")) KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);

@@ -27,7 +27,8 @@ namespace ZhaoHuoSystem;
 /// the first script after loading that save is compared with it and the result logged (SAVE_CHECK).
 /// A script often goes on with the music its parent put on, and a load stops all sound before replaying it: each such
 /// save also notes the music and ambience heard as its script started, and the load puts them back (F78).
-/// Off with the config entry 「工具/剧情中随时存档」.
+/// Off with the config entry 「工具/剧情中随时存档」 or with 设置/存档功能 (F105): saving then works as the game's own; the copy at
+/// each script's start is still taken, since 剧情回顾 and 回想 jump from it.
 /// </summary>
 internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string musicFile)
 {
@@ -59,7 +60,7 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
             if (name.Length == 0 || name.StartsWith("tmp", StringComparison.OrdinalIgnoreCase)) return;
             snapshot = null; script = "";
             var player = PlayerStatManagerData.Instance;
-            if (!Enabled || StoryManager.Instance == null || SaveSystem.Instance == null || player == null || Create == null) return;
+            if (StoryManager.Instance == null || SaveSystem.Instance == null || player == null || Create == null) return;
             // Only a script the story itself moved to; it is what a save starts from.
             if (!string.Equals(player.CurrentStoryScript, name, StringComparison.OrdinalIgnoreCase)) return;
             if (Create.Invoke(SaveSystem.Instance, null) is not GameSave save) return;

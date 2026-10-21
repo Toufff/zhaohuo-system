@@ -49,6 +49,9 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     private string overwriteText = "";
     /// <summary>After an allowed overwrite: the open save page shows the new save.</summary>
     public Action? Overwritten;
+    /// <summary>设置/存档功能 (F105): off, stars and notes are not shown and a starred slot is written over without the
+    /// question, as the game does; what is stored stays for when it is on again.</summary>
+    public Func<bool> Active = () => true;
 
     /// <summary>
     /// Before the game writes a save to this slot: a starred slot that already holds a save is held back and the
@@ -59,7 +62,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
     {
         try
         {
-            if (slot == allowed) return false;
+            if (slot == allowed || !Active()) return false;
             string key = SaveNoteStore.Key(Account(), slot);
             if (!store.Favourite(key) || SaveSystem.Instance == null || SaveSystem.Instance.GetSaveData(slot) == null) return false;
             overwrite = slot;
@@ -124,7 +127,7 @@ internal sealed class SaveNotes(ManualLogSource log, SaveNoteStore store) : IDis
         foreach (var panel in panels)
         {
             if (R.Field(panel, "_saveSlots") is not Array slots) continue;
-            bool shown = !hidden && panel.isActiveAndEnabled;
+            bool shown = !hidden && Active() && panel.isActiveAndEnabled;
             foreach (var item in slots)
                 if (item is MonoBehaviour slot && slot != null && RowOf(slot) is Row row) Layout(row, shown, pointer);
         }
