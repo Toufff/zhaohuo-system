@@ -77,6 +77,8 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **50 manual save slots**: manual saves go from 20 to 50 slots. Change the count anywhere from 20 to 99 with 手动存档数 (manual save slots) on the 设置 (Settings) tab; it applies the next time you open the load or save page. After lowering it or uninstalling, the extra saves no longer appear in the game's list, but the files stay and show up again when you raise it back or reinstall.
 
+- **Save features**: 存档功能 (save features) on the 设置 (Settings) tab is on by default. Turn it off to get the game's own saving back: no saving anywhere in the story, 20 slots on the load/save pages, no sort button, stars or notes. Saves in slot 21+ and your stars and notes are kept and come back when you turn it on again.
+
 - **UI scale**: the mod grows automatically on 4K and other high resolutions; adjust it further with 界面缩放 (UI scale) on the 设置 (Settings) tab.
 
 - **UI style**: 界面风格 (UI style) on the 设置 (Settings) tab chooses between 游戏素材 (game assets, the default) and 简洁 (plain). Game assets draws the panel and the mod's buttons with the game's own frames, buttons and fonts (taken from what the game has already loaded; the mod ships no game files). Plain is the original flat look. The branch box, fight result buttons, duel speed buttons, option hover notes, map event counts and the save-note dialog follow the same style.
