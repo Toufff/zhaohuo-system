@@ -13,6 +13,8 @@ An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped
 
 The in-game panel follows the game's language and is available in Simplified Chinese, Traditional Chinese and Korean.
 
+> We strongly recommend playing your first run without any mods, through to the "The Last Hidden Weapon" or "Martial Legend" ending, before using ZhaoHuo System: taste the original design first, and later runs pay off more. Nothing is locked; the panel reminds you once, the first time it opens.
+
 ![Seeing which events this action can trigger and choosing one in the panel](media/event-choose.webp)
 
 ## Features
@@ -31,9 +33,11 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Unlimited actions for a period**: next to 跳过本旬 right of the date, 本旬行动点无限 (unlimited action points this period) stops action points from being spent until the next ten-day period. Turn off 显示本旬按钮 (show period buttons) on the 设置 (Settings) tab to hide both buttons beside the date.
 
-- **Values**: edit attributes, character affection, sect relations and story flags directly.
+- **Values**: edit attributes, character affection, sect relations and story flags directly. Each value on the 数值 (Values) tab has a lock button: lock it for this session (until the game restarts) or always (kept across saves and restarts). A locked value can't be changed by the story, items or fights; editing it in the panel still works.
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
+
+- **Stat cap**: 六维上限 (stat cap) on the 设置 (Settings) tab raises the cap of HP, internal energy, agility, blades, hidden weapons and fists from 100 to 200 or 999. Bonuses that were held back at 100 count right away, so your character gets noticeably stronger. Set it back to 100 and the excess is pulled back to 100 the next time the value changes or you load a save.
 
 - **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story). Locked options also get a 一键设置 (set to meet) button: it sets the unmet unlock conditions just far enough to meet them, and the option unlocks on the spot. When the unlock condition compares a sum of several values (e.g. the six Paths added together > 1), the shortfall is added to one of them.
   - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
@@ -86,6 +90,8 @@ The in-game panel follows the game's language and is available in Simplified Chi
 - **UI style**: 界面风格 (UI style) on the 设置 (Settings) tab chooses between 游戏素材 (game assets, the default) and 简洁 (plain). Game assets draws the panel and the mod's buttons with the game's own frames, buttons and fonts (taken from what the game has already loaded; the mod ships no game files). Plain is the original flat look. The branch box, fight result buttons, duel speed buttons, option hover notes, map event counts and the save-note dialog follow the same style.
 
 - **Settings search**: a search box at the top of the 设置 (Settings) tab filters the settings by name and description.
+
+- **Spoiler displays**: 剧透类显示 (spoiler displays) at the top of the 设置 (Settings) tab turns the story branch box, map event counts, hidden options and the branch lines in 回想 on or off together; it shows 部分开启 (partly on) when only some are on.
 
 - **Faster flow**: returning to the free-play map, opening the save and load pages and skipping through the story are all faster (saves are no longer read in full over and over, and skipping no longer idles between commands), and the story log is no longer rebuilt on every line. Auto mode waits until a line is fully shown, then turns the page after a time based on its length. On the 设置 (Settings) tab, 数值变化停顿 (pause after stat changes: 0.5 s original / 0.2 s / none) and 自由行动过场 (free-play transitions: original / 3× faster) speed things up further; both default to the original.
 
