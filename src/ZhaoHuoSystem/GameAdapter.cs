@@ -193,9 +193,10 @@ public sealed class GameAdapter : IGameAdapter
                     {
                         var id = "stat:" + stat.StatType;
                         int addition = stat.AdditionValue;
-                        long cap = (long)stat.Max + R.RequiredField<int>(stat, "_limitAddition");
+                        // 六维上限 (F112) raises the base and final maximum of the six.
+                        long cap = (long)StatRules.BaseMax(stat) + R.RequiredField<int>(stat, "_limitAddition");
                         int min = stat.FinalValue, max = stat.FinalValue;
-                        bool writable = cap >= int.MinValue && cap <= int.MaxValue && ValueSemantics.TryRange(stat.Min, stat.Max, addition, (int)cap, out min, out max);
+                        bool writable = cap >= int.MinValue && cap <= int.MaxValue && ValueSemantics.TryRange(stat.Min, StatRules.BaseMax(stat), addition, (int)cap, out min, out max);
                         var view = ValueCatalog.View(id, StatName(stat), ValueSemantics.GroupId(stat.GetLocaleKey(), (int)stat.PropertyType), stat.FinalValue, min, max, writable);
                         view.BaseValue = stat.Value; view.AdditionValue = addition;
                         view.EnumValues = L.EnumValues(stat.GetLocaleKey());
@@ -209,9 +210,10 @@ public sealed class GameAdapter : IGameAdapter
                         AddValue(next, new(stat, view, () => stat.FinalValue, value =>
                         {
                             int currentAddition = stat.AdditionValue;
-                            long currentCap = (long)stat.Max + R.RequiredField<int>(stat, "_limitAddition");
-                            if (currentCap < int.MinValue || currentCap > int.MaxValue || !ValueSemantics.TryBase(value, stat.Value, stat.Min, stat.Max, currentAddition, (int)currentCap, out int targetBase)) throw new InvalidOperationException(L.Text("目标最终值不可达"));
-                            stat.SetValue(targetBase);
+                            long currentCap = (long)StatRules.BaseMax(stat) + R.RequiredField<int>(stat, "_limitAddition");
+                            if (currentCap < int.MinValue || currentCap > int.MaxValue || !ValueSemantics.TryBase(value, stat.Value, stat.Min, StatRules.BaseMax(stat), currentAddition, (int)currentCap, out int targetBase)) throw new InvalidOperationException(L.Text("目标最终值不可达"));
+                            // The panel's own write goes through a lock (F111), which then holds the new value.
+                            using (StatRules.Allow()) stat.SetValue(targetBase);
                         }));
                     }
                     catch (Exception ex) { log.LogWarning("VALUE_READ stat=" + stat.StatType + " " + ex.GetBaseException().Message); }

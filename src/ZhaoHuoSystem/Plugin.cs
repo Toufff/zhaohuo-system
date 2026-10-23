@@ -26,7 +26,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.45")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.46")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -194,9 +194,15 @@ public sealed class Plugin : BaseUnityPlugin
         var logBranches = Config.Bind("界面", "回想中的剧情分支", 0, "回想里每次剧情分支的记录：0 简略（一行，鼠标移上去看完整条件），1 完整，2 不显示。");
         storyLog.Mode = Mathf.Clamp(logBranches.Value, 0, 2);
         var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
+        var firstRun = Config.Bind("界面", "一周目提醒已处理", false, "第一次打开面板时的「先自己打一周目吧」提醒已经回应过（或汗青书里已有结局），不再出现。");
         var showHiddenOptions = Config.Bind("界面", "显示被隐藏的选项", true, "议题、走访等菜单的标题旁显示「另有 N 个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
+        var statCap = Config.Bind("工具", "六维上限", 100, "体力、内力、轻功、刀剑、暗器、拳掌的上限：100（原版）、200、999。");
+        StatRules.Cap = Array.IndexOf(StatRules.Caps, statCap.Value) >= 0 ? statCap.Value : 100;
+        var lockedStats = Config.Bind("工具", "一直锁定的数值", "", "数值页里「一直锁定」的数值（内部名，逗号分隔）；本次锁定的不记在这里。");
+        StatRules.LoadLocks(lockedStats.Value);
+        StatRules.AlwaysChanged = saved => { lockedStats.Value = saved; Logger.LogInfo("STAT_LOCKS always=" + saved); };
         var directDice = Config.Bind("工具", "指定后直接出结果", true, "骰子界面点「指定」后不播转盘、不等「继续」，直接给出结果；结果仍由游戏自己结算。");
         Adapter.DirectDiceResult = directDice.Value;
         var statPause = Config.Bind("工具", "数值变化停顿", 0, "剧情里数值变化弹出提示后的停顿：0 原版 0.5 秒，1 为 0.2 秒，2 不停；没有弹出提示的变化一律不停。");
@@ -204,6 +210,9 @@ public sealed class Plugin : BaseUnityPlugin
         Speedups.Log = Logger; Speedups.StatPause = Mathf.Clamp(statPause.Value, 0, 2); Speedups.FastFree = fastFree.Value;
         window.LoadSettings(ParseKey(panelKey.Value, KeyCode.F8), ParseKey(hideKey.Value, KeyCode.None), hidden.Value, ParseKey(speedKey.Value, KeyCode.None));
         window.ShowBranches = showBranches.Value; window.ShowMapCounts = showMapCounts.Value; window.ShowRoundButtons = showRoundButtons.Value; window.SaveSlots = SaveSlots; window.SaveFeatures = SaveFeatures; window.LogBranches = storyLog.Mode; window.ShowHiddenOptions = showHiddenOptions.Value;
+        window.FirstRunDone = firstRun.Value;
+        window.FirstRunHandled = () => { firstRun.Value = true; Logger.LogInfo("FIRST_RUN handled"); };
+        window.HasEnding = () => LibrarySystem.Instance?.EndGame?.List is { } endings ? endings.Any(item => item != null && item.Count > 0) : null;
         window.StatPause = Speedups.StatPause; window.FastFreeTransitions = Speedups.FastFree;
         OptionHints.Suppressed = window.Hidden; PrimeKeys();
         window.SettingsChanged = () =>
@@ -214,11 +223,12 @@ public sealed class Plugin : BaseUnityPlugin
             SaveSlots = window.SaveSlots; saveSlots.Value = SaveSlots;
             storyLog.SetMode(window.LogBranches); logBranches.Value = storyLog.Mode; showHiddenOptions.Value = window.ShowHiddenOptions;
             SaveFeatures = window.SaveFeatures; saveFeatures.Value = SaveFeatures; Segments.Enabled = storySavesSetting && SaveFeatures;
+            statCap.Value = StatRules.Cap;
             statPause.Value = Speedups.StatPause = window.StatPause; fastFree.Value = Speedups.FastFree = window.FastFreeTransitions;
             skinStyle.Value = GameSkin.Enabled ? 0 : 1;
             if (!window.ShowBranches) Branches?.Clear();
             OptionHints.Suppressed = window.Hidden; PrimeKeys();
-            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} logBranches={storyLog.Mode} hiddenOptions={window.ShowHiddenOptions} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} saveFeatures={SaveFeatures} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
+            Logger.LogInfo($"SETTINGS panelKey={window.PanelKey} hideKey={window.HideKey} hidden={window.Hidden} scale={UiScale.User} branches={window.ShowBranches} mapCounts={window.ShowMapCounts} roundButtons={window.ShowRoundButtons} logBranches={storyLog.Mode} hiddenOptions={window.ShowHiddenOptions} directDice={Adapter.DirectDiceResult} saveSlots={SaveSlots} saveFeatures={SaveFeatures} statCap={StatRules.Cap} statPause={Speedups.StatPause} fastFree={Speedups.FastFree} skin={GameSkin.Enabled} speed={(GlobalSpeed.On ? GlobalSpeed.Label(GlobalSpeed.Level) : "off")} speedKey={window.SpeedKey}");
         };
         var invincible = Config.Bind("战斗", "无敌", false, "战役中主角与友军、决斗中主角不受伤害；决斗剧情扣血仍生效但不致死。");
         var oneHit = Config.Bind("战斗", "一击必杀", false, "敌人受到伤害即倒下；剧情保底血量仍生效。");

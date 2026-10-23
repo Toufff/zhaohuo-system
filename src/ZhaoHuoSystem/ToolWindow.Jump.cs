@@ -43,7 +43,7 @@ internal sealed class SlotLine
 // and loaded at once. 直接跳转 first says what may break. The dialogs sit over the whole window; nothing behind them reacts.
 public sealed partial class ToolWindow
 {
-    private enum JumpDialog { None, Help, Warning, Slots, Overwrite, Sources }
+    private enum JumpDialog { None, Help, Warning, Slots, Overwrite, Sources, FirstRun }
     private JumpDialog _dialog;
     private JumpTarget? _jumpTarget;
     private bool _jumpDirect;
@@ -110,7 +110,7 @@ public sealed partial class ToolWindow
     {
         Fill(new Rect(0, 0, width, height), new Color(0, 0, 0, .55f));
         bool tall = _dialog == JumpDialog.Help || _dialog == JumpDialog.Slots || _dialog == JumpDialog.Sources;
-        float boxWidth = Mathf.Min(S(tall ? 640 : 520), width - S(40));
+        float boxWidth = Mathf.Min(S(tall || _dialog == JumpDialog.FirstRun ? 640 : 520), width - S(40));
         float boxHeight = _dialog switch
         {
             JumpDialog.Help or JumpDialog.Slots or JumpDialog.Sources => Mathf.Min(S(560), height - S(60)),
@@ -128,6 +128,7 @@ public sealed partial class ToolWindow
             case JumpDialog.Slots: DrawSlots(inner); break;
             case JumpDialog.Overwrite: DrawOverwrite(inner); break;
             case JumpDialog.Sources: DrawSources(inner); break;
+            case JumpDialog.FirstRun: DrawFirstRun(inner); break;
         }
         // A press outside the box goes nowhere.
         var current = Event.current;
@@ -149,6 +150,7 @@ public sealed partial class ToolWindow
             string body = L.Format("原来的存档（{0} · 存于 {1}）会被「{2}」替换，无法恢复。", line.Date, line.Saved, jump.Title) + (line.Star ? L.Text("这是收藏的存档，星标和备注也会一起清掉。") : "");
             return TextHeight(line.Star ? _unmet : _label, body, width);
         }
+        if (_dialog == JumpDialog.FirstRun) return TextHeight(_label, L.Text(FirstRunBody), width);
         return S(60);
     }
 

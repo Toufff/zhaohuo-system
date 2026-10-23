@@ -174,6 +174,20 @@ internal static partial class Program
             // 手动存档数: both pages build their slots in Awake from _slotCount.
             foreach (string page in new[] { "LoadGamePanel", "SaveGamePanel" }) { Has(mortalCore, "Mortal.Core", page, "_slotCount"); Signature(mortalCore, "Mortal.Core", page, "Awake"); }
         });
+        Test("stat lock and raised-cap patch targets resolve by name with the injected parameter names (F108, F111, F112)", () =>
+        {
+            string core = Path.Combine(managed, "Mortal.Core.dll");
+            Signature(core, "Mortal.Core", "GameStat", "SetValue", "value");
+            Signature(core, "Mortal.Core", "GameStat", "AddValue", "value", "totalAdd");
+            Has(core, "Mortal.Core", "GameStat", "_max", "_value", "_limitAddition", "FinalValue");
+            Signature(core, "Mortal.Core", "GameStatUtils", "GetGameStatLevel", "value", "max", "levelLength");
+            Signature(core, "Mortal.Core", "RadarChartPanel", "UpdateStatus");
+            Has(core, "Mortal.Core", "RadarChartPanel", "_uiPolygon");
+            Signature(core, "Mortal.Core", "PlayerStatManagerData", "Load", "gameSave");
+            Signature(core, "Mortal.Core", "SaveSystem", "NewGameData");
+            Signature(core, "Mortal.Core", "SaveSystem", "NewActGameData");
+            Signature(core, "Mortal.Core", "MissionManagerData", "UpdateCheckMissions");
+        });
         Test("speed-up patch targets resolve by name with the injected parameter names (F95)", () =>
         {
             string core = Path.Combine(managed, "Mortal.Core.dll"), story = Path.Combine(managed, "Mortal.Story.dll"), free = Path.Combine(managed, "Mortal.Free.dll"), fungus = Path.Combine(managed, "Fungus.dll");

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Mortal.Core;
 using UnityEngine;
 
 namespace ZhaoHuoSystem;
@@ -84,8 +85,10 @@ public sealed partial class ToolWindow : IDisposable
         {
             // On the title screen the events and values wait for a game; the panel opens on 回顾 instead (F96).
             if (value && !_visible && _adapter.Snapshot.Title && _tab <= 1) _tab = 4;
+            bool opening = value && !_visible;
             _visible = value;
             if (!value) { CancelInputCapture(); IsPointerOver = false; _dialog = JumpDialog.None; _closeWithDialog = false; }
+            if (opening) MaybeShowFirstRun();
         }
     }
     /// <summary>Story and map scenes, the fights (F64: their 战斗 tab is what the panel is for there) and the title (F96).</summary>
@@ -648,8 +651,19 @@ public sealed partial class ToolWindow : IDisposable
         string query = _settingsSearch.Trim();
         // A row stays while its name or note holds the words, as shown in this language or in 简体.
         bool Shown(params string[] texts) => query.Length == 0 || texts.Any(text => Matches(query, L.Text(text), text));
+        // F110: the overlays that give the story away, all on or all off in one place; each still has its own row below.
+        string note = "剧情分支小框、地图事件数字、显示被隐藏的选项、回想中的剧情分支，一次全开或全关；下面也能分别设置。";
+        if (Shown("剧透类显示", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "剧透类显示", _label);
+            int spoilers = SpoilerState();
+            if (Button(new Rect(x, y, S(110), S(30)), spoilers switch { 2 => "全部开启", 0 => "全部关闭", _ => "部分开启" }, "settings.spoilers", spoilers == 0 ? _button : _tabSelected))
+                SetSpoilers(spoilers == 0);
+            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
+            y += S(52);
+        }
         // Pausing each action for a choice is the one gameplay switch here; on by default, saved like the rest.
-        string note = "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。";
+        note = "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。";
         if (Shown("行动前选择结果", note))
         {
             Label(new Rect(r.x, y, labelWidth, S(32)), "行动前选择结果", _label);
@@ -754,6 +768,26 @@ public sealed partial class ToolWindow : IDisposable
             }
             Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
             y += S(52);
+        }
+        // F112: the six may rise past the game's 100; the gauges keep reading 100 as full.
+        note = "体力、内力、轻功、刀剑、暗器、拳掌的上限。改回 100 后，超过 100 的部分会在下次变动或读档时被游戏压回 100。";
+        if (Shown("六维上限", note))
+        {
+            Label(new Rect(r.x, y, labelWidth, S(32)), "六维上限", _label);
+            float capX = x;
+            foreach (int cap in StatRules.Caps)
+            {
+                string text = cap == 100 ? L.Text("100（原版）") : cap.ToString(CultureInfo.InvariantCulture);
+                float capWidth = ButtonWidth(text, 64);
+                if (Button(new Rect(capX, y, capWidth, S(30)), text, "settings.statcap." + cap, StatRules.Cap == cap ? _tabSelected : _button))
+                { StatRules.Cap = cap; SettingsChanged?.Invoke(); }
+                capX += capWidth + S(6);
+            }
+            // The three buttons leave little room beside them: the note takes its own line.
+            y += S(38);
+            float noteHeight = TextHeight(_muted, L.Text(note), r.xMax - x);
+            Label(new Rect(x, y, r.xMax - x, noteHeight), note, _muted);
+            y += noteHeight + S(14);
         }
         // F95: pacing the player can see stays the game's own unless chosen here.
         note = "剧情里数值变化弹出提示后停一下再继续；没有弹出提示的变化（变化为 0、隐藏的数值）一律不停。";
@@ -1324,6 +1358,21 @@ public sealed partial class ToolWindow : IDisposable
         Label(nameRect, name, _label, detail); HoverEnum(nameRect, value);
         string current = value.Options.TryGetValue(value.Value, out string label) ? label : value.Value.ToString(CultureInfo.InvariantCulture);
         var currentRect = new Rect(r.width * .42f, r.y + S(6), r.width * .18f - S(10), S(30));
+        // F111: a stat can be locked against the game, for this run or always; the button cycles through the three.
+        if (value.Writable && value.Id.StartsWith("stat:", StringComparison.Ordinal) && Enum.TryParse(value.Id.Substring(5), out GameStatType statType) && StatRules.Lockable(statType))
+        {
+            var mode = StatRules.LockOf(statType);
+            string lockText = mode switch { StatRules.Lock.Session => "本次锁定", StatRules.Lock.Always => "一直锁定", _ => "锁定" };
+            float lockWidth = ButtonWidth("一直锁定", 76);
+            var lockRect = new Rect(currentRect.xMax - lockWidth, currentRect.y - S(2), lockWidth, S(30));
+            currentRect.width = Mathf.Max(S(30), currentRect.width - lockWidth - S(6));
+            if (Button(lockRect, lockText, "value.lock." + value.Id, mode == StatRules.Lock.None ? _button : _tabSelected,
+                L.Text("点一下切换：锁定 → 本次锁定（重启游戏后解除）→ 一直锁定（换存档、重启都保留）→ 解除。锁住后剧情、物品、战斗都改不动它；在这里手动改仍然有效。")))
+            {
+                var next = StatRules.Cycle(statType);
+                Message(next switch { StatRules.Lock.Session => L.Format("{0} 已锁定（本次运行）", name), StatRules.Lock.Always => L.Format("{0} 已一直锁定", name), _ => L.Format("{0} 已解除锁定", name) }, false);
+            }
+        }
         Label(currentRect, current, _label, value.Value.ToString(CultureInfo.InvariantCulture)); HoverEnum(currentRect, value);
         float editorWidth = Mathf.Min(S(245), r.width * .38f);
         Rect editor = new(r.width - editorWidth, r.y + S(4), editorWidth, S(32));

@@ -103,7 +103,7 @@ internal static class StatPausePatch
 {
     private static bool shown;
     [HarmonyPrefix, HarmonyPatch(typeof(StoryMainUI), nameof(StoryMainUI.DisplayStatModification))]
-    private static void Stat(GameStat stat) { if (stat != null && stat.PropertyType != GameStatPropertyType.隱藏) shown = true; }
+    private static void Stat(GameStat stat) { if (stat != null && stat.PropertyType != GameStatPropertyType.隱藏 && !StatRules.Blocks(stat)) shown = true; }
     [HarmonyPrefix, HarmonyPatch(typeof(StoryMainUI), nameof(StoryMainUI.DisplayRelationshipModification))]
     private static void Relation() => shown = true;
     [HarmonyPostfix, HarmonyPatch(typeof(StatModifyManager), nameof(StatModifyManager.GetDisplayTime))]
