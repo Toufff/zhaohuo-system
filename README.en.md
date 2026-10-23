@@ -37,7 +37,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
 
-- **Stat cap**: 六维上限 (stat cap) on the 设置 (Settings) tab raises the cap of HP, internal energy, agility, blades, hidden weapons and fists from 100 to 200 or 999. Bonuses that were held back at 100 count right away, so your character gets noticeably stronger. Set it back to 100 and the excess is pulled back to 100 the next time the value changes or you load a save.
+- **Stat cap**: 六维上限 (stat cap) on the 设置 (Settings) tab raises the cap of HP, internal energy, agility, blades, hidden weapons and fists from 100 to 200 or 999. Set it back to 100 and the excess is pulled back to 100 the next time the value changes or you load a save.
 
 - **Dialogue choices**: each option gets a short note in brackets saying what picking it does: stat changes, conditional branches, story flags, random events and dice rolls. Locked options show the real unlock condition with current values, and what the option does once unlocked. Options that lead straight into a story when a condition holds are marked 若 … ：触发剧情 (if …: story). Locked options also get a 一键设置 (set to meet) button: it sets the unmet unlock conditions just far enough to meet them, and the option unlocks on the spot. When the unlock condition compares a sum of several values (e.g. the six Paths added together > 1), the shortfall is added to one of them.
   - Colours mean the same thing everywhere in the mod: green is a condition that holds, a value that goes up or an item gained; red is a condition that fails, a value that goes down or an item lost.
