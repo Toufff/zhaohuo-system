@@ -11,9 +11,9 @@ An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped
 - choose dice results;
 - turn on god mode and one-hit kills in combat.
 
-The in-game panel follows the game's language and is available in Simplified Chinese, Traditional Chinese and Korean.
+The in-game panel is available in Simplified Chinese, Traditional Chinese, Korean, English and Japanese. It follows the game's language by default; pick another one in the Language ▾ drop-down left of Refresh in the panel's title bar. With the community English patch LoM_en (BepInEx 5 + XUnity.AutoTranslator) installed and the game set to Simplified Chinese, following the game means English, and stats, sects, places, people and endings use the patch's names; with the community Japanese mod LOM-JPMOD it means Japanese. XUnity on its own, for machine translation, doesn't count. English and Japanese only translate the panel's own text: event names, item names and story lines it reads from the game stay in the game's language (Japanese with the Japanese mod).
 
-> We strongly recommend playing your first run without any mods, through to the "The Last Hidden Weapon" or "Martial Legend" ending, before using ZhaoHuo System: taste the original design first, and later runs pay off more. Nothing is locked; the panel reminds you once, the first time it opens.
+> We strongly recommend playing your first run without any mods, through to the "The Final Hidden Weapon" or "Wulin Legend" ending, before using ZhaoHuo System: taste the original design first, and later runs pay off more. Nothing is locked; the panel reminds you once, the first time it opens.
 
 ![Seeing which events this action can trigger and choosing one in the panel](media/event-choose.webp)
 
@@ -120,6 +120,8 @@ Edited values and chosen events end up in your save, so back up your saves befor
 ### Games that already have BepInEx 5
 
 If your game already runs BepInEx 5, for example with an English translation patch (BepInEx 5.4.23.5 + XUnity.AutoTranslator), use `ZhaoHuoSystem-v*-BepInEx5.zip` instead: extract it and double-click `install.bat`. It only adds the ZhaoHuo System plugin and does not install or change BepInEx. If the game is not on BepInEx 5, it tells you which package to use and changes nothing. Without any BepInEx, use the regular package above.
+
+Prefer not to run a script? Download `ZhaoHuoSystem-v*-BepInEx5-manual.zip` and extract it into the game folder. With the English patch, the panel switches to English on its own.
 
 ### Manual install
 
