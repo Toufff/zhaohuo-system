@@ -42,6 +42,27 @@ internal static partial class Program
             Require(!station.Sections.Single(s => s.Group == "ch3_8").Trunk && station.Sections.Single(s => s.Group == "ch3_8").Conditions.Single().SequenceEqual(new[] { "选「O_8」" }), "branch with its choice");
         });
 
+        Test("结缘路线图 sums each heroine's affection per stop, finds her steps and keeps the story's order (F117)", () =>
+        {
+            var source = new FakeRouteSource();
+            source.Script("ch1_1", "statmodifymanager.Character(\"girl4\", 3, 1)\nstatmodifymanager.Character(\"girl4\", 2, 1)\nstatmodifymanager.Character(\"girl5\", 1, 1)\nluamanager.SetNextScript(\"ch1_1_2\")");
+            source.Script("ch1_1_2", "statmodifymanager.SetFlag(\"G10003\", 1)\nstatmodifymanager.SetFlag(\"T0001\", 1)");
+            source.Script("ch3_7_1", "statmodifymanager.SetFlag(\"G11003\", 1)\nstatmodifymanager.Character(\"girl4\", -1, 0)");
+            source.Script("door_02_503", "statmodifymanager.Character(\"girl4\", 4, 1)");
+            source.Mission("M0001", "ch1_1", 1, 1, 1);
+            source.Mission("M2008_01", "ch3_7_1", 2, 10, 1);
+            var map = RouteMapBuilder.Build(source, (text, args) => args.Length == 0 ? text : string.Format(text, args));
+            Require(map.Affection["ch1_1"]["girl4"] == 5 && map.Affection["ch1_1"]["girl5"] == 1, "affection summed per script and key");
+            Require(map.FlagValues["ch1_1_2"].SequenceEqual(new[] { ("G10003", 1), ("T0001", 1) }), "flags with their values, in order");
+            var route = new RomanceRoute(map, RomanceDefs.Find(8)!);
+            Require(route.Stops.Select(s => s.Owner).SequenceEqual(new[] { "stn:M0001", "stn:M2008_01", "cat:door" }), "stops by date, categories last: " + string.Join(",", route.Stops.Select(s => s.Owner)));
+            var first = route.Stops[0];
+            Require(first.Affection == 5 && first.Scripts == 2 && first.Steps.SequenceEqual(new[] { ("G10003", 1) }), "a stop adds up its scripts; unrelated flags are left out");
+            Require(route.SetBy["G11003"].Single().Owner == "stn:M2008_01" && route.SetBy["G00004"].Count == 0, "where each step is set");
+            Require(RomanceDefs.All.Select(h => h.Lover).SequenceEqual(Enumerable.Range(0, 9)) && RomanceDefs.All.All(h => h.Steps.Last().Conquer)
+                && RomanceDefs.All.SelectMany(h => h.Steps).Select(s => s.Flag).Distinct().Count() == RomanceDefs.All.Sum(h => h.Steps.Length), "nine heroines by 爱人 value, each ending with 攻略, no flag shared");
+        });
+
         // Optional comparison with the offline prototype (local, untracked dump and the user's own read record).
         string? research = Environment.GetEnvironmentVariable("ZHAOHUO_ROUTE_AUDIT");
         if (research == null || !Directory.Exists(research)) return;

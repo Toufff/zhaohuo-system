@@ -1,0 +1,30 @@
+趙活系統 v{VERSION}（BepInEx 5 版）—— 《活俠傳》遊戲內修改器
+================================================
+
+這個包給已經裝了 BepInEx 5 的玩家使用，例如裝了英文翻譯補丁（BepInEx 5 + XUnity.AutoTranslator）。
+它只放趙活系統外掛，不安裝也不改動 BepInEx。還沒裝過任何 BepInEx 的，請改用一般版安裝包（內附 BepInEx 6）。
+
+基於 Steam 版《活俠傳》build 26073097、BepInEx 5.4.23.5 開發。
+
+【一鍵安裝】
+1. 關閉遊戲。
+2. 雙擊本資料夾裡的 install.bat。
+   - 它會自動找到 Steam 裡的《活俠傳》；找不到時會跳出視窗，讓你選擇遊戲資料夾（有 Mortal.exe 的那個）。
+   - 遊戲裡沒有 BepInEx 5，或者裝的是 BepInEx 6 時，它會說明該用哪個安裝包，不做任何修改。
+3. 啟動遊戲，讀檔後按 F8 開啟面板，也可以點畫面左側的「趙活系統」小按鈕。
+
+修改數值和指定事件都會寫進存檔，第一次使用前請先備份存檔。
+
+【手動安裝】把本包裡的 BepInEx 資料夾複製到遊戲資料夾，與既有的 BepInEx 資料夾合併。
+
+【更新】下載新版本的 BepInEx 5 版，解壓後再雙擊一次 install.bat。
+
+【解除安裝】雙擊 uninstall.bat。它只刪除趙活系統外掛和它的設定，BepInEx 5 和其他模組保留不動。存檔不受影響。
+
+【遇到問題】
+- 進遊戲後按 F8 沒反應：開啟 BepInEx/LogOutput.log，搜尋「赵活系统」。沒有的話表示外掛沒被載入，請確認遊戲裡裝的確實是 BepInEx 5。
+- 回報問題：https://github.com/Toufff/zhaohuo-system/issues
+  請寫明遊戲語言、出問題的場景，並附上設定頁「匯出診斷」產生的資料夾，或 BepInEx/LogOutput.log。
+
+專案首頁：https://github.com/Toufff/zhaohuo-system
+MIT © Toufff。玩家自製模組，與《活俠傳》的開發商和發行商無關，不包含任何遊戲檔案。

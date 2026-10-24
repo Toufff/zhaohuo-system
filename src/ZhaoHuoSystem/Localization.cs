@@ -72,6 +72,31 @@ public static class L
         return text;
     }
 
+    private static string searchKey = "";
+    private static string[] searchForms = new[] { "" };
+    /// <summary>
+    /// A search word as typed, in 简体 and in 繁体 (F116): the names follow the game's language and a few IDs keep the
+    /// game's 繁体, while the player may type either.
+    /// </summary>
+    public static string[] SearchForms(string text)
+    {
+        text ??= "";
+        if (text == searchKey) return searchForms;
+        var forms = new List<string> { text };
+        if (text.Length > 0 && Environment.OSVersion.Platform == PlatformID.Win32NT)
+            foreach (var (locale, flags) in new[] { ("zh-CN", 0x02000000u), ("zh-TW", 0x04000000u) })
+            {
+                try
+                {
+                    var buffer = new StringBuilder(text.Length * 2 + 2);
+                    if (LCMapStringEx(locale, flags, text, -1, buffer, buffer.Capacity, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) > 0 && !forms.Contains(buffer.ToString())) forms.Add(buffer.ToString());
+                }
+                catch { }
+            }
+        searchKey = text; searchForms = forms.ToArray();
+        return searchForms;
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int LCMapStringEx(string localeName, uint flags, string source, int sourceLength, StringBuilder destination, int destinationLength, IntPtr version, IntPtr reserved, IntPtr sortHandle);
 

@@ -4,17 +4,30 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>ZhaoHuoSystem</AssemblyName>
-    <Version>0.3.46</Version>
+    <Version>0.3.47</Version>
     <GameDir Condition="'$(GameDir)' == ''">F:\SteamLibrary\steamapps\common\LegendOfMortal</GameDir>
     <!-- BepInEx is referenced from the game's own installation; nothing is copied to the output. -->
     <LoaderDir Condition="'$(LoaderDir)' == ''">$(GameDir)</LoaderDir>
     <ManagedDir>$(GameDir)\Mortal_Data\Managed</ManagedDir>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!-- F118: Loader=5 builds the same plugin for BepInEx 5 (the loader most Mono-game mods, e.g. XUnity.AutoTranslator,
+         ship with), referenced from an unpacked BepInEx 5 at Bep5Dir; its output and intermediates are kept apart. -->
+    <Loader Condition="'$(Loader)' == ''">6</Loader>
+    <DefineConstants Condition="'$(Loader)' == '5'">$(DefineConstants);BEPINEX5</DefineConstants>
+    <OutputPath Condition="'$(Loader)' == '5'">bin\$(Configuration)-BepInEx5\</OutputPath>
+    <IntermediateOutputPath Condition="'$(Loader)' == '5'">obj\$(Configuration)-BepInEx5\</IntermediateOutputPath>
+    <AppendTargetFrameworkToOutputPath Condition="'$(Loader)' == '5'">false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(Loader)' != '5'">
     <Reference Include="$(LoaderDir)\BepInEx\core\BepInEx.Core.dll" Private="false" />
     <Reference Include="$(LoaderDir)\BepInEx\core\BepInEx.Unity.Mono.dll" Private="false" />
     <Reference Include="$(LoaderDir)\BepInEx\core\0Harmony.dll" Private="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Loader)' == '5'">
+    <Reference Include="$(Bep5Dir)\BepInEx\core\BepInEx.dll" Private="false" />
+    <Reference Include="$(Bep5Dir)\BepInEx\core\0Harmony.dll" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="$(ManagedDir)\Mortal.Core.dll" Private="false" />
     <Reference Include="$(ManagedDir)\Mortal.Story.dll" Private="false" />
     <Reference Include="$(ManagedDir)\Mortal.Free.dll" Private="false" />

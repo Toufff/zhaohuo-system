@@ -1,0 +1,32 @@
+ZhaoHuo System v{VERSION} (BepInEx 5 build) - in-game editor for Legend of Mortal
+================================================
+
+This package is for players who already have BepInEx 5, for example from the English translation patch
+(BepInEx 5 + XUnity.AutoTranslator). It only adds the ZhaoHuo System plugin and never installs or changes BepInEx.
+If you have no BepInEx at all, use the regular package instead (it comes with BepInEx 6).
+
+Built for the Steam version of Legend of Mortal, build 26073097, and BepInEx 5.4.23.5.
+The panel is in Simplified Chinese, Traditional Chinese or Korean, following the game's language.
+
+[One-click install]
+1. Close the game.
+2. Double-click install.bat in this folder.
+   - It finds Legend of Mortal in Steam; if it cannot, it asks you to pick the game folder (the one with Mortal.exe).
+   - If the game has no BepInEx 5, or has BepInEx 6, it tells you which package to use and changes nothing.
+3. Start the game, load a save and press F8, or click the small ZhaoHuo System button on the left of the screen.
+
+Changing values and choosing events is written into your save. Back up your saves before first use.
+
+[Manual install] Copy the BepInEx folder from this package into the game folder, merging it with the BepInEx folder there.
+
+[Update] Download the new BepInEx 5 build, extract it and double-click install.bat again.
+
+[Uninstall] Double-click uninstall.bat. It removes only the ZhaoHuo System plugin and its settings; BepInEx 5 and your other mods stay. Your saves are not affected.
+
+[Problems]
+- F8 does nothing in game: open BepInEx/LogOutput.log and search for ZhaoHuo or 赵活系统. If it is not there, the plugin was not loaded; check that the game really has BepInEx 5.
+- Report issues: https://github.com/Toufff/zhaohuo-system/issues
+  Please include the game language, what you were doing, and the folder made by "Export diagnostics" on the settings page, or BepInEx/LogOutput.log.
+
+Project page: https://github.com/Toufff/zhaohuo-system
+MIT (c) Toufff. A fan-made mod, not affiliated with the developer or publisher of Legend of Mortal. It contains no game files.

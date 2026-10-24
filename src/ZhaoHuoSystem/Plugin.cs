@@ -9,7 +9,9 @@ using System.Text;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using BepInEx;
+#if !BEPINEX5
 using BepInEx.Unity.Mono;
+#endif
 using HarmonyLib;
 using Fungus;
 using Mortal.Core;
@@ -26,7 +28,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.46")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.47")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -83,6 +85,11 @@ public sealed class Plugin : BaseUnityPlugin
     private void Awake()
     {
         Instance = this;
+#if BEPINEX5
+        // F118: under BepInEx 5 the plugins live on its manager object, which this game destroys on its first scene change
+        // unless BepInEx.cfg sets HideManagerGameObject; the same flags are set here so nothing has to be edited.
+        gameObject.hideFlags = HideFlags.HideAndDontSave;
+#endif
         var selectBeforeAction = Config.Bind("工具", "行动前选择结果", true, "到达真实地点事件判定前等待选择；收起面板或继续会放行游戏流程。");
         Adapter = new GameAdapter(Logger, selectBeforeAction.Value, enabled => selectBeforeAction.Value = enabled);
         Adapter.RuntimeVersion = ReadRuntimeVersion();
@@ -151,6 +158,7 @@ public sealed class Plugin : BaseUnityPlugin
         // 剧情路线图 (F89): built from the game's data the first time its view opens, a few milliseconds a frame.
         routeMap = new RouteMapRunner(Logger);
         window.Routes = routeMap;
+        window.SeriesConditions = RouteMapGame.SeriesConditions;
         pinball = new PinballScore(Logger);
         SaveSort = new SaveSlotSort(Logger);
         // Until 0.3.22 one order served both pages; the load page starts from that shared choice.
@@ -426,6 +434,7 @@ public sealed class Plugin : BaseUnityPlugin
                 window.Draw();
             }
             try { Branches.Paint(); } catch (Exception ex) { OverlayFailed("branch", ex); Branches.Clear(); }
+            try { DrawHiddenNotice(); } catch (Exception ex) { OverlayFailed("hidden-notice", ex); hiddenNoticeUntil = 0; }
             // 回想 covers the menu rows; their hover hints stay hidden under it.
             try { if (!window.Hidden) OptionHints.DrawTooltip(window.Visible && window.IsPointerOver || StoryLog.Open); } catch (Exception ex) { OverlayFailed("tooltip", ex); }
             if (mouseDown) inputGuard.FocusResolved(); else inputGuard.Tick();
@@ -436,6 +445,34 @@ public sealed class Plugin : BaseUnityPlugin
             // Never leave the game waiting on a panel that cannot draw: the action goes on with the game's own choice.
             if (Adapter.Snapshot.ActionWaiting) { Adapter.ContinueAction(); Logger.LogWarning("PANEL_FAILED paused action released"); }
         }
+    }
+    // F114: 隐藏全部悬浮窗 is kept between runs, so a game started hidden shows no launcher and the mod looks gone. The
+    // first title or game screen of such a run says, for a few seconds, which key brings it back.
+    private bool hiddenNoticeShown;
+    private float hiddenNoticeUntil;
+    private GUIStyle? hiddenNoticeStyle;
+    private float hiddenNoticeScale = -1;
+    private void DrawHiddenNotice()
+    {
+        if (!hiddenNoticeShown && (Adapter.Snapshot.Title || Adapter.Snapshot.Ready))
+        {
+            hiddenNoticeShown = true;
+            if (window.Hidden && window.PanelKey != KeyCode.None) { hiddenNoticeUntil = Time.realtimeSinceStartup + 8f; Logger.LogInfo("HIDDEN_NOTICE shown"); }
+        }
+        if (!window.Hidden || Time.realtimeSinceStartup >= hiddenNoticeUntil) return;
+        float k = UiScale.Current;
+        if (hiddenNoticeStyle == null || Mathf.Abs(hiddenNoticeScale - k) > .01f)
+        {
+            hiddenNoticeScale = k;
+            hiddenNoticeStyle = new GUIStyle { font = OverlaySkin.Font(Font.CreateDynamicFontFromOSFont(L.FontNames, 16)), fontSize = Mathf.RoundToInt(16 * k), alignment = TextAnchor.MiddleCenter, wordWrap = false };
+            hiddenNoticeStyle.normal.textColor = Palette.Text;
+        }
+        string text = L.Format("赵活系统已隐藏全部悬浮窗，按 {0} 恢复", window.PanelKey);
+        float w = hiddenNoticeStyle.CalcSize(new GUIContent(text)).x + 40 * k, h = 40 * k;
+        var r = new Rect((Screen.width - w) / 2, 12 * k, w, h);
+        if (Event.current.type != EventType.Repaint) return;
+        if (!OverlaySkin.Panel(r, k)) GUI.Box(r, GUIContent.none);
+        GUI.Label(r, text, hiddenNoticeStyle);
     }
     /// <summary>Before a load or save page builds its slots: never fewer than the game's own.</summary>
     /// <summary>The manual slots for the jump's slot picker: what each holds, read as the save pages show it (F95's headers).</summary>

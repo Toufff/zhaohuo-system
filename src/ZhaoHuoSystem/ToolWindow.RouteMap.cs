@@ -59,7 +59,7 @@ public sealed partial class ToolWindow
         public SideKind Kind;
         public string Text = "", Right = "", Tooltip = "", Marker = "";
         public float Indent, Progress = -1;
-        public bool Selected, Link, Warn;
+        public bool Selected, Link, Warn, Good;
         public Action? Click;
     }
 
@@ -129,8 +129,11 @@ public sealed partial class ToolWindow
             forkX += width + S(6);
         }
         r.y += S(37); r.height -= S(37);
+        RomanceRow(ref r);
+        RomanceOf(map);
         if (_routeLayoutMap != map || Mathf.Abs(_routeLayoutScale - _scale) > .001f) { _routeLayout = Layout(map); _routeLayoutMap = map; _routeLayoutScale = _scale; }
         var layout = _routeLayout!;
+        RomanceFocus();
         float sideWidth = Mathf.Clamp(_routeSideShare > 0 ? _routeSideShare * r.width : Mathf.Min(S(380), r.width * .42f), Mathf.Min(S(260), r.width * .3f), r.width * .6f);
         var canvas = new Rect(r.x, r.y, r.width - sideWidth - S(10), r.height);
         var side = new Rect(canvas.xMax + S(10), r.y, sideWidth, r.height);
@@ -270,7 +273,7 @@ public sealed partial class ToolWindow
             var items = map.Arcs.Where(a => a.Lo != null && (a.Anchor.Length > 0 ? "fork" : Root(a).Kind == "date" ? "date" : "free") == group).Select(a =>
             {
                 float x1 = a.Anchor.Length > 0 && layout.Points.TryGetValue(a.Anchor, out var p) ? p.X - Z(8) : layout.X[Math.Min(RouteSlotOf(a.Lo), maxSlot)] + Z(2);
-                float w = _routePill.CalcSize(new GUIContent(L.DisplayText(a.Label))).x + Z(16) + (_routeJumpable.Contains("arc:" + a.Id) ? Z(12) : 0);
+                float w = _routePill.CalcSize(new GUIContent(PillText(a))).x + Z(16) + (_routeJumpable.Contains("arc:" + a.Id) ? Z(12) : 0);
                 float x2 = a.Hi != null ? Mathf.Max(layout.X[Math.Min(RouteSlotOf(a.Hi) + 1, maxSlot)] - Z(2), x1) : x1;
                 return (a, x1, x2, w);
             }).OrderBy(t => t.x1).ThenByDescending(t => t.a.Lines).ToList();
@@ -347,7 +350,10 @@ public sealed partial class ToolWindow
                     bool bridged = map.Stations.Any(rs => rs.Kind == "route" && layout.Points.TryGetValue(rs.Id, out var rp) && rp.Vis != "no"
                         && map.Edges.Any(x => x.From == e.From && x.To == rs.Id) && map.Edges.Any(x => x.From == rs.Id && x.To == e.To));
                     bool run = a.Vis != "no" && b.Vis != "no" && e.Kind != "skip" && !bridged;
-                    DrawRouteEdge(new Vector2(a.X, a.Y), new Vector2(b.X, b.Y), e.Kind, run ? RouteRun : RouteEdge);
+                    var edge = run ? RouteRun : RouteEdge;
+                    // 结缘 (F117): the main line stays as a guide, faint.
+                    if (_romanceRoute != null) edge.a *= .35f;
+                    DrawRouteEdge(new Vector2(a.X, a.Y), new Vector2(b.X, b.Y), e.Kind, edge);
                 }
             }
             foreach (var s in map.Stations)
@@ -356,14 +362,24 @@ public sealed partial class ToolWindow
                 var hit = new Rect(p.X - Z(40), p.Up ? p.Y - Z(28) : p.Y - Z(12), Z(80), Z(44));
                 if (!hit.Overlaps(view)) continue;
                 string key = "stn:" + s.Id;
+                bool lit = RomanceLit(key);
+                var tint = GUI.color;
+                if (!lit) GUI.color = new Color(tint.r, tint.g, tint.b, tint.a * .22f);
                 if (repaint)
                 {
                     bool selected = _routeSelected == key, next = map.NextStation == s.Id, focus = _routeFocus == key;
                     var centre = new Vector2(p.X, p.Y);
+                    // 结缘 (F117): a station on her way gets her colour around it and the steps it marks.
+                    if (_romanceRoute != null && lit)
+                    {
+                        Ring(centre, Z(19), Z(2.5f), RomanceColor);
+                        string steps = RomanceSteps(key);
+                        if (steps.Length > 0) GUI.Label(new Rect(p.X - Z(50), p.Up ? p.Y - Z(48) - (next ? Z(16) : 0) : p.Y + Z(29) + (next ? Z(16) : 0), Z(100), Z(18)), "【" + steps + "】", _routeTag);
+                    }
                     if (next) Ring(centre, Z(17), Z(3), new Color(.95f, .80f, .36f));
                     if (p.Vis != "no" || selected) Ring(centre, Z(13), Z(2.5f), selected ? Color.white : p.Vis == "yes" ? RouteRun : new Color(RouteRun.r, RouteRun.g, RouteRun.b, .45f));
                     float size = (s.Kind == "route" ? Z(16) : Z(15)) * (focus && age >= 0 && age < .6f ? 1 + .55f * Mathf.Sin(age / .6f * Mathf.PI) : 1);
-                    GUI.DrawTexture(new Rect(p.X - size / 2, p.Y - size / 2, size, size), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, RouteColor(s.Read), 0, s.Kind == "route" ? Z(4) : size / 2);
+                    GUI.DrawTexture(new Rect(p.X - size / 2, p.Y - size / 2, size, size), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, Tinted(RouteColor(s.Read)), 0, s.Kind == "route" ? Z(4) : size / 2);
                     if (focus) for (int k = 0; k < 3; k++)
                     {
                         float phase = (age - k * .28f) / .8f;
@@ -378,8 +394,9 @@ public sealed partial class ToolWindow
                     // ▶: a kept start here, so 跳转 can go to it; on the side away from 终.
                     if (_routeJumpable.Contains(key)) GUI.Label(new Rect(p.X + Z(7), p.Up ? p.Y - Z(21) : p.Y + Z(5), Z(16), Z(16)), "▶", _routeMark);
                 }
+                GUI.color = tint;
                 if (GUI.Button(hit, new GUIContent("", L.DisplayText(s.Label)), GUIStyle.none)) SelectRoute(key, scroll: false);
-                Hover(hit, L.DisplayText(s.Label) + "\n" + RouteDate(s.Date) + (_routeJumpable.Contains(key) ? "\n" + L.Text("▶ 有收录进度，可以跳转") : ""));
+                Hover(hit, L.DisplayText(s.Label) + "\n" + RouteDate(s.Date) + (_routeJumpable.Contains(key) ? "\n" + L.Text("▶ 有收录进度，可以跳转") : "") + RomanceHover(key));
             }
             foreach (var (arc, x1, x2, w, y, _) in layout.Arcs)
             {
@@ -387,13 +404,17 @@ public sealed partial class ToolWindow
                 var span = new Rect(x1, y - Z(1), Mathf.Max(0, x2 - x1), Z(2));
                 if (!pill.Overlaps(view) && !span.Overlaps(view)) continue;
                 string key = "arc:" + arc.Id;
-                bool jumpable = _routeJumpable.Contains(key);
+                bool jumpable = _routeJumpable.Contains(key), lit = RomanceLit(key);
+                var tint = GUI.color;
+                if (!lit) GUI.color = new Color(tint.r, tint.g, tint.b, tint.a * .22f);
                 if (repaint)
                 {
                     if (x2 > x1 + w) Fill(new Rect(x1 + w, y - Z(1), x2 - x1 - w, Z(2)), new Color(RouteColor(arc.Read).r, RouteColor(arc.Read).g, RouteColor(arc.Read).b, .5f));
                     var fill = RouteColor(arc.Read); fill.a = .9f;
-                    GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, fill, 0, Z(9));
-                    if (arc.Visited || _routeSelected == key) GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, _routeSelected == key ? Color.white : RouteRun, Z(2), Z(9));
+                    GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, Tinted(fill), 0, Z(9));
+                    if (arc.Visited || _routeSelected == key) GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, Tinted(_routeSelected == key ? Color.white : RouteRun), Z(2), Z(9));
+                    // 结缘 (F117): a story on her way is outlined in her colour (white still marks the chosen one).
+                    else if (_romanceRoute != null && lit) GUI.DrawTexture(pill, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, RomanceColor, Z(2), Z(9));
                     if (_routeFocus == key) for (int k = 0; k < 3; k++)
                     {
                         float phase = (age - k * .28f) / .8f, grow = Z(16) * phase;
@@ -402,10 +423,11 @@ public sealed partial class ToolWindow
                                 new Color(1, 1, 1, .9f * (1 - phase)), Mathf.Max(1, Z(3) * (1 - phase)), Z(9) + grow);
                     }
                     if (jumpable) GUI.Label(new Rect(pill.x + Z(3), pill.y, Z(14), pill.height), "▶", _routePill);
-                    GUI.Label(jumpable ? new Rect(pill.x + Z(12), pill.y, pill.width - Z(12), pill.height) : pill, L.DisplayText(arc.Label), _routePill);
+                    GUI.Label(jumpable ? new Rect(pill.x + Z(12), pill.y, pill.width - Z(12), pill.height) : pill, PillText(arc), _routePill);
                 }
+                GUI.color = tint;
                 if (GUI.Button(pill, GUIContent.none, GUIStyle.none)) SelectRoute(key, scroll: false);
-                Hover(pill, L.DisplayText(arc.Label) + "\n" + RouteSpan(arc.Lo, arc.Hi) + (jumpable ? "\n" + L.Text("▶ 有收录进度，可以跳转") : ""));
+                Hover(pill, L.DisplayText(arc.Label) + "\n" + RouteSpan(arc.Lo, arc.Hi) + (jumpable ? "\n" + L.Text("▶ 有收录进度，可以跳转") : "") + RomanceHover(key));
             }
             // Dragging the map moves it; a station or story under the press takes its own click first.
             switch (current.GetTypeForControl(pan))
@@ -418,9 +440,11 @@ public sealed partial class ToolWindow
         finally { EndScroll(); }
     }
 
-    private static void Fill(Rect rect, Color color) => GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 0, 0);
+    // A colour given to DrawTexture ignores GUI.color: it is faded here with GUI.color's alpha (结缘 dims the rest, F117).
+    private static Color Tinted(Color color) { color.a *= GUI.color.a; return color; }
+    private static void Fill(Rect rect, Color color) => GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, Tinted(color), 0, 0);
     private static void Ring(Vector2 centre, float radius, float width, Color color)
-        => GUI.DrawTexture(new Rect(centre.x - radius, centre.y - radius, radius * 2, radius * 2), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, width, radius);
+        => GUI.DrawTexture(new Rect(centre.x - radius, centre.y - radius, radius * 2, radius * 2), Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, Tinted(color), width, radius);
 
     /// <summary>Square-cornered lines (no rotated textures): along, across, along; dashed through free play; a jump in time arched over the lane.</summary>
     private void DrawRouteEdge(Vector2 a, Vector2 b, string kind, Color color)
@@ -451,7 +475,7 @@ public sealed partial class ToolWindow
     private void DrawRouteSide(Rect side, RouteMap map, RouteLayout layout)
     {
         _routeSearch = Search(new Rect(side.x, side.y, side.width, S(32)), _routeSearch, "搜人物、地点、事件或台词", "zh.review.route");
-        string key = string.Join("|", _routeSelected, _routeSearch, _routeOthers, _routeTargetKey, _routeOpenCategory, _routeSummaryOpen, map.GetHashCode(), L.Revision, _scale, _routeKeptRevision);
+        string key = string.Join("|", _routeSelected, _routeSearch, _routeOthers, _routeTargetKey, _routeOpenCategory, _routeSummaryOpen, map.GetHashCode(), L.Revision, _scale, _routeKeptRevision, _romance, RomanceSideKey());
         if (key != _routeSideKey) { BuildRouteSide(map, layout); _routeSideKey = key; }
         float y = side.y + S(42);
         if (_routeTarget != null)
@@ -521,7 +545,7 @@ public sealed partial class ToolWindow
             case SideKind.Row:
                 float text = width - line.Indent - S(30) - RightWidth(line);
                 return Mathf.Max(S(32), TextHeight(line.Link ? _routeLink : _label, line.Text, text) + S(8));
-            default: return TextHeight(line.Warn ? _unmetSmall : _small, line.Text, width - line.Indent);
+            default: return TextHeight(line.Warn ? _unmetSmall : line.Good ? _metSmall : _small, line.Text, width - line.Indent);
         }
     }
     private float RightWidth(SideLine line) => line.Right.Length == 0 ? 0 : _smallRight.CalcSize(new GUIContent(line.Right)).x + S(10) + (line.Progress >= 0 ? S(46) : 0);
@@ -558,7 +582,7 @@ public sealed partial class ToolWindow
                 if (clicked) { line.Click!(); return true; }
                 return false;
             default:
-                Label(rect, line.Text, line.Warn ? _unmetSmall : _small, line.Tooltip);
+                Label(rect, line.Text, line.Warn ? _unmetSmall : line.Good ? _metSmall : _small, line.Tooltip);
                 return false;
         }
     }
@@ -633,6 +657,7 @@ public sealed partial class ToolWindow
         }
         if (_routeSelected.StartsWith("stn:", StringComparison.Ordinal) && layout.Stations.TryGetValue(_routeSelected.Substring(4), out var station))
         {
+            RomanceHeader(map, layout, _routeSelected);
             var p = layout.Points.TryGetValue(station.Id, out var pp) ? pp : default;
             Line(SideKind.Heading, L.DisplayText(station.Label));
             var meta = new List<string> { RouteDate(station.Date) };
@@ -696,6 +721,7 @@ public sealed partial class ToolWindow
         if (_routeSelected.StartsWith("arc:", StringComparison.Ordinal) && layout.ArcById.TryGetValue(_routeSelected.Substring(4), out var story))
         {
             string group = layout.Arcs.FirstOrDefault(x => x.Arc == story).Group ?? "";
+            RomanceHeader(map, layout, _routeSelected);
             Line(SideKind.Heading, L.DisplayText(story.Label));
             var meta = new List<string> { RouteSpan(story.Lo, story.Hi) + (story.Approx ? L.Text("（约）") : ""),
                 L.Text(group == "fork" ? "从主线某一站岔出" : group == "date" ? "按日期和条件触发" : "自由行动里触发"),
@@ -748,6 +774,8 @@ public sealed partial class ToolWindow
             }
             return;
         }
+        // 结缘 (F117): with a heroine chosen and nothing else, her page.
+        if (_romanceRoute != null) { RomancePage(map, layout); return; }
         // Nothing chosen: what to do here, and the way to the next station.
         Line(SideKind.Heading, L.Text("剧情路线图"));
         Line(SideKind.Text, L.Text("点地图上的站点或支线，右边会列出它的小节和岔路。带 ▶ 的有收录进度，可以「跳转」直接进入；没有的只能「直接跳转」，可能出错。详细规则见上方「说明」。"));

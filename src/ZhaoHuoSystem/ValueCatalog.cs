@@ -71,9 +71,18 @@ internal static class ValueCatalog
                 var name = L.GameText(item.GetNameKey(), item.Key);
                 var levels = item.UpgradeLevels;
                 int maxLevel = levels?.Length ?? 0;
-                var level = View("development:" + item.Key + ":level", name + " · " + L.Text("等级"), "development", item.CurrentLevel, -1, maxLevel, false);
-                level.Reason = L.Text("升级会改变剧情标记，等级暂只读");
-                yield return new(item, level, () => item.CurrentLevel);
+                // No level of any weapon or poison changes a flag or grants a talent (all 40 checked, F113): the level is
+                // written as it is, -1 being 未开发. A few conditions read it (e.g. 切鱼刀 >= 0 opens a sect scene). An item
+                // that resets at its last level (made, then started again) stops one short of it.
+                int topLevel = R.Field(item, "_resetWhenMaxLevel") is true ? Math.Max(-1, maxLevel - 1) : maxLevel;
+                var level = View("development:" + item.Key + ":level", name + " · " + L.Text("等级"), "development", item.CurrentLevel, -1, topLevel, maxLevel > 0);
+                level.Detail += "\n" + L.Text("只改等级，不改剧情标记；-1 为未开发。读这项等级的剧情条件按新等级判定。战斗只用当前在用的那件，改等级不会换上它；当前在用的那件之后开发下一件时，游戏按等级退还九成银两和锻造点数。");
+                level.Reason = maxLevel > 0 ? "" : L.Text("没有等级配置");
+                yield return new(item, level, () => item.CurrentLevel, value =>
+                {
+                    if (value == item.CurrentLevel) return;
+                    item.Setup(value, 0, item.AlreadyDevelop); item.UpdateStatus();
+                });
                 bool valid = item.CurrentLevel >= 0 && item.CurrentLevel < maxLevel && levels![item.CurrentLevel] != null;
                 int threshold = valid ? levels![item.CurrentLevel].LevelPoints : 0;
                 var points = View("development:" + item.Key + ":points", name + " · " + L.Text("开发点数"), "development", item.CurrentPoints, 0, Math.Max(0, threshold - 1), valid && threshold > 0);

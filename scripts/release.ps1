@@ -13,7 +13,10 @@
   (the build the plugin was developed on); the plugin itself keeps running on other builds.
   Without -Publish it only writes dist/ZhaoHuoSystem-v<Version>.zip (built by package.ps1: plugin, one-click
   installer and the bundled official BepInEx) and its .sha256 file, plus dist/ZhaoHuoSystem-v<Version>-manual.zip,
-  the script-free package for Nexus Mods (uploaded there by hand, not attached to the GitHub release).
+  the script-free package for Nexus Mods (uploaded there by hand, not attached to the GitHub release), and
+  dist/ZhaoHuoSystem-v<Version>-BepInEx5.zip, the plugin built for BepInEx 5 (F118) for games that already have it,
+  e.g. with the English translation patch (BepInEx 5.4.23.5 + XUnity.AutoTranslator). That build references the
+  official BepInEx 5.4.23.5, fetched once into dist/cache and checked against the SHA256 pinned below.
   With -Publish it also tags HEAD (which must equal origin/main), pushes the tag and creates the
   GitHub release with the CHANGELOG section as notes (requires an authenticated gh CLI).
 
@@ -29,6 +32,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+$Bep5Zip = 'BepInEx_win_x64_5.4.23.5.zip'
+$Bep5Sha256 = '82F9878551030F54657792C0740D9D51A09500EEAE1FBA21106B0C441E6732C4'
 Push-Location $repo
 try {
     function Step([string]$message) { Write-Host "==> $message" -ForegroundColor Cyan }
@@ -68,6 +73,18 @@ try {
     $built = [Reflection.AssemblyName]::GetAssemblyName($dll).Version.ToString()
     if ($built -ne "$Version.0") { throw "Built assembly version is $built, expected $Version.0." }
 
+    Step 'Building for BepInEx 5'
+    $cache = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'dist/cache')
+    $bep5 = Join-Path $cache $Bep5Zip
+    if (-not (Test-Path -LiteralPath $bep5)) { Invoke-WebRequest -Uri "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.5/$Bep5Zip" -OutFile $bep5 }
+    if ((Get-FileHash -LiteralPath $bep5 -Algorithm SHA256).Hash -ne $Bep5Sha256) { Remove-Item -LiteralPath $bep5; throw "$Bep5Zip does not match its pinned SHA256." }
+    $bep5Dir = Join-Path $cache 'bepinex5'
+    if (-not (Test-Path -LiteralPath (Join-Path $bep5Dir 'BepInEx/core/BepInEx.dll'))) { Expand-Archive -LiteralPath $bep5 -DestinationPath $bep5Dir -Force }
+    Invoke-Checked dotnet @('build', 'src/ZhaoHuoSystem/ZhaoHuoSystem.csproj', '-c', 'Release', "-p:GameDir=$GameDir", '-p:Loader=5', "-p:Bep5Dir=$bep5Dir", '--nologo')
+    $dll5 = Join-Path $repo 'src/ZhaoHuoSystem/bin/Release-BepInEx5/ZhaoHuoSystem.dll'
+    $built5 = [Reflection.AssemblyName]::GetAssemblyName($dll5).Version.ToString()
+    if ($built5 -ne "$Version.0") { throw "BepInEx 5 build version is $built5, expected $Version.0." }
+
     Step 'Running tests'
     Invoke-Checked dotnet @('run', '--project', 'tests/ui-state', '-c', 'Release')
     Invoke-Checked dotnet @('run', '--project', 'tests/localization', '-c', 'Release', '--', '.')
@@ -80,6 +97,8 @@ try {
     Write-Host "$name  SHA256 $hash  (game build $build, BepInEx $loader)"
     $manual = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll -OutDir $dist -Manual
     Write-Host "$($manual.Name)  SHA256 $($manual.Sha256)  (for Nexus Mods)"
+    $bepinex5 = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll5 -OutDir $dist -BepInEx5
+    Write-Host "$($bepinex5.Name)  SHA256 $($bepinex5.Sha256)  (for games that already have BepInEx 5)"
 
     if (-not $Publish) { Write-Host 'Packaged only. Re-run with -Publish to tag and create the GitHub release.'; return }
 
@@ -99,10 +118,13 @@ $notes
 加载器 / Loader: BepInEx $loader (Unity.Mono, Windows x64)
 安装：解压后双击 install.bat，卸载双击 uninstall.bat。Install: extract the zip and double-click install.bat; uninstall.bat removes it. README（简体中文 · 繁體中文 · English · 한국어）: $readme
 SHA256 ($name): ``$hash``
+
+BepInEx 5 版 / BepInEx 5 build: $($bepinex5.Name) —— 只给已经装了 BepInEx 5 的游戏用（比如英文翻译补丁），只放插件，不装 BepInEx。For games that already have BepInEx 5 (e.g. the English translation patch): it adds only the plugin and never installs BepInEx.
+SHA256 ($($bepinex5.Name)): ``$($bepinex5.Sha256)``
 "@
     $notesFile = Join-Path $dist "release-notes-$Version.md"
     Set-Content -LiteralPath $notesFile -Value $body -Encoding utf8
-    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", '--title', "ZhaoHuoSystem $tag", '--notes-file', $notesFile, '--verify-tag')
+    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", $bepinex5.Zip, "$($bepinex5.Zip).sha256", '--title', "ZhaoHuoSystem $tag", '--notes-file', $notesFile, '--verify-tag')
     Write-Host "Released $tag."
 }
 finally { Pop-Location }

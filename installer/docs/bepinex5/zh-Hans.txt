@@ -1,0 +1,30 @@
+赵活系统 v{VERSION}（BepInEx 5 版）—— 《活侠传》游戏内修改器
+================================================
+
+这个包给已经装了 BepInEx 5 的玩家用，比如装了英文翻译补丁（BepInEx 5 + XUnity.AutoTranslator）。
+它只放赵活系统插件，不安装也不改动 BepInEx。还没装过任何 BepInEx 的，请改用普通版安装包（自带 BepInEx 6）。
+
+基于 Steam 版《活侠传》build 26073097、BepInEx 5.4.23.5 开发。
+
+【一键安装】
+1. 关闭游戏。
+2. 双击本文件夹里的 install.bat。
+   - 它会自动找到 Steam 里的《活侠传》；找不到时会弹出窗口，让你选择游戏文件夹（有 Mortal.exe 的那个）。
+   - 游戏里没有 BepInEx 5，或者装的是 BepInEx 6 时，它会说明该用哪个安装包，不做任何修改。
+3. 启动游戏，读档后按 F8 打开面板，也可以点屏幕左侧的「赵活系统」小按钮。
+
+修改数值和指定事件都会写进存档，第一次使用前请先备份存档。
+
+【手动安装】把本包里的 BepInEx 文件夹复制到游戏文件夹，与已有的 BepInEx 文件夹合并。
+
+【更新】下载新版本的 BepInEx 5 版，解压后再双击一次 install.bat。
+
+【卸载】双击 uninstall.bat。它只删除赵活系统插件和它的设置，BepInEx 5 和其他模组保留不动。存档不受影响。
+
+【遇到问题】
+- 进游戏后按 F8 没反应：打开 BepInEx/LogOutput.log，搜「赵活系统」。没有的话说明插件没被加载，确认游戏里装的确实是 BepInEx 5。
+- 反馈问题：https://github.com/Toufff/zhaohuo-system/issues
+  请写明游戏语言、出问题的场景，并附上设置页「导出诊断」生成的文件夹，或 BepInEx/LogOutput.log。
+
+项目主页：https://github.com/Toufff/zhaohuo-system
+MIT © Toufff。玩家自制模组，与《活侠传》的开发商和发行商无关，不包含任何游戏文件。

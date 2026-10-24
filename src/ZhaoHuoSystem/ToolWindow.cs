@@ -539,9 +539,11 @@ public sealed partial class ToolWindow : IDisposable
 
     /// <summary>While an action waits: choosing a row makes it this action's event; null (the 「随机」 row) leaves it to the game.
     /// A row whose conditions are not met can be read, but the action stays random.</summary>
+    // F115: 「设为 N」 on the viewed row's condition: once the row can run, it becomes this action's event.
+    private string _specifyWhenMet = "";
     private void ChooseEvent(EventSnapshot? item)
     {
-        _selectedEvent = item?.Id ?? ""; _conditionScroll = Vector2.zero;
+        _selectedEvent = item?.Id ?? ""; _conditionScroll = Vector2.zero; _specifyWhenMet = "";
         if (item != null && item.Eligible) { if (_snapshot.PendingEventId != item.Id) Execute(() => _adapter.SpecifyEvent(item.Id)); }
         else if (_snapshot.PendingEventId.Length > 0) Execute(_adapter.CancelEvent);
     }
@@ -554,8 +556,10 @@ public sealed partial class ToolWindow : IDisposable
             Label(new Rect(r.x, r.y, r.width, r.height), "行动停下时，在列表中选中事件再继续，就会触发它。", _muted);
             return;
         }
-        var pending = FindEvent(_snapshot.PendingEventId);
         var viewed = FindEvent(_selectedEvent);
+        if (_specifyWhenMet.Length > 0 && _specifyWhenMet == _selectedEvent && viewed != null && viewed.Eligible && _snapshot.PendingEventId.Length == 0)
+        { _specifyWhenMet = ""; Execute(() => _adapter.SpecifyEvent(viewed.Id)); }
+        var pending = FindEvent(_snapshot.PendingEventId);
         string name = pending != null ? pending.Title : viewed != null && !viewed.Eligible ? L.Format("随机（{0} 条件未满足）", viewed.Title) : L.Text("随机");
         float continueWidth = S(141), repeatWidth = ButtonWidth("重复上次选择", 140);
         Label(new Rect(r.x, r.y, r.width - continueWidth - repeatWidth - S(22), r.height), L.Format("本次触发：{0}", name), _label, name);
@@ -606,7 +610,7 @@ public sealed partial class ToolWindow : IDisposable
         if (correctable && Button(new Rect(width - buttonWidth, y, buttonWidth, S(29)), L.Format("设为 {0}", condition.SuggestedValue.GetValueOrDefault()), "condition." + condition.FieldId))
         {
             string id = condition.FieldId, input = condition.SuggestedValue!.Value.ToString(CultureInfo.InvariantCulture);
-            Execute(() => _adapter.SetValue(id, input));
+            if (Execute(() => _adapter.SetValue(id, input)).Success && _snapshot.ActionWaiting) _specifyWhenMet = _selectedEvent;
         }
         y += height + S(5);
     }
@@ -1294,11 +1298,11 @@ public sealed partial class ToolWindow : IDisposable
             _valueSource = _snapshot.Values; _filteredSearch = _valueSearch; _filteredGroup = _valueGroup;
             _filteredValues.Clear();
             foreach (var value in _snapshot.Values)
-                if (NativeUiState.MatchesValue(value, _valueGroup, _valueSearch)) _filteredValues.Add(value);
+                if (L.SearchForms(_valueSearch).Any(q => NativeUiState.MatchesValue(value, _valueGroup, q))) _filteredValues.Add(value);
             _searchElsewhere.Clear();
             if (_filteredValues.Count == 0 && _valueSearch.Trim().Length > 0)
                 foreach (string group in groups)
-                    if (group != "all" && group != _valueGroup && _snapshot.Values.Exists(value => NativeUiState.MatchesValue(value, group, _valueSearch))) _searchElsewhere.Add(group);
+                    if (group != "all" && group != _valueGroup && _snapshot.Values.Exists(value => L.SearchForms(_valueSearch).Any(q => NativeUiState.MatchesValue(value, group, q)))) _searchElsewhere.Add(group);
         }
         var values = _filteredValues;
         _valueRowWidth = rows.width - S(18);
@@ -1547,20 +1551,23 @@ public sealed partial class ToolWindow : IDisposable
     private static bool Matches(string query, params string[] fields)
     {
         if (string.IsNullOrWhiteSpace(query)) return true;
-        foreach (string field in fields) if (field != null && Tone.Plain(field).IndexOf(query.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        foreach (string q in L.SearchForms(query.Trim()))
+            foreach (string field in fields) if (field != null && Tone.Plain(field).IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) return true;
         return false;
     }
 
     private string Search(Rect r, string value, string placeholder, string name)
     {
         // A filled box offers × to clear it; the word otherwise keeps filtering across groups and is easy to forget.
+        // The field comes first: IMGUI keeps keyboard focus by control order, and a × drawn before it once the first
+        // character lands took the focus away, so an input method lost the rest of the word (F116).
         float clear = string.IsNullOrEmpty(value) ? 0 : S(34);
-        if (clear > 0 && Button(new Rect(r.xMax - clear + S(4), r.y, clear - S(4), r.height), "×", name + ".clear", tooltip: L.Text("清除搜索")))
-        { GUI.FocusControl(null); return ""; }
         GUI.SetNextControlName(name);
-        string next = InputField(new Rect(r.x, r.y, r.width - clear, r.height), value);
+        string next = InputField(new Rect(r.x, r.y, r.width - S(34), r.height), value);
         if (string.IsNullOrEmpty(next) && GUI.GetNameOfFocusedControl() != name)
             Label(new Rect(r.x + S(9), r.y + S(3), r.width - S(18), r.height - S(6)), placeholder, _muted);
+        if (clear > 0 && Button(new Rect(r.xMax - clear + S(4), r.y, clear - S(4), r.height), "×", name + ".clear", tooltip: L.Text("清除搜索")))
+        { GUI.FocusControl(null); return ""; }
         return next;
     }
 

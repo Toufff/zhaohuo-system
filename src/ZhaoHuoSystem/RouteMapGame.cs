@@ -126,6 +126,27 @@ internal sealed class RouteMapGame : IRouteSource
         return flagsRead[name] = flags.ToList();
     }
 
+    /// <summary>
+    /// 结缘路线图 (F117): a side story's missions (its series key, e.g. S0021, or its keys S0021_…) with their trigger
+    /// conditions read now, all of a mission's groups together. Empty off the story data.
+    /// </summary>
+    public static List<(string Mission, ConditionSnapshot Condition)> SeriesConditions(string series)
+    {
+        var found = new List<(string, ConditionSnapshot)>();
+        var missions = MissionManagerData.Instance;
+        if (missions == null || series.Length == 0) return found;
+        foreach (var data in R.Items(R.Field(R.Field(missions, "_subMissions"), "_list")))
+            foreach (var check in R.Items(R.Field(data, "_missions")).OfType<MissionCheckData>())
+            {
+                if (check == null || check.Key == null || !(check.Key == series || check.Key.StartsWith(series + "_", StringComparison.Ordinal))) continue;
+                var groups = R.Items(R.Field(check, "_conditions")).Select(group => Conditions.Read(group)).ToList();
+                if (groups.Count == 0) continue;
+                var all = groups.Count == 1 ? groups[0] : new ConditionSnapshot { Text = "AND", Operator = "AND", Children = groups, Known = groups.All(g => g.Known), Satisfied = groups.All(g => g.Known && g.Satisfied) };
+                found.Add((check.Key, all));
+            }
+        return found;
+    }
+
     public IEnumerable<string> MissionFlags => checks.SelectMany(check => new[] { "_modifyFlagsWhenTrue", "_modifyFlagsWhenFalse" }
         .SelectMany(field => R.Items(R.Field(check, field)))).Select(modify => R.Field<FlagData>(modify, "_data")).Where(flag => flag != null).Select(flag => flag!.name).Distinct().ToList();
 

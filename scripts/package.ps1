@@ -13,15 +13,23 @@
   archives (Nexus Mods): the BepInEx files already extracted in game-folder layout, plus
     BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE, guides (from installer/docs/manual), notices
 
+  -BepInEx5 builds ZhaoHuoSystem-v<Version>-BepInEx5.zip from the BepInEx 5 build of the plugin (F118), for games that
+  already have BepInEx 5 (a translation patch, say). No BepInEx is shipped: install.bat / uninstall.bat (from
+  installer/bepinex5) run the setup script with -Loader 5, which only adds or removes the plugin.
+    install.bat, uninstall.bat, guides (from installer/docs/bepinex5)
+    BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE, installer/ZhaoHuoSystem-Setup.ps1
+
 .EXAMPLE
   ./scripts/package.ps1 -Version 0.3.7 -Dll src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll
   ./scripts/package.ps1 -Version 0.3.7 -Dll src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll -Manual
+  ./scripts/package.ps1 -Version 0.3.48 -Dll src/ZhaoHuoSystem/bin/Release-BepInEx5/ZhaoHuoSystem.dll -BepInEx5
 #>
 param(
     [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [Parameter(Mandatory)][string]$Dll,
     [string]$OutDir,
-    [switch]$Manual
+    [switch]$Manual,
+    [switch]$BepInEx5
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -32,6 +40,32 @@ $setupText = Get-Content -LiteralPath $setup -Raw
 $bepinexName = [regex]::Match($setupText, "BepInExZip = '([^']+)'").Groups[1].Value
 $pinned = [regex]::Match($setupText, "BepInExSha256 = '([0-9A-F]{64})'").Groups[1].Value
 if (-not $bepinexName -or -not $pinned) { throw 'BepInEx name or SHA256 not found in ZhaoHuoSystem-Setup.ps1.' }
+
+if ($BepInEx5) {
+    # No BepInEx in this package, so nothing to fetch or check.
+    $stage = Join-Path $OutDir "stage-$Version-bepinex5"
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $pluginDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'BepInEx/plugins/ZhaoHuoSystem')
+    Copy-Item -LiteralPath (Resolve-Path -LiteralPath $Dll).Path -Destination (Join-Path $pluginDir 'ZhaoHuoSystem.dll')
+    Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
+    foreach ($file in 'install.bat', 'uninstall.bat') { Copy-Item -LiteralPath (Join-Path $installer "bepinex5/$file") -Destination $stage }
+    $setupDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'installer')
+    Copy-Item -LiteralPath $setup -Destination $setupDir
+    $guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt' }
+    foreach ($guide in $guides.GetEnumerator()) {
+        $text = (Get-Content -LiteralPath (Join-Path $installer "docs/bepinex5/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
+        [IO.File]::WriteAllText((Join-Path $stage $guide.Value), ($text -replace "`r?`n", "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+    }
+    $name = "ZhaoHuoSystem-v$Version-BepInEx5.zip"
+    $zip = Join-Path $OutDir $name
+    if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+    [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip)
+    Remove-Item -LiteralPath $stage -Recurse -Force
+    $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+    Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $name" -Encoding ascii
+    return [pscustomobject]@{ Zip = $zip; Name = $name; Sha256 = $hash }
+}
 
 # The official build, cached under dist/cache and checked against the hash pinned in the setup script.
 $cache = New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'cache')

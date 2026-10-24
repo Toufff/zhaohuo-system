@@ -136,6 +136,10 @@ public sealed class RouteMap
     public int ScriptsAll, LinesAll, ReadAll, BranchAll, DrawnScripts, DrawnLines;
     /// <summary>Per script, for searching: its story-record lines and its dialogue keys.</summary>
     public Dictionary<string, List<string>> Legends = new(StringComparer.Ordinal), Keys = new(StringComparer.Ordinal);
+    /// <summary>结缘路线图 (F117), per script: the affection it changes by relation key (girl4 …), summed over the script.</summary>
+    public Dictionary<string, Dictionary<string, int>> Affection = new(StringComparer.Ordinal);
+    /// <summary>结缘路线图 (F117), per script: the flags it sets to a fixed value, in order.</summary>
+    public Dictionary<string, List<(string Flag, int Value)>> FlagValues = new(StringComparer.Ordinal);
 }
 
 public static class RouteMapBuilder
@@ -145,6 +149,9 @@ public static class RouteMapBuilder
     private static readonly Regex Add = new("AddStory\\(\"([^\"]+)\"\\)");
     private static readonly Regex MainSet = new("statmodifymanager\\.Mission\\(\"Main\", *\"([^\"]+)\"\\)");
     private static readonly Regex FlagSet = new("statmodifymanager\\.(?:SetFlag|AddFlag)\\(\"(\\w+)\"");
+    // Character(key, value, display): the affection change; SetFlag(name, value) with a literal value (F117).
+    private static readonly Regex Affection = new("statmodifymanager\\.Character\\(\"(\\w+)\", *(-?\\d+) *,");
+    private static readonly Regex FlagValue = new("statmodifymanager\\.SetFlag\\(\"(\\w+)\", *(-?\\d+) *\\)");
     private static readonly Regex Literal = new("\"([A-Za-z][A-Za-z0-9_]+)\"");
     private static readonly Regex MissionTime = new("SetMissionTime\\(\"(S\\d{4})_\\w*\", *(-?\\d+), *(-?\\d+), *(-?\\d+)\\)");
     private static readonly Regex Fight = new("ChangeScene\\(\"(?:Combat|Battle)\"");
@@ -201,6 +208,15 @@ public static class RouteMapBuilder
                 Menu = text.Contains("choose("), Dice = text.Contains("ExecuteRoll"), Fight = Fight.IsMatch(text), Title = text.Contains("ChangeScene(\"Title\""),
             };
             facts[name] = f;
+            Dictionary<string, int>? affection = null;
+            foreach (Match m in Affection.Matches(text))
+            {
+                affection ??= new Dictionary<string, int>(StringComparer.Ordinal);
+                affection[m.Groups[1].Value] = (affection.TryGetValue(m.Groups[1].Value, out int sum) ? sum : 0) + int.Parse(m.Groups[2].Value);
+            }
+            if (affection != null) map.Affection[name] = affection;
+            var values = FlagValue.Matches(text).Cast<Match>().Select(m => (m.Groups[1].Value, int.Parse(m.Groups[2].Value))).ToList();
+            if (values.Count > 0) map.FlagValues[name] = values;
             foreach (Match m in MissionTime.Matches(text))
                 Get(missionTimes, m.Groups[1].Value).Add((name, int.Parse(m.Groups[3].Value), int.Parse(m.Groups[4].Value)));
             if (f.Out.Count > 0) jumps[name] = ParseJumps(text);

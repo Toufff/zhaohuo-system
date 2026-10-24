@@ -21,6 +21,7 @@
     <Compile Include="../../src/ZhaoHuoSystem/FlagDictionary.cs" Link="FlagDictionary.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/SaveNoteStore.cs" Link="SaveNoteStore.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/FlagOverride.cs" Link="FlagOverride.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/Romance.cs" Link="Romance.cs" />
     <Reference Include="Fungus">
       <HintPath>$(GameDir)\Mortal_Data\Managed\Fungus.dll</HintPath>
       <Private>false</Private>
