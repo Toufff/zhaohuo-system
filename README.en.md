@@ -33,7 +33,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Unlimited actions for a period**: next to 跳过本旬 right of the date, 本旬行动点无限 (unlimited action points this period) stops action points from being spent until the next ten-day period. Turn off 显示本旬按钮 (show period buttons) on the 设置 (Settings) tab to hide both buttons beside the date.
 
-- **Values**: edit attributes, character affection, sect relations and story flags directly. Each value on the 数值 (Values) tab has a lock button: lock it for this session (until the game restarts) or always (kept across saves and restarts). A locked value can't be changed by the story, items or fights; editing it in the panel still works.
+- **Values**: edit attributes, character affection, sect relations and story flags directly. Each value on the 数值 (Values) tab has a lock button: lock it for this session (until the game restarts) or always (kept across saves and restarts). A locked value can't be changed by the story, items or fights; editing it in the panel still works. Weapon and poison development levels can be edited too.
 
   <img src="media/values-tab.webp" width="560" alt="The Values tab">
 
@@ -73,7 +73,7 @@ The in-game panel follows the game's language and is available in Simplified Chi
 
 - **Story tree**: switch the 回顾 tab to 剧情树 (story tree) to see the main story's stretches by main-mission date, with where each option, dice result, condition and fight leads; open one level at a time.
 
-- **Story route map**: switch the 回顾 tab to 路线图 (route map) to see the main story as stations on lanes along the game's calendar, with the side routes that replace part of it (Xiangyang, Ye Yunshang's nine days in the cave, the snow mountain) and the prologue drawn as a loop that rewinds. Colours show how much you have read; a blue ring marks stations this playthrough passed, a gold ring the next one. Open a station to see its sections, the conditions into each branch and the side stories that start there; side stories are grouped by how they are entered. Search by character, place, event or dialogue, and browse the free-play chats, places and meetings that are not on the timeline. Drag the map to move it, Shift + wheel to move along the calendar, and zoom with Ctrl + wheel or the − and + above it; buttons above the map jump to the stations where the main story forks, and the line between the map and the side column can be dragged to resize them. Select a station or story: one with a kept start (marked ▶ on the map) can be entered with 跳转 (jump); elsewhere 直接跳转 (direct jump) moves your progress there without the flags of the story in between, which can break things, and warns you first. 说明 (help) explains the rules. The first opening takes about 6 seconds.
+- **Story route map**: switch the 回顾 tab to 路线图 (route map) to see the main story as stations on lanes along the game's calendar, with the side routes that replace part of it (Xiangyang, Ye Yunshang's nine days in the cave, the snow mountain) and the prologue drawn as a loop that rewinds. Colours show how much you have read; a blue ring marks stations this playthrough passed, a gold ring the next one. Open a station to see its sections, the conditions into each branch and the side stories that start there; side stories are grouped by how they are entered. Search by character, place, event or dialogue, and browse the free-play chats, places and meetings that are not on the timeline. Drag the map to move it, Shift + wheel to move along the calendar, and zoom with Ctrl + wheel or the − and + above it; buttons above the map jump to the stations where the main story forks, and the line between the map and the side column can be dragged to resize them. Select a station or story: one with a kept start (marked ▶ on the map) can be entered with 跳转 (jump); elsewhere 直接跳转 (direct jump) moves your progress there without the flags of the story in between, which can break things, and warns you first. 说明 (help) explains the rules. The first opening takes about 6 seconds. Above the map, 结缘路线 (romance routes) lets you pick one of the romanceable characters: the map highlights her story, and the side panel lists affection, romance progress and what each step needs right now; a step you missed can be set as done.
 
   <img src="media/route-map.webp" width="720" alt="The story route map: the main story along the game calendar, with shortcuts to the forks above it">
 
@@ -116,6 +116,10 @@ Edited values and chosen events end up in your save, so back up your saves befor
 - **Update**: download the new version and double-click `install.bat` again.
 - **Uninstall**: double-click `uninstall.bat`. It removes the plugin and its settings, then asks whether to remove BepInEx too. Other BepInEx mods need it, so pressing Enter keeps it. Your saves are not affected.
 - If Windows shows a security prompt, confirm that you want to run it.
+
+### Games that already have BepInEx 5
+
+If your game already runs BepInEx 5, for example with an English translation patch (BepInEx 5.4.23.5 + XUnity.AutoTranslator), use `ZhaoHuoSystem-v*-BepInEx5.zip` instead: extract it and double-click `install.bat`. It only adds the ZhaoHuo System plugin and does not install or change BepInEx. If the game is not on BepInEx 5, it tells you which package to use and changes nothing. Without any BepInEx, use the regular package above.
 
 ### Manual install
 
