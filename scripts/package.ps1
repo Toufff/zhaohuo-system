@@ -18,11 +18,14 @@
   installer/bepinex5) run the setup script with -Loader 5, which only adds or removes the plugin.
     install.bat, uninstall.bat, guides (from installer/docs/bepinex5)
     BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE, installer/ZhaoHuoSystem-Setup.ps1
+  With -Manual as well it builds ZhaoHuoSystem-v<Version>-BepInEx5-manual.zip, the script-free one for Nexus Mods:
+    BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE, guides (from installer/docs/bepinex5-manual)
 
 .EXAMPLE
   ./scripts/package.ps1 -Version 0.3.7 -Dll src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll
   ./scripts/package.ps1 -Version 0.3.7 -Dll src/ZhaoHuoSystem/bin/Release/netstandard2.0/ZhaoHuoSystem.dll -Manual
   ./scripts/package.ps1 -Version 0.3.48 -Dll src/ZhaoHuoSystem/bin/Release-BepInEx5/ZhaoHuoSystem.dll -BepInEx5
+  ./scripts/package.ps1 -Version 0.3.48 -Dll src/ZhaoHuoSystem/bin/Release-BepInEx5/ZhaoHuoSystem.dll -BepInEx5 -Manual
 #>
 param(
     [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
@@ -43,21 +46,26 @@ if (-not $bepinexName -or -not $pinned) { throw 'BepInEx name or SHA256 not foun
 
 if ($BepInEx5) {
     # No BepInEx in this package, so nothing to fetch or check.
-    $stage = Join-Path $OutDir "stage-$Version-bepinex5"
+    $stage = Join-Path $OutDir "stage-$Version-bepinex5$(if ($Manual) { '-manual' })"
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $pluginDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'BepInEx/plugins/ZhaoHuoSystem')
     Copy-Item -LiteralPath (Resolve-Path -LiteralPath $Dll).Path -Destination (Join-Path $pluginDir 'ZhaoHuoSystem.dll')
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $pluginDir
-    foreach ($file in 'install.bat', 'uninstall.bat') { Copy-Item -LiteralPath (Join-Path $installer "bepinex5/$file") -Destination $stage }
-    $setupDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'installer')
-    Copy-Item -LiteralPath $setup -Destination $setupDir
+    # The manual one has no scripts at all (Nexus quarantines them); its guides sit in the plugin folder.
+    if ($Manual) { $guideDir = $pluginDir; $guideSource = 'docs/bepinex5-manual' }
+    else {
+        foreach ($file in 'install.bat', 'uninstall.bat') { Copy-Item -LiteralPath (Join-Path $installer "bepinex5/$file") -Destination $stage }
+        $setupDir = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'installer')
+        Copy-Item -LiteralPath $setup -Destination $setupDir
+        $guideDir = $stage; $guideSource = 'docs/bepinex5'
+    }
     $guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt' }
     foreach ($guide in $guides.GetEnumerator()) {
-        $text = (Get-Content -LiteralPath (Join-Path $installer "docs/bepinex5/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
-        [IO.File]::WriteAllText((Join-Path $stage $guide.Value), ($text -replace "`r?`n", "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+        $text = (Get-Content -LiteralPath (Join-Path $installer "$guideSource/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
+        [IO.File]::WriteAllText((Join-Path $guideDir $guide.Value), ($text -replace "`r?`n", "`r`n"), (New-Object System.Text.UTF8Encoding $true))
     }
-    $name = "ZhaoHuoSystem-v$Version-BepInEx5.zip"
+    $name = if ($Manual) { "ZhaoHuoSystem-v$Version-BepInEx5-manual.zip" } else { "ZhaoHuoSystem-v$Version-BepInEx5.zip" }
     $zip = Join-Path $OutDir $name
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
     [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip)

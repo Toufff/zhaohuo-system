@@ -2,6 +2,16 @@
 
 每个版本写明开发和测试时的游戏 build；游戏小更新一般不影响使用。
 
+## 0.3.48
+
+适配：Steam build 26073097，BepInEx 6.0.0-be.788（Unity.Mono x64）。
+
+- 面板新增英语和日语。标题栏「刷新」左边多了语言下拉框：默认「跟随游戏」，也可以选简体中文、繁體中文、한국어、English、日本語覆盖游戏的语言设置，选后立刻生效并记住。游戏本身没有英语和日语，所以剧情、事件名、物品名这些游戏里的文字仍是游戏当前的语言，只有面板自己的文字换成所选语言。英文里的属性、门派、地点、人名和结局名沿用社区英文补丁 LoM_en（velvetcakes1，MIT 许可）的译法，和打了英文补丁的游戏叫法一致；日文人名按日文化模组的写法。面板的英文和日文是我们自己翻译的，欢迎指正。剧情路线图里模组自己起的站名、分岔点、支线名和地点分类也补了英文、日文和韩文（之前韩文下也是中文）；文字较长的语言下，分岔点和结缘路线按钮放不下时换到第二行，底栏过长时截断、鼠标移上去看全文。
+- 修复：面板里中文、日文的长说明夹着空格（比如「改回 100 后」「对应的 Steam 成就」）时，会在空格处提前换行、留下半行空白；现在按字排满再换行。
+- 适配社区日文化模组 LOM-JPMOD：检测到它（BepInEx/plugins/LOM_JP）且游戏语言为简体中文时，「跟随游戏」就是日语，面板里读自游戏的人名、属性、选项等也是日文化模组翻好的日文。已在标题界面和它一起实测。
+- 适配社区英文补丁 LoM_en（velvetcakes1，BepInEx 5 + XUnity.AutoTranslator）：检测到 BepInEx/plugins/XUnity.AutoTranslator 和补丁自带的翻译文件（BepInEx/Translation/en/Text/Translation zh-CN to en.txt），且游戏语言为简体中文时，「跟随游戏」就是英语。只装 XUnity 做机翻的不算在内。
+- 新增不带脚本的 BepInEx 5 手动安装包（ZhaoHuoSystem-v版本-BepInEx5-manual.zip）：只有 BepInEx/plugins/ZhaoHuoSystem（插件、许可证、说明），解压到已装 BepInEx 5 的游戏文件夹即可，供不收 .bat/.ps1 的站点使用。
+
 ## 0.3.47
 
 适配：Steam build 26073097，BepInEx 6.0.0-be.788（Unity.Mono x64）。

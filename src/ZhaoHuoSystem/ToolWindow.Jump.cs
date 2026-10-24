@@ -156,7 +156,7 @@ public sealed partial class ToolWindow
 
     /// <summary>A wrapped text's height with room under its last line: the OS font draws a little taller than IMGUI measures,
     /// and an exact fit cuts the last line in half.</summary>
-    private float TextHeight(GUIStyle style, string text, float width) => style.CalcHeight(new GUIContent(text), Mathf.Max(S(40), width)) + S(6);
+    private float TextHeight(GUIStyle style, string text, float width) => style.CalcHeight(new GUIContent(L.NoBreak(text)), Mathf.Max(S(40), width)) + S(6);
 
     // ---- 界面风格 (F99): the game's frames behind our controls, its serif on our text ----
     /// <summary>After the styles are built: the game's serif where it has one, the warm line with its frames; plain otherwise.</summary>

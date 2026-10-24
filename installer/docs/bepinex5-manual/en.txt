@@ -1,0 +1,30 @@
+ZhaoHuo System v{VERSION} (BepInEx 5 build, manual package) - in-game editor for Legend of Mortal
+================================================
+
+For players who already have BepInEx 5, for example from the English translation patch
+(BepInEx 5 + XUnity.AutoTranslator). There is no installer: it holds only the ZhaoHuo System plugin and never
+installs or changes BepInEx. If you have no BepInEx at all, use the regular package instead (it comes with BepInEx 6).
+
+Built for the Steam version of Legend of Mortal, build 26073097, and BepInEx 5.4.23.5.
+
+[Install]
+1. Close the game.
+2. Open the game folder: in your Steam library, right-click Legend of Mortal -> Manage -> Browse local files (the folder with Mortal.exe).
+   It must already have BepInEx 5 (BepInEx/core/BepInEx.dll is there).
+3. Extract everything in the zip into that folder. If Windows asks, replace the files.
+4. Start the game, load a save and press F8, or click the small ZhaoHuo System button on the left of the screen.
+
+Changing values and choosing events is written into your save. Back up your saves before first use.
+
+[Update] Extract the new version into the game folder the same way and replace the files.
+
+[Uninstall] In the game folder, delete BepInEx/plugins/ZhaoHuoSystem, BepInEx/ZhaoHuoSystem and BepInEx/config/local.zhaohuo.system.cfg.
+BepInEx 5 and your other mods stay. Your saves are not affected.
+
+[Problems]
+- F8 does nothing in game: open BepInEx/LogOutput.log and search for ZhaoHuo or 赵活系统. If it is not there, the plugin was not loaded; check that the game really has BepInEx 5.
+- Report issues: https://github.com/Toufff/zhaohuo-system/issues
+  Please include the game language, what you were doing, and the folder made by "Export diagnostics" on the settings page, or BepInEx/LogOutput.log.
+
+Project page: https://github.com/Toufff/zhaohuo-system
+MIT (c) Toufff. A fan-made mod, not affiliated with the developer or publisher of Legend of Mortal. It contains no game files.

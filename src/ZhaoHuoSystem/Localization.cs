@@ -21,12 +21,35 @@ public static class L
     private static readonly Dictionary<string, string> gameTerms = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, string> displayTexts = new(StringComparer.Ordinal);
     public static long Revision { get; private set; }
+    /// <summary>The panel's language: the player's choice in the title bar, else the game's (F119).</summary>
     public static string LanguageId { get; private set; } = LocalizationCatalog.Simplified;
+    /// <summary>The game's own language (简中 / 繁中 / 韩语).</summary>
+    public static string GameLanguageId { get; private set; } = LocalizationCatalog.Simplified;
+    /// <summary>The player's choice in the title bar; "" follows the game.</summary>
+    public static string Override { get; private set; } = "";
+    /// <summary>
+    /// The community Japanese mod is installed: it turns the game's 简体中文 into Japanese through the game's own text
+    /// tables, so following the game then means Japanese, and the game's terms read through them are Japanese too.
+    /// </summary>
+    public static bool JapaneseMod { get; set; }
+    /// <summary>
+    /// The community English patch (velvetcakes1/LoM_en: XUnity.AutoTranslator with its own translation file) is installed:
+    /// the game still runs in 简体中文 underneath, so following the game then means English. The game's own terms stay
+    /// Chinese in its tables; the patch translates them on screen.
+    /// </summary>
+    public static bool EnglishPatch { get; set; }
+    /// <summary>The game's own terms (names, options, stats) read through its tables are in the panel's language.</summary>
+    public static bool GameSpeaksPanelLanguage => LanguageId == GameLanguageId
+        || LanguageId == LocalizationCatalog.Japanese && JapaneseMod && GameLanguageId == LocalizationCatalog.Simplified;
     public static string[] FontNames => LanguageId == LocalizationCatalog.Korean
         ? new[] { "Malgun Gothic", "맑은 고딕", "Noto Sans CJK KR", "Microsoft YaHei", "Microsoft JhengHei", "Arial" }
         : LanguageId == LocalizationCatalog.Traditional
             ? new[] { "Microsoft JhengHei", "Microsoft YaHei", "Noto Sans CJK TC", "Malgun Gothic", "Arial" }
-            : new[] { "Microsoft YaHei", "Microsoft JhengHei", "Noto Sans CJK SC", "Malgun Gothic", "Arial" };
+            : LanguageId == LocalizationCatalog.Japanese
+                ? new[] { "Yu Gothic UI", "Meiryo UI", "Meiryo", "MS UI Gothic", "Microsoft YaHei", "Arial" }
+                : LanguageId == LocalizationCatalog.English
+                    ? new[] { "Segoe UI", "Arial", "Microsoft YaHei", "Microsoft JhengHei", "Malgun Gothic" }
+                    : new[] { "Microsoft YaHei", "Microsoft JhengHei", "Noto Sans CJK SC", "Malgun Gothic", "Arial" };
 
     public static bool RefreshLanguage()
     {
@@ -35,7 +58,21 @@ public static class L
         catch { return false; }
         // The resolver can be unavailable during startup. Retain the last known locale.
         if (string.IsNullOrWhiteSpace(current)) return false;
-        string next = LocalizationCatalog.OfficialLanguage(current);
+        GameLanguageId = LocalizationCatalog.OfficialLanguage(current);
+        return Apply();
+    }
+    /// <summary>The title bar's choice; "" (or anything unknown) follows the game.</summary>
+    public static bool SetOverride(string? language)
+    {
+        Override = LocalizationCatalog.Supported(language) ? language! : "";
+        return Apply();
+    }
+    /// <summary>What following the game means: its own language, or Japanese / English through a community translation.</summary>
+    public static string FollowId => GameLanguageId != LocalizationCatalog.Simplified ? GameLanguageId
+        : JapaneseMod ? LocalizationCatalog.Japanese : EnglishPatch ? LocalizationCatalog.English : GameLanguageId;
+    private static bool Apply()
+    {
+        string next = Override.Length > 0 ? Override : FollowId;
         if (next == LanguageId) return false;
         LanguageId = next;
         Revision++;
@@ -44,6 +81,12 @@ public static class L
         return true;
     }
 
+    // IMGUI wraps only at spaces when a line has one, so a space beside Chinese or Japanese text (「改回 100 后」) pushed the
+    // rest of a note to the next line early; there those spaces become no-break ones and the line wraps by character (F119).
+    private static readonly Regex CjkSpace = new("(?<=[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef]) | (?=[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef])");
+    public static string NoBreak(string text)
+        => text.IndexOf(' ') >= 0 && (LanguageId == LocalizationCatalog.Simplified || LanguageId == LocalizationCatalog.Traditional || LanguageId == LocalizationCatalog.Japanese)
+            ? CjkSpace.Replace(text, "\u00a0") : text;
     public static string Text(string sourceChinese) => LocalizationCatalog.Get(LanguageId, sourceChinese);
     public static string Format(string sourceTemplate, params object[] args) => string.Format(CultureInfo.InvariantCulture, Text(sourceTemplate), args);
 
@@ -52,15 +95,19 @@ public static class L
     {
         if (string.IsNullOrEmpty(text)) return "";
         if (LocalizationCatalog.TryDisplay(text, LanguageId, out var known)) return known;
-        if (LanguageId == LocalizationCatalog.Korean || Environment.OSVersion.Platform != PlatformID.Win32NT) return text;
+        // English, and Japanese without the community mod, show the game's text in the game's own script; Korean and the
+        // Japanese mod keep it as it is, since a 简繁 conversion would only spoil Japanese kanji (F119).
+        string script = LanguageId == LocalizationCatalog.Simplified || LanguageId == LocalizationCatalog.Traditional ? LanguageId
+            : LanguageId == LocalizationCatalog.English || LanguageId == LocalizationCatalog.Japanese && !GameSpeaksPanelLanguage ? GameLanguageId : "";
+        if (script != LocalizationCatalog.Simplified && script != LocalizationCatalog.Traditional || Environment.OSVersion.Platform != PlatformID.Win32NT) return text;
         if (displayTexts.TryGetValue(text, out var cached)) return cached;
         try
         {
             var buffer = new StringBuilder(text.Length * 2 + 2);
-            uint flags = LanguageId == LocalizationCatalog.Traditional ? 0x04000000u : 0x02000000u;
+            uint flags = script == LocalizationCatalog.Traditional ? 0x04000000u : 0x02000000u;
             // Include the null terminator: LCMapStringEx otherwise need not terminate
             // the destination, while StringBuilder marshalling requires termination.
-            if (LCMapStringEx(LanguageId == LocalizationCatalog.Traditional ? "zh-TW" : "zh-CN", flags, text, -1, buffer, buffer.Capacity, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) > 0)
+            if (LCMapStringEx(script == LocalizationCatalog.Traditional ? "zh-TW" : "zh-CN", flags, text, -1, buffer, buffer.Capacity, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) > 0)
             {
                 // Native notes and descriptions repeat in periodic snapshots. Keep the
                 // cache bounded and clear it with the locale, never with gameplay state.
@@ -103,6 +150,8 @@ public static class L
     /// <summary>Read an official term. A default-language Lean fallback is not a target-language translation.</summary>
     public static string GameText(string key, string fallback)
     {
+        // The game has no English, nor Japanese without the community mod: the panel's own word comes first then (F119).
+        if (!GameSpeaksPanelLanguage && LocalizationCatalog.Has(LanguageId, fallback)) return Text(fallback);
         if (!string.IsNullOrWhiteSpace(key))
         {
             if (gameTerms.TryGetValue(key, out var cached)) return cached;

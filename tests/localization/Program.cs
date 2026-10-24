@@ -26,6 +26,36 @@ internal static class Program
                 }
             }
         });
+        Test("English and Japanese cover every row with matching format arguments", () =>
+        {
+            foreach (string language in new[] { LocalizationCatalog.English, LocalizationCatalog.Japanese })
+            {
+                var extra = LocalizationCatalog.Extra(language);
+                Equal(LocalizationCatalog.Rows.GetLength(0), extra.Count);
+                for (int row = 0; row < LocalizationCatalog.Rows.GetLength(0); row++)
+                {
+                    string source = LocalizationCatalog.Rows[row, 0];
+                    Require(extra.TryGetValue(source, out var value) && value.Length > 0, "Missing " + language + " " + source);
+                    Equal(Indices(source), Indices(value!));
+                    string.Format(CultureInfo.InvariantCulture, value!, Enumerable.Range(0, 16).Cast<object>().ToArray());
+                }
+            }
+        });
+        Test("title-bar choice overrides the game and following the game honours the Japanese mod", () =>
+        {
+            SetLanguage("ChineseSimplified");
+            L.SetOverride("English"); Equal("Values", L.Text("数值")); Equal("Hide F8", L.Text("收起 F8"));
+            L.SetOverride("Japanese"); Equal("数値", L.Text("数值"));
+            L.SetOverride("bogus"); Equal(LocalizationCatalog.Simplified, L.LanguageId); Equal("", L.Override);
+            L.JapaneseMod = true; L.SetOverride(""); Equal(LocalizationCatalog.Japanese, L.FollowId); Equal(LocalizationCatalog.Japanese, L.LanguageId);
+            Require(L.GameSpeaksPanelLanguage, "The Japanese mod speaks Japanese through the game's tables");
+            SetLanguage("Korean"); Equal(LocalizationCatalog.Korean, L.LanguageId);
+            L.JapaneseMod = false; SetLanguage("ChineseSimplified"); Equal(LocalizationCatalog.Simplified, L.LanguageId);
+            L.EnglishPatch = true; L.SetOverride(""); Equal(LocalizationCatalog.English, L.LanguageId);
+            Require(!L.GameSpeaksPanelLanguage, "The English patch leaves the game's tables in Chinese");
+            SetLanguage("ChineseTraditional"); Equal(LocalizationCatalog.Traditional, L.LanguageId);
+            L.EnglishPatch = false; SetLanguage("ChineseSimplified"); Equal(LocalizationCatalog.Simplified, L.LanguageId);
+        });
         Test("only three official locales are selected", () =>
         {
             foreach (string unsupported in new[] { "English", "Japanese", "ko", "zh-CN", "community" })

@@ -28,7 +28,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.47")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.48")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -116,8 +116,23 @@ public sealed class Plugin : BaseUnityPlugin
         foreach (var entry in expected) Logger.LogInfo("FINGERPRINT " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)));
         if (!Adapter.TestedBuild) Logger.LogWarning("BUILD_CHANGED game assemblies differ from the build this version was developed on; all features stay on, any patch that no longer fits is skipped and logged");
         fingerprints = string.Join("\n", expected.Select(entry => "fingerprint " + entry.Key + " " + Hash(Path.Combine(managed, entry.Key)) + (Hash(Path.Combine(managed, entry.Key)) == entry.Value ? "" : " (expected " + entry.Value + ")")));
+        // F119: the community Japanese mod (LOM-JPMOD) shows the game's 简体中文 in Japanese; following the game then means Japanese.
+        L.JapaneseMod = Directory.Exists(Path.Combine(Paths.PluginPath, "LOM_JP")) || File.Exists(Path.Combine(Paths.PluginPath, "LOM_Mod_Plugin.dll"));
+        // The community English patch: XUnity.AutoTranslator plus the patch's own translation file. XUnity on its own (machine
+        // translation into any language) has no such file and does not count.
+        L.EnglishPatch = Directory.Exists(Path.Combine(Paths.PluginPath, "XUnity.AutoTranslator"))
+            && File.Exists(Path.Combine(Paths.BepInExRootPath, "Translation", "en", "Text", "Translation zh-CN to en.txt"));
+        var language = Config.Bind("界面", "界面语言", "", "面板的语言：留空跟随游戏（装了日文化模组且游戏为简体中文时为日文）；ChineseSimplified、ChineseTraditional、Korean、English、Japanese 覆盖游戏设置。面板标题栏「刷新」左边的下拉框也能改。");
+        L.SetOverride(language.Value);
         L.RefreshLanguage();
+        Logger.LogInfo($"LANGUAGE game={L.GameLanguageId} override={(L.Override.Length > 0 ? L.Override : "-")} japaneseMod={L.JapaneseMod} englishPatch={L.EnglishPatch} panel={L.LanguageId}");
         window = new ToolWindow(Adapter);
+        window.LanguageChosen = id =>
+        {
+            language.Value = id;
+            if (L.SetOverride(id)) RefreshPresentation();
+            Logger.LogInfo($"LANGUAGE override={(id.Length > 0 ? id : "-")} panel={L.LanguageId}");
+        };
         var launcherAnchor = Config.Bind("界面", "入口位置", "", "收起入口位置，屏幕可用区域比例 x,y；留空或无效时用默认位置。");
         if (NativeUiState.TryParseAnchor(launcherAnchor.Value, out var anchorX, out var anchorY)) window.LauncherAnchor = new Vector2(anchorX, anchorY);
         window.LauncherMoved = anchor => launcherAnchor.Value = NativeUiState.FormatAnchor(anchor.x, anchor.y);
@@ -203,7 +218,7 @@ public sealed class Plugin : BaseUnityPlugin
         storyLog.Mode = Mathf.Clamp(logBranches.Value, 0, 2);
         var branchPlace = Config.Bind("界面", "剧情分支小框位置", "", "剧情分支小框拖到的位置，屏幕可用区域比例 x,y；留空为左下角。");
         var firstRun = Config.Bind("界面", "一周目提醒已处理", false, "第一次打开面板时的「先自己打一周目吧」提醒已经回应过（或汗青书里已有结局），不再出现。");
-        var showHiddenOptions = Config.Bind("界面", "显示被隐藏的选项", true, "议题、走访等菜单的标题旁显示「另有 N 个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。");
+        var showHiddenOptions = Config.Bind("界面", "显示被隐藏的选项", true, "议题、走访等菜单的标题旁显示「另有N个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。");
         var showMapCounts = Config.Bind("界面", "显示地图事件数字", true, "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示不受影响。");
         var showRoundButtons = Config.Bind("界面", "显示本旬按钮", true, "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示不受影响。");
         var statCap = Config.Bind("工具", "六维上限", 100, "体力、内力、轻功、刀剑、暗器、拳掌的上限：100（原版）、200、999。");

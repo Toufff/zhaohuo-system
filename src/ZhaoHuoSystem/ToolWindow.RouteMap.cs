@@ -120,15 +120,17 @@ public sealed partial class ToolWindow
             .Select(f => (Text: L.DisplayText(f.Name), When: f.Station!.Date != null ? L.Format("{0}年{1}月", f.Station.Date[0], f.Station.Date[1]) : "", f.Station)).ToList();
         // The date goes on the buttons when the row has room for all of them with it, as on the prototype; else on the hover.
         bool dated = forks.Sum(f => ButtonWidth(f.Text + "  " + f.When, 60) + S(6)) <= zoomX - S(10) - forkX;
+        // Names longer than the row (English, F119) go on to another line under it.
+        float forkRight = zoomX - S(10), forkY = r.y, bottom = r.yMax;
         foreach (var (name, when, fork) in forks)
         {
             string text = dated ? name + "  " + when : name, key = "stn:" + fork.Id;
             float width = ButtonWidth(text, 60);
-            if (forkX + width > zoomX - S(10)) break;
-            if (Button(new Rect(forkX, r.y, width, S(29)), text, "route.fork." + fork.Id, _routeSelected == key ? _tabSelected : _button, when + "  " + L.DisplayText(fork.Label))) SelectRoute(key);
+            if (forkX + width > forkRight && forkX > r.x + forkLabel) { forkX = r.x + forkLabel; forkY += S(35); forkRight = r.xMax; }
+            if (Button(new Rect(forkX, forkY, width, S(29)), text, "route.fork." + fork.Id, _routeSelected == key ? _tabSelected : _button, when + "  " + L.DisplayText(fork.Label))) SelectRoute(key);
             forkX += width + S(6);
         }
-        r.y += S(37); r.height -= S(37);
+        r.y = forkY + S(37); r.height = bottom - r.y;
         RomanceRow(ref r);
         RomanceOf(map);
         if (_routeLayoutMap != map || Mathf.Abs(_routeLayoutScale - _scale) > .001f) { _routeLayout = Layout(map); _routeLayoutMap = map; _routeLayoutScale = _scale; }
@@ -339,7 +341,8 @@ public sealed partial class ToolWindow
                 for (int i = 0; i < layout.MaxSlot; i += 3)
                 {
                     Fill(new Rect(layout.X[i], Z(30), 1, layout.Height - Z(30)), RouteGrid);
-                    GUI.Label(new Rect(layout.X[i] + Z(4), Z(30), Z(46), Z(18)), L.Format("{0}月", (i / 3 + 3) % 12 + 1), _routeMonth);
+                    float month = i + 3 < layout.X.Count ? layout.X[i + 3] - layout.X[i] - Z(6) : Z(46);
+                    GUI.Label(new Rect(layout.X[i] + Z(4), Z(30), Mathf.Max(Z(46), month), Z(18)), L.Format("{0}月", (i / 3 + 3) % 12 + 1), _routeMonth);
                 }
                 foreach (var (title, top) in layout.Groups) GUI.Label(new Rect(view.x + Z(8), top, Z(900), Z(24)), title, _routeGroup);
                 // Lines: this playthrough's way in colour, a stretch through free play dashed, a jump in time arched over.

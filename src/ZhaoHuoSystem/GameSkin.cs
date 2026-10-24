@@ -83,7 +83,9 @@ internal static class GameSkin
     /// <summary>The game's serif for this language (none for Korean, which it has no serif for): regular or bold.</summary>
     internal static Font? Serif(string language, bool bold)
     {
-        if (!Enabled || language == LocalizationCatalog.Korean) return null;
+        // English sits beside the game's terms in its own language; Japanese needs kana the game's fonts may not have (F119).
+        if (language == LocalizationCatalog.English) language = L.GameLanguageId;
+        if (!Enabled || language == LocalizationCatalog.Korean || language == LocalizationCatalog.Japanese) return null;
         string[] order = language == LocalizationCatalog.Traditional
             ? (bold ? new[] { "SourceHanSerifTC-Bold", "SourceHanSerifTW-Bold", "SourceHanSerifTC-Regular" } : new[] { "SourceHanSerifTC-Regular", "SourceHanSerifTW-Regular" })
             : (bold ? new[] { "SourceHanSerif-Bold", "SourceHanSerif-Regular" } : new[] { "SourceHanSerif-Regular" });
@@ -94,7 +96,7 @@ internal static class GameSkin
     /// <summary>The game's brush script (its load page's headings) for the window's name; none for Korean.</summary>
     internal static Font? Brush(string language)
     {
-        if (!Enabled || language == LocalizationCatalog.Korean) return null;
+        if (!Enabled || language != LocalizationCatalog.Simplified && language != LocalizationCatalog.Traditional) return null;
         return fonts.TryGetValue(language == LocalizationCatalog.Traditional ? "DFXingShuStd-W5" : "DFXingShuSC24-W5", out var font) && font != null ? font : null;
     }
 

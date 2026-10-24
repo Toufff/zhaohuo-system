@@ -64,18 +64,20 @@ public sealed partial class ToolWindow
     {
         float label = _small.CalcSize(new GUIContent(L.Text("结缘路线"))).x + S(10), x = r.x + label;
         Label(new Rect(r.x, r.y + S(2), label, S(26)), "结缘路线", _small, L.Text("选一位，地图上标出和她有关的剧情，右边列出结缘进度；再点一次取消"));
+        float top = r.yMax;
         foreach (var heroine in RomanceDefs.All)
         {
             string name = HeroineName(heroine);
             float width = ButtonWidth(name, 52);
-            if (x + width > r.xMax) break;
+            // Longer names (English, F119) go on to another line.
+            if (x + width > r.xMax && x > r.x + label) { x = r.x + label; r.y += S(35); }
             bool chosen = _romance == heroine.Lover;
             if (Button(new Rect(x, r.y, width, S(29)), name, "route.romance." + heroine.Lover, chosen ? _tabSelected : _button,
                 chosen ? L.Text("再点一次，回到完整的路线图") : L.Format("在地图上标出和{0}有关的剧情，右边列出结缘进度", name)))
                 ChooseHeroine(chosen ? -1 : heroine.Lover);
             x += width + S(6);
         }
-        r.y += S(37); r.height -= S(37);
+        r.y += S(37); r.height = top - r.y;
     }
 
     /// <summary>After a heroine is chosen and the map laid out: ease to her first step (or her first story).</summary>

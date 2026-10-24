@@ -15,17 +15,20 @@ namespace ZhaoHuoSystem;
 internal static class TitleSave
 {
     private static int scene = -1;
-    internal static string Source { get; private set; } = "";
+    private static string number = "";
+    private static GameTime time;
+    // Formatted when shown, so they follow the panel's language (F119).
+    internal static string Source => number.Length > 0 ? L.Format("按最近存档（第 {0} 格 · {1}）", number, Conditions.TimeName(time)) : "";
     /// <summary>The same save as the base a 直接跳转 starts from: 最近存档（第 N 格 · date）.</summary>
-    internal static string Base { get; private set; } = "";
+    internal static string Base => number.Length > 0 ? L.Format("最近存档（第 {0} 格 · {1}）", number, Conditions.TimeName(time)) : "";
 
     /// <summary>Reads it once per visit to the title; true when it has just been read (views built before should be built again).</summary>
     internal static bool Ensure(ManualLogSource log)
     {
         var active = SceneManager.GetActiveScene();
-        if (active.name != "Title") { Source = Base = ""; return false; }
+        if (active.name != "Title") { number = ""; return false; }
         if (scene == active.handle) return false;
-        scene = active.handle; Source = Base = "";
+        scene = active.handle; number = "";
         try
         {
             var system = SaveSystem.Instance;
@@ -35,10 +38,8 @@ internal static class TitleSave
             MissionManagerData.Instance?.Load(save);
             ItemDatabase.Instance?.Load(save);
             ShopDatabase.Instance?.Load(save);
-            string number = int.TryParse(slot, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n.ToString(CultureInfo.InvariantCulture) : slot;
-            string date = Conditions.TimeName(new GameTime(save.CurrentYear, save.CurrentMonth, save.CurrentStage));
-            Source = L.Format("按最近存档（第 {0} 格 · {1}）", number, date);
-            Base = L.Format("最近存档（第 {0} 格 · {1}）", number, date);
+            time = new GameTime(save.CurrentYear, save.CurrentMonth, save.CurrentStage);
+            number = int.TryParse(slot, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n.ToString(CultureInfo.InvariantCulture) : slot;
             log.LogInfo($"TITLE_SAVE slot={slot} time={save.CurrentYear}/{save.CurrentMonth}/{save.CurrentStage}");
             return true;
         }

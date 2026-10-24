@@ -9,6 +9,8 @@
   <ItemGroup>
     <Compile Include="../../src/ZhaoHuoSystem/Localization.cs" Link="Localization.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/LocalizationCatalog.cs" Link="LocalizationCatalog.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/LocalizationCatalog.English.cs" Link="LocalizationCatalog.English.cs" />
+    <Compile Include="../../src/ZhaoHuoSystem/LocalizationCatalog.Japanese.cs" Link="LocalizationCatalog.Japanese.cs" />
     <Compile Include="../../src/ZhaoHuoSystem/NativeEnumSemantics.cs" Link="NativeEnumSemantics.cs" />
   </ItemGroup>
 </Project>

@@ -15,7 +15,8 @@
   installer and the bundled official BepInEx) and its .sha256 file, plus dist/ZhaoHuoSystem-v<Version>-manual.zip,
   the script-free package for Nexus Mods (uploaded there by hand, not attached to the GitHub release), and
   dist/ZhaoHuoSystem-v<Version>-BepInEx5.zip, the plugin built for BepInEx 5 (F118) for games that already have it,
-  e.g. with the English translation patch (BepInEx 5.4.23.5 + XUnity.AutoTranslator). That build references the
+  e.g. with the English translation patch (BepInEx 5.4.23.5 + XUnity.AutoTranslator), and its script-free
+  dist/ZhaoHuoSystem-v<Version>-BepInEx5-manual.zip for Nexus Mods (attached to the GitHub release too). That build references the
   official BepInEx 5.4.23.5, fetched once into dist/cache and checked against the SHA256 pinned below.
   With -Publish it also tags HEAD (which must equal origin/main), pushes the tag and creates the
   GitHub release with the CHANGELOG section as notes (requires an authenticated gh CLI).
@@ -99,6 +100,8 @@ try {
     Write-Host "$($manual.Name)  SHA256 $($manual.Sha256)  (for Nexus Mods)"
     $bepinex5 = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll5 -OutDir $dist -BepInEx5
     Write-Host "$($bepinex5.Name)  SHA256 $($bepinex5.Sha256)  (for games that already have BepInEx 5)"
+    $bepinex5Manual = & (Join-Path $PSScriptRoot 'package.ps1') -Version $Version -Dll $dll5 -OutDir $dist -BepInEx5 -Manual
+    Write-Host "$($bepinex5Manual.Name)  SHA256 $($bepinex5Manual.Sha256)  (script-free BepInEx 5 package for Nexus Mods)"
 
     if (-not $Publish) { Write-Host 'Packaged only. Re-run with -Publish to tag and create the GitHub release.'; return }
 
@@ -124,7 +127,7 @@ SHA256 ($($bepinex5.Name)): ``$($bepinex5.Sha256)``
 "@
     $notesFile = Join-Path $dist "release-notes-$Version.md"
     Set-Content -LiteralPath $notesFile -Value $body -Encoding utf8
-    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", $bepinex5.Zip, "$($bepinex5.Zip).sha256", '--title', "ZhaoHuoSystem $tag", '--notes-file', $notesFile, '--verify-tag')
+    Invoke-Checked gh @('release', 'create', $tag, $zip, "$zip.sha256", $bepinex5.Zip, "$($bepinex5.Zip).sha256", $bepinex5Manual.Zip, "$($bepinex5Manual.Zip).sha256", '--title', "ZhaoHuoSystem $tag", '--notes-file', $notesFile, '--verify-tag')
     Write-Host "Released $tag."
 }
 finally { Pop-Location }

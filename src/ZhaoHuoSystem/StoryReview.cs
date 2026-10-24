@@ -222,9 +222,11 @@ internal sealed class StoryReview(ManualLogSource log, string folder)
         var marks = Reading(node.Script);
         var rows = node.Rows.Select(row => row.Value + (marks.TryGetValue(row.Key, out var mark) ? "〔" + mark + "〕" : "")).ToList();
         string summary = string.Join(" ／ ", rows);
-        if (node.Tags.Length > 0) summary = summary.Length > 0 ? summary + " · " + node.Tags : node.Tags;
+        // Tags are saved in the panel's language of that moment; shown in the current one (F119).
+        string tags = string.Join(" · ", node.Tags.Split(new[] { " · " }, StringSplitOptions.RemoveEmptyEntries).Select(tag => L.Text(LocalizationCatalog.SourceOf(tag))));
+        if (tags.Length > 0) summary = summary.Length > 0 ? summary + " · " + tags : tags;
         string kept = node.Kept > 0 ? new DateTime(node.Kept).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "";
-        string detail = string.Join("\n", rows.Select(row => "· " + row)) + (node.Tags.Length > 0 ? "\n" + node.Tags : "") + "\n\n" + node.Script
+        string detail = string.Join("\n", rows.Select(row => "· " + row)) + (tags.Length > 0 ? "\n" + tags : "") + "\n\n" + node.Script
             + (kept.Length > 0 ? "\n" + L.Format("收录于 {0}", kept) : "") + (node.Favourite ? "\n" + L.Text("已收藏，这一份不会被新收录覆盖") : "")
             + (node.Rows.Count > 0 ? "\n" + L.Text("条件里的数值是收录时的；未读、部分已读按全部周目读过的对白算") : "");
         return (summary, detail.Trim());

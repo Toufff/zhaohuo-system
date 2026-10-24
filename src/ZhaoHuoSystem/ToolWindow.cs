@@ -208,6 +208,7 @@ public sealed partial class ToolWindow : IDisposable
         // IDs, drafts, focus and scroll belong to the user, never to translated labels.
         _languageRevision = -1;
         _valueSource = null;
+        _reviewBuilt = -1; _treeDirty = true; Review?.ForgetReading();
         foreach (var pair in _drafts)
             if (pair.Value.ErrorTemplate.Length > 0) pair.Value.Error = L.Format(pair.Value.ErrorTemplate, pair.Value.ErrorArgs);
     }
@@ -310,7 +311,8 @@ public sealed partial class ToolWindow : IDisposable
                 // An open jump dialog takes every press; what lies behind it is drawn but does not react (F98).
                 bool modal = _dialog != JumpDialog.None;
                 // Nor shows its hints over the dialog.
-                if (modal) { GUI.enabled = false; _hoverAllowed = false; }
+                if (modal) { GUI.enabled = false; _hoverAllowed = false; _languageOpen = false; }
+                else LanguageInput(current);
                 DrawHeader(width);
                 DrawTabs(width);
                 Rect body = new(S(14), S(94), width - S(28), height - S(134));
@@ -329,6 +331,7 @@ public sealed partial class ToolWindow : IDisposable
                 GUI.DrawTexture(new Rect(width - S(16), height - S(7), S(10), 1), _line);
                 GUI.DrawTexture(new Rect(width - S(11), height - S(12), S(5), 1), _line);
                 GUI.enabled = true; _hoverAllowed = true;
+                DrawLanguageMenu();
                 if (modal) DrawDialog(width, height);
             }
             finally { GUI.EndGroup(); }
@@ -358,7 +361,9 @@ public sealed partial class ToolWindow : IDisposable
         float titleWidth = _brandTitle.CalcSize(new GUIContent(L.Text("赵活系统"))).x, versionWidth = _small.CalcSize(new GUIContent(ModVersion)).x + S(8);
         Label(new Rect(S(14), S(5), titleWidth + S(4), S(34)), "赵活系统", _brandTitle, _snapshot.Version);
         Label(new Rect(S(14) + titleWidth + S(10), S(9), versionWidth, S(28)), ModVersion, _small, _snapshot.Version);
-        if (Button(new Rect(width - closeWidth - refreshWidth - S(22), S(8), refreshWidth, S(28)), "刷新", "refresh")) Refresh();
+        float refreshX = width - closeWidth - refreshWidth - S(22), languageWidth = LanguageButtonWidth();
+        DrawLanguageButton(new Rect(refreshX - languageWidth - S(8), S(8), languageWidth, S(28)));
+        if (Button(new Rect(refreshX, S(8), refreshWidth, S(28)), "刷新", "refresh")) Refresh();
         if (Button(new Rect(width - closeWidth - S(14), S(8), closeWidth, S(28)), close, "close"))
         {
             GUI.FocusControl(null);
@@ -649,6 +654,23 @@ public sealed partial class ToolWindow : IDisposable
         finally { EndScroll(); }
     }
 
+    /// <summary>A setting's name; two lines when its language needs them (F119).</summary>
+    private void SettingName(Rect r, string text)
+    {
+        _nameHeight = Mathf.Max(S(32), TextHeight(_label, L.Text(text), r.width));
+        Label(new Rect(r.x, r.y, r.width, _nameHeight), text, _label);
+    }
+    private float _nameHeight;
+    /// <summary>A note beside a setting's control, as tall as its text; the row's height, at least the old fixed one (F119).</summary>
+    private float SettingNote(Rect r, string note, float least)
+    {
+        float height = TextHeight(_muted, L.Text(note), r.width);
+        Label(new Rect(r.x, r.y, r.width, height), note, _muted);
+        float row = Mathf.Max(S(least), height + S(11), _nameHeight + S(8));
+        _nameHeight = 0;
+        return row;
+    }
+
     private float SettingsRows(Rect r)
     {
         float y = r.y, labelWidth = Mathf.Min(S(220), r.width * .36f), x = r.x + labelWidth + S(10);
@@ -659,28 +681,26 @@ public sealed partial class ToolWindow : IDisposable
         string note = "剧情分支小框、地图事件数字、显示被隐藏的选项、回想中的剧情分支，一次全开或全关；下面也能分别设置。";
         if (Shown("剧透类显示", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "剧透类显示", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "剧透类显示");
             int spoilers = SpoilerState();
             if (Button(new Rect(x, y, S(110), S(30)), spoilers switch { 2 => "全部开启", 0 => "全部关闭", _ => "部分开启" }, "settings.spoilers", spoilers == 0 ? _button : _tabSelected))
                 SetSpoilers(spoilers == 0);
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         // Pausing each action for a choice is the one gameplay switch here; on by default, saved like the rest.
         note = "行动时先停下，让你选这次触发的事件；关闭后按游戏原本随机。";
         if (Shown("行动前选择结果", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "行动前选择结果", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "行动前选择结果");
             if (Button(new Rect(x, y, S(110), S(30)), _snapshot.ActionSelectionEnabled ? "开启" : "关闭", "settings.selection", _snapshot.ActionSelectionEnabled ? _tabSelected : _button))
                 Execute(() => _adapter.SetActionSelection(!_snapshot.ActionSelectionEnabled));
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         // Size of every mod surface on top of the automatic screen-height scale.
         float step = ButtonWidth("−", 44);
         if (Shown("界面缩放"))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "界面缩放", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "界面缩放");
             if (Button(new Rect(x, y, step, S(30)), "−", "settings.scale.down")) SetScale(UiScale.User - .1f);
             Label(new Rect(x + step + S(8), y, S(70), S(32)), L.Format("{0}%", Mathf.RoundToInt(UiScale.User * 100)), _label);
             if (Button(new Rect(x + step + S(84), y, step, S(30)), "+", "settings.scale.up")) SetScale(UiScale.User + .1f);
@@ -691,19 +711,18 @@ public sealed partial class ToolWindow : IDisposable
         note = "用游戏自己的边框、按钮和字体绘制面板；「简洁」是原来的纯色样式。素材取自游戏已载入的资源，个别部位要进过一次剧情或地图后才换上。";
         if (Shown("界面风格", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "界面风格", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "界面风格");
             if (Button(new Rect(x, y, S(110), S(30)), GameSkin.Enabled ? "游戏素材" : "简洁", "settings.skin", GameSkin.Enabled ? _tabSelected : _button))
             {
                 GameSkin.Enabled = !GameSkin.Enabled; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         // Only the story-branch box; 隐藏全部悬浮窗 below still hides everything.
         note = "剧情按条件分支时弹出，可拖到别处并记住位置；关闭后不再弹出。";
         if (Shown("显示剧情分支小框", "重置位置", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "显示剧情分支小框", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "显示剧情分支小框");
             if (Button(new Rect(x, y, S(110), S(30)), ShowBranches ? "开启" : "关闭", "settings.branches", ShowBranches ? _tabSelected : _button))
             {
                 ShowBranches = !ShowBranches; SettingsChanged?.Invoke();
@@ -711,73 +730,67 @@ public sealed partial class ToolWindow : IDisposable
             float resetWidth = ButtonWidth("重置位置", 96);
             if (Button(new Rect(x + S(118), y, resetWidth, S(30)), "重置位置", "settings.branches.reset", tooltip: L.Text("把小框放回左下角"))) BranchPlaceReset?.Invoke();
             float branchDetailX = x + S(118) + resetWidth + S(14);
-            Label(new Rect(branchDetailX, y + S(3), Mathf.Max(S(80), r.xMax - branchDetailX), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(branchDetailX, y + S(3), Mathf.Max(S(80), r.xMax - branchDetailX), 0), note, 52);
         }
         // F106: 回想's branch lines, apart from the box.
         note = "回想里记下每次剧情分支：简略为一行，鼠标移上去看完整条件；完整为原来的多行；也可以不显示。";
         if (Shown("回想中的剧情分支", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "回想中的剧情分支", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "回想中的剧情分支");
             string[] modes = { "简略", "完整", "不显示" };
             float modeWidth = modes.Max(text => ButtonWidth(text, 64)), modeX = x;
             for (int i = 0; i < modes.Length; i++, modeX += modeWidth + S(6))
                 if (Button(new Rect(modeX, y, modeWidth, S(30)), modes[i], "settings.logbranches." + i, LogBranches == i ? _tabSelected : _button))
                 { LogBranches = i; SettingsChanged?.Invoke(); }
-            Label(new Rect(modeX + S(8), y + S(3), Mathf.Max(S(80), r.xMax - modeX - S(8)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(modeX + S(8), y + S(3), Mathf.Max(S(80), r.xMax - modeX - S(8)), 0), note, 52);
         }
         // F107: a button under 议题 / 走访 menus naming the options the game hid; never changes the menu.
-        note = "议题、走访等菜单的标题旁显示「另有 N 个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。";
+        note = "议题、走访等菜单的标题旁显示「另有N个选项未满足条件」，点开看这些选项和各自的条件；菜单本身不变。";
         if (Shown("显示被隐藏的选项", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "显示被隐藏的选项", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "显示被隐藏的选项");
             if (Button(new Rect(x, y, S(110), S(30)), ShowHiddenOptions ? "开启" : "关闭", "settings.hiddenoptions", ShowHiddenOptions ? _tabSelected : _button))
             {
                 ShowHiddenOptions = !ShowHiddenOptions; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         // Only the map's counts (贴吧 36 楼); 隐藏全部悬浮窗 below still hides everything.
         note = "地图上地点旁的事件数字和悬停说明；关闭后不再显示，其他悬浮显示照常。";
         if (Shown("显示地图事件数字", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "显示地图事件数字", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "显示地图事件数字");
             if (Button(new Rect(x, y, S(110), S(30)), ShowMapCounts ? "开启" : "关闭", "settings.mapcounts", ShowMapCounts ? _tabSelected : _button))
             {
                 ShowMapCounts = !ShowMapCounts; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         note = "骰子界面点「指定」后不播转盘、不等「继续」，直接出结果；结果仍由游戏结算，和真掷出来的一样。";
         if (Shown("指定后直接出结果", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "指定后直接出结果", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "指定后直接出结果");
             if (Button(new Rect(x, y, S(110), S(30)), _adapter.DirectDiceResult ? "开启" : "关闭", "settings.directdice", _adapter.DirectDiceResult ? _tabSelected : _button))
             {
                 _adapter.DirectDiceResult = !_adapter.DirectDiceResult; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         note = "日期右边的「跳过本旬」和「本旬行动点无限」；关闭后两个都不显示，其他悬浮显示照常。";
         if (Shown("显示本旬按钮", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "显示本旬按钮", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "显示本旬按钮");
             if (Button(new Rect(x, y, S(110), S(30)), ShowRoundButtons ? "开启" : "关闭", "settings.roundbuttons", ShowRoundButtons ? _tabSelected : _button))
             {
                 ShowRoundButtons = !ShowRoundButtons; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         // F112: the six may rise past the game's 100; the gauges keep reading 100 as full.
         note = "体力、内力、轻功、刀剑、暗器、拳掌的上限。改回 100 后，超过 100 的部分会在下次变动或读档时被游戏压回 100。";
         if (Shown("六维上限", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "六维上限", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "六维上限");
             float capX = x;
             foreach (int cap in StatRules.Caps)
             {
@@ -797,52 +810,50 @@ public sealed partial class ToolWindow : IDisposable
         note = "剧情里数值变化弹出提示后停一下再继续；没有弹出提示的变化（变化为 0、隐藏的数值）一律不停。";
         if (Shown("数值变化停顿", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "数值变化停顿", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "数值变化停顿");
             float pauseWidth = new[] { "0.5 秒（原版）", "0.2 秒", "不停顿" }.Max(text => ButtonWidth(text, 110));
             if (Button(new Rect(x, y, pauseWidth, S(30)), StatPause switch { 1 => "0.2 秒", 2 => "不停顿", _ => "0.5 秒（原版）" }, "settings.statpause", StatPause == 0 ? _button : _tabSelected))
             {
                 StatPause = (StatPause + 1) % 3; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + pauseWidth + S(14), y + S(3), Mathf.Max(S(80), r.xMax - x - pauseWidth - S(14)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + pauseWidth + S(14), y + S(3), Mathf.Max(S(80), r.xMax - x - pauseWidth - S(14)), 0), note, 52);
         }
         // F102: the whole clock, fights included; the player turns it off if a fight goes wrong.
         note = "整个游戏按倍数变快：剧情出字、等待和动画，自由行动地图，回合制决斗和即时战斗都会变快，战斗里叠加在游戏自己的速度上，暂停照旧。背景音乐不变，自动播放仍留足阅读时间。即时战斗的敌人也会变快，不合适随时关掉。";
         if (Shown("全局加速", "加速快捷键", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "全局加速", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "全局加速");
             if (Button(new Rect(x, y, S(110), S(30)), GlobalSpeed.On ? "开启" : "关闭", "settings.speed", GlobalSpeed.On ? _tabSelected : _button)) { GlobalSpeed.On = !GlobalSpeed.On; SettingsChanged?.Invoke(); }
             float levelX = x + S(118), levelWidth = ButtonWidth("1.5×", 64);
             for (int i = 0; i < GlobalSpeed.Multiples.Length; i++)
                 if (Button(new Rect(levelX + i * (levelWidth + S(6)), y, levelWidth, S(30)), GlobalSpeed.Label(i), "settings.speed." + i, GlobalSpeed.Level == i ? _tabSelected : _button))
                 { GlobalSpeed.Level = i; SettingsChanged?.Invoke(); }
             y += S(40);
-            Label(new Rect(r.x, y, r.width, S(66)), note, _muted);
-            y += S(72);
+            float speedNote = TextHeight(_muted, L.Text(note), r.width);
+            Label(new Rect(r.x, y, r.width, speedNote), note, _muted);
+            y += Mathf.Max(S(72), speedNote + S(6));
             KeyRow(r.x, x, ref y, labelWidth, "加速快捷键", SpeedKey, 3);
         }
         note = "地点行动后的停顿、转场遮罩和回到地图时的淡入；加快后快 3 倍，约 3.5 秒缩到 1.2 秒。";
         if (Shown("自由行动过场", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "自由行动过场", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "自由行动过场");
             if (Button(new Rect(x, y, S(110), S(30)), FastFreeTransitions ? "加快" : "原版", "settings.freetransition", FastFreeTransitions ? _tabSelected : _button))
             {
                 FastFreeTransitions = !FastFreeTransitions; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(44)), note, _muted);
-            y += S(52);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 52);
         }
         // F105: one switch back to the game's own saving; nothing stored is removed, so turning it on again restores all.
         note = "剧情中随时存档、更多手动存档格、存档排序、收藏和备注。关闭后都按原版：读档、存档页只显示 20 格；第 21 格以后的存档、收藏和备注都还在，重新开启就恢复。";
         if (Shown("存档功能", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "存档功能", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "存档功能");
             if (Button(new Rect(x, y, S(110), S(30)), SaveFeatures ? "开启" : "原版", "settings.savefeatures", SaveFeatures ? _tabSelected : _button))
             {
                 SaveFeatures = !SaveFeatures; SettingsChanged?.Invoke();
             }
-            Label(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), S(66)), note, _muted);
-            y += S(74);
+            y += SettingNote(new Rect(x + S(124), y + S(3), Mathf.Max(S(80), r.xMax - x - S(124)), 0), note, 74);
         }
         // F90: typed, or ten at a time; a page builds its slots again the next time it opens.
         note = "读档、存档页的手动存档格数（20–99，游戏原为 20），可直接输入，下次打开读档或存档页时生效。调小或卸载模组后，多出的存档只是不显示，文件仍在。";
@@ -850,7 +861,7 @@ public sealed partial class ToolWindow : IDisposable
         {
             // Only counts while 存档功能 is on.
             bool slotsEnabled = GUI.enabled; GUI.enabled = slotsEnabled && SaveFeatures;
-            Label(new Rect(r.x, y, labelWidth, S(32)), "手动存档数", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "手动存档数");
             float field = S(56);
             if (Button(new Rect(x, y, step, S(30)), "−", "settings.slots.down")) { GUI.FocusControl(null); SetSaveSlots(((SaveSlots + 9) / 10 - 1) * 10); }
             const string slotsField = "zh.settings.slots";
@@ -859,14 +870,15 @@ public sealed partial class ToolWindow : IDisposable
             _slotsText = new string(InputField(new Rect(x + step + S(8), y, field, S(30)), _slotsText, 2).Where(char.IsDigit).ToArray());
             if (int.TryParse(_slotsText, out int typed) && typed >= MinSaveSlots && typed <= MaxSaveSlots && typed != SaveSlots) SetSaveSlots(typed);
             if (Button(new Rect(x + step + field + S(16), y, step, S(30)), "+", "settings.slots.up")) { GUI.FocusControl(null); SetSaveSlots((SaveSlots / 10 + 1) * 10); }
-            Label(new Rect(r.x, y + S(38), r.width, S(44)), note, _muted);
+            float below = TextHeight(_muted, L.Text(note), r.width);
+            Label(new Rect(r.x, y + S(38), r.width, below), note, _muted);
             GUI.enabled = slotsEnabled;
-            y += S(88);
+            y += Mathf.Max(S(88), S(46) + below);
         }
         if (Shown("面板快捷键")) KeyRow(r.x, x, ref y, labelWidth, "面板快捷键", PanelKey, 1);
         if (Shown("隐藏全部悬浮窗", "隐藏快捷键"))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "隐藏全部悬浮窗", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "隐藏全部悬浮窗");
             if (Button(new Rect(x, y, S(110), S(30)), Hidden ? "开启" : "关闭", "settings.hidden", Hidden ? _tabSelected : _button)) SetHidden(!Hidden);
             y += S(44);
             KeyRow(r.x, x, ref y, labelWidth, "隐藏快捷键", HideKey, 2);
@@ -879,14 +891,15 @@ public sealed partial class ToolWindow : IDisposable
         note = "把最近 5 次游戏的日志、当前状态、配置和性能统计放进一个文件夹，路径会复制到剪贴板。";
         if (Shown("反馈诊断", "导出诊断", note))
         {
-            Label(new Rect(r.x, y, labelWidth, S(32)), "反馈诊断", _label);
+            SettingName(new Rect(r.x, y, labelWidth, 0), "反馈诊断");
             if (Button(new Rect(x, y, ButtonWidth("导出诊断", 110), S(30)), "导出诊断", "settings.export"))
             {
                 try { Message(L.Format("已导出诊断：{0}（路径已复制）", ExportDiagnostics?.Invoke() ?? ""), false); }
                 catch (Exception ex) { Message(L.Format("导出诊断失败：{0}", ex.GetBaseException().Message), true); }
             }
-            Label(new Rect(r.x, y + S(38), r.width, S(50)), note, _muted);
-            y += S(88);
+            float below = TextHeight(_muted, L.Text(note), r.width);
+            Label(new Rect(r.x, y + S(38), r.width, below), note, _muted);
+            y += Mathf.Max(S(88), S(46) + below);
         }
         if (y == r.y) Empty(r, L.Format("没有名称或说明含「{0}」的设置。", query));
         return y;
@@ -924,7 +937,7 @@ public sealed partial class ToolWindow : IDisposable
             else _collectionConfirm = Time.unscaledTime + 3f;
         }
         GUI.enabled = previous;
-        string note = _collection == "achievement" ? "解锁时会一并解锁对应的 Steam 成就，解锁后不能撤销；带奖励的成就在新开存档时生效。" : "解锁后在讲经堂里可以查看；记在全局存档里，不影响当前存档。";
+        string note = _collection == "achievement" ? "解锁时会一并解锁对应的Steam成就，解锁后不能撤销；带奖励的成就在新开存档时生效。" : "解锁后在讲经堂里可以查看；记在全局存档里，不影响当前存档。";
         Label(new Rect(r.x, r.y, r.width - allWidth - S(12), S(46)), note, _muted);
         Rect rows = new(r.x, r.y + S(54), r.width, r.height - S(54));
         GUI.DrawTexture(new Rect(rows.x, rows.y - S(4), rows.width, 1), _line);
@@ -1141,15 +1154,15 @@ public sealed partial class ToolWindow : IDisposable
     }
     private void CombatRow(Rect r, ref float y, float labelWidth, float x, float detailX, string label, ref bool value, string detail)
     {
-        Label(new Rect(r.x, y, labelWidth, S(32)), label, _label);
+        SettingName(new Rect(r.x, y, labelWidth, 0), label);
         if (Button(new Rect(x, y, S(110), S(30)), value ? "开启" : "关闭", "combat." + label, value ? _tabSelected : _button))
         {
             value = !value; CombatChanged?.Invoke();
         }
         // A narrow window wraps the explanation instead of clipping it.
-        float detailWidth = r.xMax - detailX, detailHeight = Mathf.Max(S(30), _muted.CalcHeight(new GUIContent(L.Text(detail)), detailWidth));
+        float detailWidth = r.xMax - detailX, detailHeight = Mathf.Max(S(30), _muted.CalcHeight(new GUIContent(L.NoBreak(L.Text(detail))), detailWidth));
         Label(new Rect(detailX, y + S(3), detailWidth, detailHeight), detail, _muted);
-        y += Mathf.Max(S(42), detailHeight + S(12));
+        y += Mathf.Max(S(42), detailHeight + S(12), _nameHeight + S(8));
     }
     private void SetScale(float value)
     {
@@ -1487,11 +1500,24 @@ public sealed partial class ToolWindow : IDisposable
         // A note about what just changed goes after a few seconds; a waiting action or a pending choice stays. Timed from when
         // it changed, whichever page was open, so an old note does not come back on another page.
         if (status != _statusShown) { _statusShown = status; _statusSince = Time.realtimeSinceStartup; }
-        if (_tab == 4) { status = Time.realtimeSinceStartup < _messageUntil ? _message : _reviewStatus; Label(r, status, _small, status); return; }
+        if (_tab == 4) { status = Time.realtimeSinceStartup < _messageUntil ? _message : _reviewStatus; Label(r, OneLine(L.Text(status), r.width), _small, status); return; }
         bool lasting = _snapshot.ActionWaiting || _snapshot.PendingEventId.Length > 0 || Time.realtimeSinceStartup < _messageUntil;
         if (!lasting && Time.realtimeSinceStartup - _statusSince > 6) status = "";
         if (string.IsNullOrWhiteSpace(status)) status = _snapshot.Ready ? "" : "等待游戏数据";
-        Label(r, status, _small, status);
+        Label(r, OneLine(L.Text(status), r.width), _small, status);
+    }
+
+    /// <summary>The bottom bar's text cut to one line with …, for the longer languages (F119); the hover shows all of it.</summary>
+    private string OneLine(string text, float width)
+    {
+        if (_small.CalcSize(new GUIContent(text)).x <= width) return text;
+        int lo = 0, hi = text.Length;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (_small.CalcSize(new GUIContent(text.Substring(0, mid) + "…")).x <= width) lo = mid; else hi = mid - 1;
+        }
+        return text.Substring(0, lo).TrimEnd() + "…";
     }
 
     private void Refresh()
@@ -1583,7 +1609,7 @@ public sealed partial class ToolWindow : IDisposable
     }
 
     private void Label(Rect r, string text, GUIStyle style, string tooltip = "")
-    { GUI.Label(r, L.Text(text ?? ""), style); Hover(r, L.Text(tooltip)); }
+    { GUI.Label(r, L.NoBreak(L.Text(text ?? "")), style); Hover(r, L.Text(tooltip)); }
 
     private void Hover(Rect r, string text)
     {
@@ -1623,7 +1649,9 @@ public sealed partial class ToolWindow : IDisposable
     {
         int dragId = GUIUtility.GetControlID(0x5A4801, FocusType.Passive);
         Vector2 pointer = current.mousePosition;
-        var title = new Rect(WindowRect.x, WindowRect.y, WindowRect.width - S(192), S(43));
+        // The title bar drags the window up to the buttons on its right (the language one included, F119).
+        float titleWidth = _languageButton.width > 0 ? _languageButton.x - S(4) : WindowRect.width - S(192);
+        var title = new Rect(WindowRect.x, WindowRect.y, titleWidth, S(43));
         var resize = new Rect(WindowRect.xMax - S(23), WindowRect.yMax - S(23), S(23), S(23));
         if (current.type == EventType.MouseDown && current.button == 0 && (resize.Contains(pointer) || title.Contains(pointer)))
         {
