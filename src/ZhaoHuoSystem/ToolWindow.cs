@@ -87,7 +87,9 @@ public sealed partial class ToolWindow : IDisposable
             if (value && !_visible && _adapter.Snapshot.Title && _tab <= 1) _tab = 4;
             bool opening = value && !_visible;
             _visible = value;
-            if (!value) { CancelInputCapture(); IsPointerOver = false; _dialog = JumpDialog.None; _closeWithDialog = false; }
+            if (!value) { CancelInputCapture(); IsPointerOver = false; _dialog = JumpDialog.None; _closeWithDialog = false; NavOwned = _navActive = false; }
+            // Opened, the panel holds the arrow keys until a press lands outside it (F120).
+            if (opening) NavOwned = true;
             if (opening) MaybeShowFirstRun();
         }
     }
@@ -159,6 +161,8 @@ public sealed partial class ToolWindow : IDisposable
     public void RequestInputBlur()
     {
         HasKeyboardFocus = HasTextFocus = false; _clearFocusOnDraw = true;
+        // A press outside the panel gives the arrow keys back to the game.
+        NavOwned = _navActive = false;
     }
     public void CancelInputCapture()
     {
@@ -288,6 +292,8 @@ public sealed partial class ToolWindow : IDisposable
         }
         HandleWindowDrag(current);
         IsPointerOver = WindowRect.Contains(current.mousePosition);
+        var pass = current.type;
+        NavBegin(current);
 
         ReadSnapshot();
 
@@ -333,6 +339,7 @@ public sealed partial class ToolWindow : IDisposable
                 GUI.enabled = true; _hoverAllowed = true;
                 DrawLanguageMenu();
                 if (modal) DrawDialog(width, height);
+                NavEnd(pass);
             }
             finally { GUI.EndGroup(); }
             if (GUIUtility.hotControl == 0) _ownedHotControl = 0;
@@ -866,8 +873,7 @@ public sealed partial class ToolWindow : IDisposable
             if (Button(new Rect(x, y, step, S(30)), "−", "settings.slots.down")) { GUI.FocusControl(null); SetSaveSlots(((SaveSlots + 9) / 10 - 1) * 10); }
             const string slotsField = "zh.settings.slots";
             if (GUI.GetNameOfFocusedControl() != slotsField) _slotsText = SaveSlots.ToString();
-            GUI.SetNextControlName(slotsField);
-            _slotsText = new string(InputField(new Rect(x + step + S(8), y, field, S(30)), _slotsText, 2).Where(char.IsDigit).ToArray());
+            _slotsText = new string(InputField(new Rect(x + step + S(8), y, field, S(30)), _slotsText, 2, slotsField).Where(char.IsDigit).ToArray());
             if (int.TryParse(_slotsText, out int typed) && typed >= MinSaveSlots && typed <= MaxSaveSlots && typed != SaveSlots) SetSaveSlots(typed);
             if (Button(new Rect(x + step + field + S(16), y, step, S(30)), "+", "settings.slots.up")) { GUI.FocusControl(null); SetSaveSlots((SaveSlots / 10 + 1) * 10); }
             float below = TextHeight(_muted, L.Text(note), r.width);
@@ -1411,8 +1417,7 @@ public sealed partial class ToolWindow : IDisposable
         else
         {
             string control = "zh.value." + value.Id;
-            GUI.SetNextControlName(control);
-            string edited = InputField(new Rect(editor.x, editor.y, editor.width - ButtonWidth("应用", 67) - S(8), editor.height), draft.Text);
+            string edited = InputField(new Rect(editor.x, editor.y, editor.width - ButtonWidth("应用", 67) - S(8), editor.height), draft.Text, -1, control);
             bool submitValue = enterTarget == value.Id;
             if (edited != draft.Text) { draft.Text = edited; draft.Dirty = true; draft.PendingReadback = false; draft.Error = ""; draft.ErrorTemplate = ""; }
             if (Button(new Rect(editor.xMax - ButtonWidth("应用", 67), editor.y, ButtonWidth("应用", 67), editor.height), "应用", "value.apply." + value.Id) || submitValue) CommitValue(value, draft);
@@ -1588,8 +1593,7 @@ public sealed partial class ToolWindow : IDisposable
         // The field comes first: IMGUI keeps keyboard focus by control order, and a × drawn before it once the first
         // character lands took the focus away, so an input method lost the rest of the word (F116).
         float clear = string.IsNullOrEmpty(value) ? 0 : S(34);
-        GUI.SetNextControlName(name);
-        string next = InputField(new Rect(r.x, r.y, r.width - S(34), r.height), value);
+        string next = InputField(new Rect(r.x, r.y, r.width - S(34), r.height), value, -1, name);
         if (string.IsNullOrEmpty(next) && GUI.GetNameOfFocusedControl() != name)
             Label(new Rect(r.x + S(9), r.y + S(3), r.width - S(18), r.height - S(6)), placeholder, _muted);
         if (clear > 0 && Button(new Rect(r.xMax - clear + S(4), r.y, clear - S(4), r.height), "×", name + ".clear", tooltip: L.Text("清除搜索")))
@@ -1626,9 +1630,10 @@ public sealed partial class ToolWindow : IDisposable
     {
         _hoverClips.Push(_hoverAllowed);
         _hoverAllowed = _hoverAllowed && position.Contains(Event.current.mousePosition);
+        scroll = NavScroll(position, scroll);
         return GUI.BeginScrollView(position, scroll, view, false, false, horizontal ? _hscrollbar : GUIStyle.none, _scrollbar);
     }
-    private void EndScroll() { GUI.EndScrollView(); _hoverAllowed = _hoverClips.Pop(); }
+    private void EndScroll() { GUI.EndScrollView(); _hoverAllowed = _hoverClips.Pop(); NavScrollEnd(); }
     private float S(float value) => value * _scale;
     private static bool OwnFocus() => (GUI.GetNameOfFocusedControl() ?? "").StartsWith("zh.", StringComparison.Ordinal);
     private static bool EnterKeyDown()

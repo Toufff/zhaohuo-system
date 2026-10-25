@@ -41,22 +41,31 @@ internal sealed class NativeInputGuard : IDisposable
     public void FocusResolved() { policy.FocusResolved(); Synchronize(); }
     public bool Suppress(InputAction.CallbackContext context)
     {
-        bool blocked = SuppressDevice(context.control?.device);
+        bool blocked = SuppressControl(context.control);
         origins[context.action] = new ActionOrigin { Frame = Time.frameCount, Blocked = blocked };
         return blocked;
     }
     private bool SuppressDevice(InputDevice? device) => Application.isFocused && (device is Keyboard ? policy.BlockKeyboard : device is Pointer && policy.BlockPointer);
+    /// <summary>The device's gate, and the arrow keys (Enter and Space once its focus ring shows) while the panel holds them (F120).</summary>
+    private bool SuppressControl(InputControl? control)
+    {
+        if (SuppressDevice(control?.device)) return true;
+        if (!Application.isFocused || control is not UnityEngine.InputSystem.Controls.KeyControl key) return false;
+        bool arrow = key.keyCode is Key.UpArrow or Key.DownArrow or Key.LeftArrow or Key.RightArrow;
+        bool press = key.keyCode is Key.Enter or Key.NumpadEnter or Key.Space;
+        return (arrow || press) && window.NavTakes(arrow, press);
+    }
     public bool Suppress(InputAction action)
     {
         // Navigation polls after all queued events. Preserve the origin's decision
         // even if a later mouse event in the frame moved outside the mod window.
         if (origins.TryGetValue(action, out var origin) && origin.Frame == Time.frameCount) return origin.Blocked;
-        return SuppressDevice(action.activeControl?.device);
+        return SuppressControl(action.activeControl);
     }
     private void ActionChanged(object source, InputActionChange change)
     {
         if (source is InputAction action && (change == InputActionChange.ActionStarted || change == InputActionChange.ActionPerformed))
-            origins[action] = new ActionOrigin { Frame = Time.frameCount, Blocked = SuppressDevice(action.activeControl?.device) };
+            origins[action] = new ActionOrigin { Frame = Time.frameCount, Blocked = SuppressControl(action.activeControl) };
     }
     private void BeforeUpdate() => Synchronize();
     private void InputEvent(InputEventPtr inputEvent, InputDevice device)

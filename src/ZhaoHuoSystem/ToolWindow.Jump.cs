@@ -221,20 +221,24 @@ public sealed partial class ToolWindow
     /// </summary>
     private bool SkinnedButton(Rect r, GUIContent content, GUIStyle style)
     {
+        bool pressed = NavControl(r, content.text);
         bool framed = style == _button || style == _launcher, primary = style == _primary;
         bool selected = style == _tabSelected || style == _listSelected || style == _routeItemSelected, quiet = style == _tabButton || style == _listItem || style == _routeItem;
-        if (!framed && !primary && !selected && !quiet || !GameSkin.Has(GameSkin.Part.Button)) return GUI.Button(r, content, style);
+        if (!framed && !primary && !selected && !quiet || !GameSkin.Has(GameSkin.Part.Button)) return GUI.Button(r, content, style) || pressed;
         bool hover = GUI.enabled && _hoverAllowed && r.Contains(Event.current.mousePosition);
         var tint = GUI.enabled ? Color.white : new Color(1, 1, 1, .45f);
         if (framed || primary) GameSkin.Draw(r, (primary || hover) && GameSkin.Has(GameSkin.Part.ButtonLit) ? GameSkin.Part.ButtonLit : GameSkin.Part.Button, _scale, tint);
         else if (selected) GameSkin.Draw(r, GameSkin.Has(GameSkin.Part.RowSelected) ? GameSkin.Part.RowSelected : GameSkin.Part.Row, _scale, tint);
         else if (hover) GameSkin.Draw(r, GameSkin.Part.Row, _scale, tint);
-        return GUI.Button(r, content, Bare(style));
+        return GUI.Button(r, content, Bare(style)) || pressed;
     }
 
     /// <summary>A text field over the game's input bar (or its plain look).</summary>
-    private string InputField(Rect r, string text, int max = -1)
+    private string InputField(Rect r, string text, int max, string name)
     {
+        // Enter on the focused field (F120) starts typing in it.
+        NavControl(r, "", name);
+        GUI.SetNextControlName(name);
         var style = GameSkin.Draw(r, GameSkin.Part.Input, _scale, Color.white) ? Bare(_input) : _input;
         return max > 0 ? GUI.TextField(r, text, max, style) : GUI.TextField(r, text, style);
     }

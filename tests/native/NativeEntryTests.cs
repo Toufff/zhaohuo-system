@@ -41,6 +41,10 @@ internal static partial class Program
             Has(battle, "Mortal.Battle", "GameLevelManager", "IsReady", "IsGameOver", "IsPause", "_levelData");
             Signature(battle, "Mortal.Battle", "GameLevelManager", "ShowGameOver", "type", "finish");
             Signature(battle, "Mortal.Battle", "GameLevelManager", "PauseGame", "isPause");
+            // F121: the same on the opening 「出征」 panel, which waits for IsCloseReady and closes through its own button handler.
+            Has(battle, "Mortal.Battle", "GameLevelManager", "IsCloseReady", "_readyPanel");
+            Has(battle, "Mortal.Battle", "ReadyPanel", "_container");
+            Signature(battle, "Mortal.Battle", "ReadyPanel", "StartButtonClick");
             var overTypes = Members(battle, "Mortal.Battle", "GameOverType").Constants;
             Require(overTypes.TryGetValue("PlayerDie", out int die) && die == 1 && overTypes.TryGetValue("FriendWin", out int friend) && friend == 2 && overTypes.TryGetValue("EnemyWin", out int enemy) && enemy == 3, "GameOverType values");
             Require(Members(battle, "Mortal.Battle", "BattleForceResult").Constants.TryGetValue("EnemyWin", out int forced) && forced == 1, "BattleForceResult.EnemyWin");

@@ -28,7 +28,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.48")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.49")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -371,6 +371,10 @@ public sealed class Plugin : BaseUnityPlugin
     internal bool SuppressGameInput(InputAction action) => inputGuard?.Suppress(action) == true;
     internal bool SuppressPointer => inputGuard?.BlocksPointer == true;
     internal bool SuppressKeyboard => inputGuard?.BlocksKeyboard == true;
+    /// <summary>The panel holds the arrow keys (F120): the game's UI does not navigate meanwhile.</summary>
+    internal bool SuppressNavigation => window?.NavTakes(true, false) == true;
+    /// <summary>The panel's focus ring shows (F120): Enter and Space press its control, not the game's text.</summary>
+    internal bool SuppressSubmit => window?.NavTakes(false, true) == true;
     private void LanguageChanged() { if (L.RefreshLanguage()) RefreshPresentation(); }
     private void RefreshPresentation() { window?.RefreshPresentation(); dicePresenter?.RefreshPresentation(); }
     private void OnApplicationFocus(bool focused) { if (!focused) inputGuard?.Reset(); }

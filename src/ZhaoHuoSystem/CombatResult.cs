@@ -20,6 +20,8 @@ namespace ZhaoHuoSystem;
 /// flag; a loss is the losing result the story goes on from where the level has one (lose on defeat or on time, or a
 /// scripted enemy win), and otherwise the death panel (retry or title), the same as being killed. 战役 locks and hides the
 /// mouse while it runs and frees it only in its pause menu, so there the buttons show while paused and unpause first.
+/// They also show on the 战役's opening 「出征」 panel, where the mouse is free (F121): the opening waiting for 出征 is
+/// stopped and the panel closed the way 出征 closes it, then the same result path runs.
 /// 「直接僵持」 (F85) joins them only in a duel that can end in a draw: the level has an event that, on a set round,
 /// leaves the fight without a result (its actions load the next scene). It runs that event's own actions (lines, flags,
 /// the next scene), as reaching that round would. Exits on HP or 气 thresholds are not draws and do not count.
@@ -31,7 +33,7 @@ internal sealed class CombatResult : IDisposable
     private const int ForcedEnemyWin = 1; // Mortal.Battle.BattleForceResult
     private const float ConfirmTime = 3f;
     private readonly ManualLogSource log;
-    private readonly PropertyInfo? battleInstance, battleReady, battleOver, battlePause, combatInstance, combatHotKey;
+    private readonly PropertyInfo? battleInstance, battleReady, battleOver, battlePause, battleCloseReady, combatInstance, combatHotKey;
     private readonly MethodInfo? showGameOver, pauseGame, combatGameOver, hideAction;
     private readonly Type? gameOverType;
     private int ended = -1; // the duel this mod already ended, until its scene goes
@@ -60,6 +62,7 @@ internal sealed class CombatResult : IDisposable
         {
             battleInstance = AccessTools.Property(battle, "Instance"); battleReady = AccessTools.Property(battle, "IsReady");
             battleOver = AccessTools.Property(battle, "IsGameOver"); battlePause = AccessTools.Property(battle, "IsPause");
+            battleCloseReady = AccessTools.Property(battle, "IsCloseReady");
             if (gameOverType != null) showGameOver = AccessTools.Method(battle, "ShowGameOver", new[] { gameOverType, typeof(bool) });
             pauseGame = AccessTools.Method(battle, "PauseGame", new[] { typeof(bool) });
         }
@@ -73,18 +76,29 @@ internal sealed class CombatResult : IDisposable
         if (combatInstance == null || combatHotKey == null || combatGameOver == null) log.LogWarning("COMBAT_RESULT duel entries missing; buttons hidden in 决斗");
     }
 
-    /// <summary>The fight that can be ended now, or null: started and not already ending; a 战役 in its pause menu, a 决斗 running.</summary>
-    private (MonoBehaviour Manager, bool Battle)? Active()
+    /// <summary>
+    /// The fight that can be ended now, or null: started and not already ending; a 战役 in its pause menu or on its opening
+    /// 「出征」 panel (Opening), a 决斗 running.
+    /// </summary>
+    private (MonoBehaviour Manager, bool Battle, bool Opening)? Active()
     {
         if (SceneController.Instance != null && SceneController.Instance.IsLoading) return null;
         if (battleInstance?.GetValue(null, null) is MonoBehaviour battle && battle != null)
-            return battleReady!.GetValue(battle, null) is true && battleOver!.GetValue(battle, null) is false && battlePause!.GetValue(battle, null) is true && showGameOver != null && pauseGame != null
-                ? (battle, true) : null;
+        {
+            if (battleOver!.GetValue(battle, null) is not false || showGameOver == null || pauseGame == null) return null;
+            if (battleReady!.GetValue(battle, null) is true) return battlePause!.GetValue(battle, null) is true ? (battle, true, false) : null;
+            return OpeningPanel(battle) != null ? (battle, true, true) : null;
+        }
         if (combatInstance?.GetValue(null, null) is MonoBehaviour combat && combat != null)
             return Time.timeScale > 0 && combatHotKey!.GetValue(combat, null) is true && R.Field(combat, "_combatLevel") != null && combat.GetInstanceID() != ended && combatGameOver != null
-                ? (combat, false) : null;
+                ? (combat, false, false) : null;
         return null;
     }
+
+    /// <summary>The 「出征」 panel while it waits for its button, fully shown; null otherwise.</summary>
+    private MonoBehaviour? OpeningPanel(MonoBehaviour battle)
+        => battleCloseReady?.GetValue(battle, null) is false && R.Field(battle, "_readyPanel") is MonoBehaviour panel && panel != null && panel.isActiveAndEnabled
+            && R.Field(panel, "_container") is CanvasGroup container && container != null && container.alpha > .99f ? panel : null;
 
     /// <summary>Layout, input and paint; call before the panel so the buttons win their own clicks.</summary>
     public void Draw(bool hidden)
@@ -111,7 +125,7 @@ internal sealed class CombatResult : IDisposable
             try
             {
                 if (choice == Stalemate) FinishDraw(fight.Value.Manager);
-                else Finish(fight.Value.Manager, fight.Value.Battle, choice == Win);
+                else Finish(fight.Value.Manager, fight.Value.Battle, choice == Win, fight.Value.Opening);
             }
             catch (Exception ex) { log.LogWarning("COMBAT_RESULT " + ex.GetBaseException().Message); }
         }
@@ -119,15 +133,21 @@ internal sealed class CombatResult : IDisposable
         if (Rect.Contains(e.mousePosition) && (e.isMouse || e.type == EventType.ScrollWheel)) e.Use();
     }
 
-    private void Finish(MonoBehaviour manager, bool battle, bool win)
+    private void Finish(MonoBehaviour manager, bool battle, bool win, bool opening = false)
     {
         if (battle)
         {
             int type = win ? FriendWin : StoryLoss(R.Field(manager, "_levelData")) ? EnemyWin : PlayerDie;
+            if (opening && OpeningPanel(manager) is MonoBehaviour panel)
+            {
+                // The opening waits for 出征 and would then start the fight; it stops here, and the panel closes as 出征 closes it.
+                manager.StopAllCoroutines();
+                AccessTools.Method(panel.GetType(), "StartButtonClick")?.Invoke(panel, null);
+            }
             // Out of the pause menu first (time runs again); the result panel brings the mouse back.
-            pauseGame!.Invoke(manager, new object[] { false });
+            else pauseGame!.Invoke(manager, new object[] { false });
             showGameOver!.Invoke(manager, new[] { Enum.ToObject(gameOverType!, type), type != PlayerDie });
-            log.LogInfo($"COMBAT_RESULT battle win={win} type={Enum.ToObject(gameOverType!, type)}");
+            log.LogInfo($"COMBAT_RESULT battle win={win} type={Enum.ToObject(gameOverType!, type)} opening={opening}");
             return;
         }
         // The duel's own round loop stops first, so a pending action or a natural end cannot run alongside.

@@ -80,7 +80,7 @@ internal static class NativeNavigationInputGate
     }
     // ProcessNavigation already delivered updateSelected before this original
     // property read, so native inline InputField typing remains operational.
-    private static bool CanNavigate(EventSystem system) => system.sendNavigationEvents && Plugin.Instance?.SuppressKeyboard != true;
+    private static bool CanNavigate(EventSystem system) => system.sendNavigationEvents && Plugin.Instance?.SuppressKeyboard != true && Plugin.Instance?.SuppressNavigation != true;
     private static bool Pressed(InputAction action) => action.WasPressedThisFrame() && Plugin.Instance?.SuppressGameInput(action) != true;
 }
 
@@ -101,6 +101,6 @@ internal static class LegacyDialogInputGate
         }
     }
     private static bool Mouse(int button) => Plugin.Instance?.SuppressPointer != true && Input.GetMouseButtonDown(button);
-    private static bool Down(string button) => Plugin.Instance?.SuppressKeyboard != true && Input.GetButtonDown(button);
-    private static bool Held(string button) => Plugin.Instance?.SuppressKeyboard != true && Input.GetButton(button);
+    private static bool Down(string button) => Plugin.Instance?.SuppressKeyboard != true && !(button == "Submit" && Plugin.Instance?.SuppressSubmit == true) && Input.GetButtonDown(button);
+    private static bool Held(string button) => Plugin.Instance?.SuppressKeyboard != true && !(button == "Submit" && Plugin.Instance?.SuppressSubmit == true) && Input.GetButton(button);
 }

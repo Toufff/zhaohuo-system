@@ -7,6 +7,7 @@ namespace ZhaoHuoSystem;
 public sealed partial class ToolWindow
 {
     private bool _languageOpen;
+    private int _languageHighlight;
     private Rect _languageButton;
     /// <summary>The choice made: "" follows the game, else a LocalizationCatalog language ID.</summary>
     public Action<string>? LanguageChosen;
@@ -22,7 +23,12 @@ public sealed partial class ToolWindow
         _languageButton = r;
         string text = LanguageLabel;
         GUI.SetNextControlName("zh.button.language");
-        if (SkinnedButton(r, new GUIContent(text), _languageOpen ? _tabSelected : _button)) { _languageOpen = !_languageOpen; GUI.FocusControl(null); }
+        if (SkinnedButton(r, new GUIContent(text), _languageOpen ? _tabSelected : _button))
+        {
+            _languageOpen = !_languageOpen; GUI.FocusControl(null);
+            // The keys start on the language in use.
+            _languageHighlight = L.Override.Length == 0 ? 0 : Array.FindIndex(LocalizationCatalog.Languages, l => l.Id == L.Override) + 1;
+        }
         Hover(r, L.Format("面板语言：{0}；可在这里覆盖游戏的语言设置", LanguageName(L.LanguageId)));
     }
 
@@ -49,6 +55,7 @@ public sealed partial class ToolWindow
     {
         if (!_languageOpen) return;
         if (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape) { _languageOpen = false; current.Use(); return; }
+        if (current.type == EventType.KeyDown) { LanguageKeys(current, LanguageItems()); return; }
         if (current.type != EventType.MouseDown || _languageButton.Contains(current.mousePosition)) return;
         var items = LanguageItems();
         var menu = LanguageMenu(items, out float row);
@@ -79,7 +86,7 @@ public sealed partial class ToolWindow
         {
             bool chosen = i == 0 ? L.Override.Length == 0 : L.Override == LocalizationCatalog.Languages[i - 1].Id;
             var r = new Rect(menu.x + S(4), menu.y + S(4) + i * row, menu.width - S(8), row);
-            if (r.Contains(Event.current.mousePosition)) GUI.DrawTexture(r, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, new Color(1, 1, 1, .08f), 0, 0);
+            if (r.Contains(Event.current.mousePosition) || i == _languageHighlight) GUI.DrawTexture(r, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, new Color(1, 1, 1, .08f), 0, 0);
             GUI.Label(new Rect(r.x + S(8), r.y + S(4), r.width - S(12), r.height - S(4)), (chosen ? "✓ " : "    ") + items[i], chosen ? _met : _label);
         }
     }
