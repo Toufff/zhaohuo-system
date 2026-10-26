@@ -11,6 +11,8 @@ An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped
 - choose dice results;
 - turn on god mode and one-hit kills in combat.
 
+As development went on, this mod has grown from an in-game trainer into a broader mod that improves the whole experience. Each part can be switched on or off as far as possible, so it stays out of the way of your other mods.
+
 The in-game panel is available in Simplified Chinese, Traditional Chinese, Korean, English and Japanese. It follows the game's language by default; pick another one in the Language ▾ drop-down left of Refresh in the panel's title bar. With the community English patch LoM_en (BepInEx 5 + XUnity.AutoTranslator) installed and the game set to Simplified Chinese, following the game means English, and stats, sects, places, people and endings use the patch's names; with the community Japanese mod LOM-JPMOD it means Japanese. XUnity on its own, for machine translation, doesn't count. English and Japanese only translate the panel's own text: event names, item names and story lines it reads from the game stay in the game's language (Japanese with the Japanese mod).
 
 > We strongly recommend playing your first run without any mods, through to the "The Final Hidden Weapon" or "Wulin Legend" ending, before using ZhaoHuo System: taste the original design first, and later runs pay off more. Nothing is locked; the panel reminds you once, the first time it opens.
