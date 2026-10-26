@@ -2,7 +2,7 @@
 
 # ZhaoHuo System: in-game trainer for Legend of Mortal
 
-[简体中文](README.md) | [繁體中文](README.zh-Hant.md) | English | [한국어](README.ko.md)
+[简体中文](README.md) | [繁體中文](README.zh-Hant.md) | English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 An in-game trainer and cheat panel for **Legend of Mortal** (活侠传), shipped as a BepInEx plugin. Press F8 in game to:
 - see which events your next action can trigger, and pick the one you want;
@@ -84,6 +84,8 @@ The in-game panel is available in Simplified Chinese, Traditional Chinese, Korea
 - **50 manual save slots**: manual saves go from 20 to 50 slots. Change the count anywhere from 20 to 99 with 手动存档数 (manual save slots) on the 设置 (Settings) tab; it applies the next time you open the load or save page. After lowering it or uninstalling, the extra saves no longer appear in the game's list, but the files stay and show up again when you raise it back or reinstall.
 
 - **Save features**: 存档功能 (save features) on the 设置 (Settings) tab is on by default. Turn it off to get the game's own saving back: no saving anywhere in the story, 20 slots on the load/save pages, no sort button, stars or notes. Saves in slot 21+ and your stars and notes are kept and come back when you turn it on again.
+
+- **Dialogue text size**: 对白文字大小 (dialogue text size) on the 设置 (Settings) tab enlarges the text in the story dialogue box to 115%, 130% or 150% (the large narration in the middle of the screen stays as it is). It only scales the text when it is laid out and does not change the game's settings; with another mod that enlarges text, the two add up, so turn on just one.
 
 - **UI scale**: the mod grows automatically on 4K and other high resolutions; adjust it further with 界面缩放 (UI scale) on the 设置 (Settings) tab.
 
