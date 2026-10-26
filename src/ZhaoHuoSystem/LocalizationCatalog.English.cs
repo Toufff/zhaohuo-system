@@ -1092,5 +1092,7 @@ internal static partial class LocalizationCatalog
         { "测试", "Tests" },
         { "生死簿", "Book of Life and Death" },
         { "汗青书", "Book of Sweat and Green" },
+        { "对白文字大小", "Dialogue text size" },
+        { "剧情对话框里的字放大，屏幕中央的大字旁白不变。只在排版时放大、不改游戏的设置，选「原版」时完全不影响别的改字号模组；和别的放大文字的模组同时开会叠加，开一边即可。", "Makes the text in the story's dialogue box larger; the big centred narration stays as it is. It only enlarges the text as it is laid out and changes no game setting, so at \"Original\" it leaves other text-size mods completely alone; with another text-enlarging mod on as well the effects add up, so turn on just one." },
     };
 }

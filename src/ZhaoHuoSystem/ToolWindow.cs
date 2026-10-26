@@ -825,6 +825,19 @@ public sealed partial class ToolWindow : IDisposable
             }
             y += SettingNote(new Rect(x + pauseWidth + S(14), y + S(3), Mathf.Max(S(80), r.xMax - x - pauseWidth - S(14)), 0), note, 52);
         }
+        // F123: the story's say boxes only; at 原版 nothing is touched, so other text-size mods are left alone.
+        note = "剧情对话框里的字放大，屏幕中央的大字旁白不变。只在排版时放大、不改游戏的设置，选「原版」时完全不影响别的改字号模组；和别的放大文字的模组同时开会叠加，开一边即可。";
+        if (Shown("对白文字大小", note))
+        {
+            SettingName(new Rect(r.x, y, labelWidth, 0), "对白文字大小");
+            float sizeWidth = ButtonWidth("原版", 110);
+            int size = DialogueText.Percent;
+            if (Button(new Rect(x, y, sizeWidth, S(30)), size == 100 ? "原版" : size + "%", "settings.dialoguesize", size == 100 ? _button : _tabSelected))
+            {
+                DialogueText.Percent = DialogueText.Sizes[(System.Array.IndexOf(DialogueText.Sizes, size) + 1) % DialogueText.Sizes.Length]; SettingsChanged?.Invoke();
+            }
+            y += SettingNote(new Rect(x + sizeWidth + S(14), y + S(3), Mathf.Max(S(80), r.xMax - x - sizeWidth - S(14)), 0), note, 52);
+        }
         // F102: the whole clock, fights included; the player turns it off if a fight goes wrong.
         note = "整个游戏按倍数变快：剧情出字、等待和动画，自由行动地图，回合制决斗和即时战斗都会变快，战斗里叠加在游戏自己的速度上，暂停照旧。背景音乐不变，自动播放仍留足阅读时间。即时战斗的敌人也会变快，不合适随时关掉。";
         if (Shown("全局加速", "加速快捷键", note))

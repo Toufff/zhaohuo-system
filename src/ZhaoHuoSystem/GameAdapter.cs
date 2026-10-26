@@ -167,6 +167,7 @@ public sealed class GameAdapter : IGameAdapter
     private long valuesLanguage = -1;
 
     public void Refresh() => Refresh(false);
+    public void RefreshDice() => Snapshot.Dice = ReadDice();
     public void Refresh(bool freshValues)
     {
         try

@@ -140,6 +140,8 @@ public interface IGameAdapter
 {
     ToolSnapshot Snapshot { get; }
     void Refresh();
+    /// <summary>Reads only the dice state into the snapshot, at once (the dice buttons need it before the next full refresh).</summary>
+    void RefreshDice();
     OperationResult SetValue(string fieldId, string input);
     OperationResult SpecifyEvent(string eventId);
     OperationResult CancelEvent();

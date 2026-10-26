@@ -23,7 +23,7 @@ internal sealed class NativeDicePresenter : IDisposable
     private long languageRevision = -1;
     private string context = "", message = "";
     private float messageUntil;
-    private bool attached, failed, observedActive;
+    private bool attached, failed, observedActive, waitLogged;
     private float began;
 
     public NativeDicePresenter(IGameAdapter adapter, ManualLogSource log) { this.adapter = adapter; this.log = log; }
@@ -50,15 +50,20 @@ internal sealed class NativeDicePresenter : IDisposable
                 return;
             }
             observedActive = true;
+            // F122: the dice state is read here at once rather than waiting for the next full refresh, and the buttons
+            // keep waiting for it (and for the option rows) while the dialog is open. A two-second limit used to give up
+            // when the option notes took that long to work out (four options with many one-shot events), leaving the
+            // dialog without buttons.
+            if (!adapter.Snapshot.Dice.Active) adapter.RefreshDice();
             if (!adapter.Snapshot.Dice.Active)
             {
                 if (root != null) root.gameObject.SetActive(false);
-                if (!attached && Time.unscaledTime - began > 2) Fail("native dice snapshot unavailable");
+                Waiting("native dice snapshot unavailable");
                 return;
             }
             if (root != null) root.gameObject.SetActive(true);
             if (!attached) Attach();
-            if (!attached) { if (Time.unscaledTime - began > 2) Fail("native dice result anchors unavailable"); return; }
+            if (!attached) { Waiting("native dice result anchors unavailable"); return; }
             Render();
         }
         catch (Exception ex) { Fail(ex.GetType().Name + ": " + ex.Message); }
@@ -159,6 +164,13 @@ internal sealed class NativeDicePresenter : IDisposable
         }
         return bounds;
     }
+    /// <summary>Still waiting after a while: noted once, without giving up.</summary>
+    private void Waiting(string reason)
+    {
+        if (waitLogged || Time.unscaledTime - began < 3) return;
+        waitLogged = true;
+        log.LogInfo("DICE_INLINE waiting: " + reason);
+    }
     private void Fail(string reason)
     {
         // Without owned buttons the native dialog simply keeps its own flow.
@@ -207,7 +219,7 @@ internal sealed class NativeDicePresenter : IDisposable
         if (root != null) { root.gameObject.SetActive(false); UnityEngine.Object.Destroy(root.gameObject); }
         if (font != null) UnityEngine.Object.Destroy(font);
         root = null; font = null; dialog = null; feedback = null;
-        branches.Clear(); nativeRows.Clear(); context = message = ""; attached = observedActive = failed = false; languageRevision = -1;
+        branches.Clear(); nativeRows.Clear(); context = message = ""; attached = observedActive = failed = waitLogged = false; languageRevision = -1;
     }
     public void Dispose() => Clear();
 }

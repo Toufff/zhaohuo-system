@@ -1037,6 +1037,9 @@ internal static partial class LocalizationCatalog
         // F119: the collection page's other two books, read from the game where it has them.
         { "生死簿", "生死簿", "생사부" },
         { "汗青书", "汗青書", "한청서" },
+        // F123: the size of the story's dialogue text.
+        { "对白文字大小", "對白文字大小", "대사 글자 크기" },
+        { "剧情对话框里的字放大，屏幕中央的大字旁白不变。只在排版时放大、不改游戏的设置，选「原版」时完全不影响别的改字号模组；和别的放大文字的模组同时开会叠加，开一边即可。", "劇情對話框裡的字放大，畫面中央的大字旁白不變。只在排版時放大、不改遊戲的設定，選「原版」時完全不影響別的改字號模組；和別的放大文字的模組同時開會疊加，開一邊即可。", "스토리 대화창의 글자를 키웁니다. 화면 가운데의 큰 내레이션은 그대로입니다. 배치할 때만 키우고 게임 설정은 바꾸지 않으므로 「원래」를 고르면 다른 글자 크기 모드에 전혀 영향을 주지 않습니다. 다른 글자 확대 모드와 함께 켜면 효과가 겹치니 한쪽만 켜세요." },
     };
 
     private static readonly Dictionary<string, int> Indices = Build();

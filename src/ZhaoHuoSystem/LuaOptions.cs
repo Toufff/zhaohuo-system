@@ -419,17 +419,34 @@ public static class LuaOptions
                 continue;
             }
             if (!scripts.Add(name) || scriptText(name) is not string text) continue;
-            foreach (var pair in Analyze(text))
+            foreach (var edge in Edges(text))
             {
-                var through = pair.Key == ScriptLevel ? path : new List<string>(path) { pair.Key };
-                queue.Enqueue((true, pair.Value.Pool, through, steps + 1));
-                queue.Enqueue((false, pair.Value.NextScript, through, steps + 1));
+                var through = edge.Option == null ? path : new List<string>(path) { edge.Option };
+                queue.Enqueue((edge.Pool, edge.Target, through, steps + 1));
             }
-            // A branch may draw more than one pool; any literal call not already reached keeps this script's path.
-            foreach (Match match in Regex.Matches(text, "checkpointmanager\\s*\\.\\s*Position\\s*\\(\\s*\"([^\"]+)\"")) queue.Enqueue((true, match.Groups[1].Value, path, steps + 1));
-            foreach (Match match in NextScriptCall.Matches(text)) queue.Enqueue((false, match.Groups[1].Value, path, steps + 1));
         }
         return result;
+    }
+
+    // Where a script leads, worked out once per script text (F122: the option notes followed the same free-play scripts
+    // from every option's entry and analysed each again, about half a second per option). Script texts do not change
+    // while the game runs, and the table keeps an entry only as long as its text is kept.
+    private sealed class Edge { public string? Option; public bool Pool; public string Target = ""; }
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, List<Edge>> edges = new();
+    private static List<Edge> Edges(string text) => edges.GetValue(text, BuildEdges);
+    private static List<Edge> BuildEdges(string text)
+    {
+        var found = new List<Edge>();
+        foreach (var pair in Analyze(text))
+        {
+            string? option = pair.Key == ScriptLevel ? null : pair.Key;
+            found.Add(new Edge { Option = option, Pool = true, Target = pair.Value.Pool });
+            found.Add(new Edge { Option = option, Pool = false, Target = pair.Value.NextScript });
+        }
+        // A branch may draw more than one pool; any literal call not already reached keeps this script's path.
+        foreach (Match match in Regex.Matches(text, "checkpointmanager\\s*\\.\\s*Position\\s*\\(\\s*\"([^\"]+)\"")) found.Add(new Edge { Pool = true, Target = match.Groups[1].Value });
+        foreach (Match match in NextScriptCall.Matches(text)) found.Add(new Edge { Pool = false, Target = match.Groups[1].Value });
+        return found;
     }
 
     private static readonly Regex PositionCall = new("checkpointmanager\\s*\\.\\s*Position\\s*\\(");

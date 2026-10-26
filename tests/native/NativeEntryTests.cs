@@ -171,6 +171,8 @@ internal static partial class Program
             Signature(mortalStory, "Mortal.Story", "LuaManager", "ChangeScene", "name", "key", "nextScene");
             Has(Path.Combine(managed, "Fungus.dll"), "Fungus", "MenuDialog", "ActiveMenuDialog", "CachedButtons");
             Signature(Path.Combine(managed, "Fungus.dll"), "Fungus", "MenuDialog", "Clear");
+            // F123: the say box's story line, which 对白文字大小 enlarges as it is laid out.
+            Has(Path.Combine(managed, "Fungus.dll"), "Fungus", "SayDialog", "storyText");
             // 存档收藏与备注: each slot's number, save-time line and button; the account folder; the game's own delete.
             foreach (string slot in new[] { "LoadSlotPanel", "SaveSlotPanel" }) Has(mortalCore, "Mortal.Core", slot, "_slotText", "_timeText", "_button");
             Signature(mortalCore, "Mortal.Core", "SaveSystem", "GetUserFolder");

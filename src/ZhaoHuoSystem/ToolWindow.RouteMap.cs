@@ -114,6 +114,10 @@ public sealed partial class ToolWindow
         if (Button(new Rect(zoomX, r.y, step, S(29)), "−", "route.zoom.out", tooltip: L.Text("缩小"))) SetRouteZoom(_routeZoom - .1f, _routeView / 2);
         if (Button(new Rect(zoomX + step + S(4), r.y, percent, S(29)), L.Format("{0}%", Mathf.RoundToInt(_routeZoom * 100)), "route.zoom.reset", tooltip: L.Text("恢复 100%"))) SetRouteZoom(1, _routeView / 2);
         if (Button(new Rect(zoomX + step + percent + S(8), r.y, step, S(29)), "+", "route.zoom.in", tooltip: L.Text("放大"))) SetRouteZoom(_routeZoom + .1f, _routeView / 2);
+        // F124: how to move and zoom the map, on hovering a ? beside the zoom; pressing it opens the full help.
+        float ask = ButtonWidth("?", 36), askX = zoomX - ask - S(6);
+        if (Button(new Rect(askX, r.y, ask, S(29)), "?", "route.ask", tooltip: L.Text("按住左键拖动地图；滚轮上下移动，Shift + 滚轮左右移动，Ctrl + 滚轮或上方的 −、+ 缩放。地图和右侧之间的竖线可以拖动调整宽度。"))) OpenHelp();
+        zoomX = askX;
         float forkLabel = _small.CalcSize(new GUIContent(L.Text("分岔点"))).x + S(10), forkX = r.x + forkLabel;
         Label(new Rect(r.x, r.y + S(2), forkLabel, S(26)), "分岔点", _small);
         var forks = RouteMapDefs.Forks.Select(f => (f.Name, Station: map.Stations.Find(s => s.Id == f.Station))).Where(f => f.Station != null)
