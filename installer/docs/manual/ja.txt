@@ -1,0 +1,34 @@
+趙活システム v{VERSION} - 『活侠伝』ゲーム内トレーナー
+================================================================
+
+Steam 版 build 26073097 で開発しています。ゲームの小さなアップデートは通常影響しません。アップデート後におかしくなった場合は、アンインストールして問題を報告してください。
+
+これは手動版のパッケージです。インストーラーはなく、ファイルをそのままゲームフォルダに入れます。公式の BepInEx 6.0.0-be.788 を同梱しています。
+
+パネルは既定でゲームの言語に合わせます。日本語化MOD（LOM-JPMOD）を入れてゲームの言語を簡体中国語にしていれば、自動で日本語になります。それ以外の場合も、パネルのタイトルバーにある「更新」の左の「Language ▾」から日本語を選べます。
+
+インストール
+1. ゲームを終了します。
+2. ゲームフォルダを開きます：Steam ライブラリで『活侠伝』を右クリック → 管理 → ローカルファイルを閲覧（Mortal.exe があるフォルダ）。
+3. zip の中身をすべてそのフォルダに展開します。Windows に聞かれたら、ファイルを置き換えてください。
+   - 日本語化MODなどですでに BepInEx 6（Unity.Mono）を使っている場合は、BepInEx/plugins/ZhaoHuoSystem をコピーするだけで構いません。
+   - ゲームに BepInEx 5 が入っている場合は、上書きせずに、先にそれを削除してください。
+4. Steam Deck / Linux：ゲームの起動オプションに WINEDLLOVERRIDES="winhttp=n,b" %command% を入力します。
+5. ゲームを起動し、セーブをロードして F8 を押すか、画面左端の小さな「趙活システム」ボタンを押します。
+
+数値の変更とイベントの指定はセーブに書き込まれるので、初めて使う前にセーブをバックアップしてください。
+
+更新：新しいバージョンを同じようにゲームフォルダに展開し、ファイルを置き換えます。
+
+アンインストール：ゲームフォルダで BepInEx/plugins/ZhaoHuoSystem、BepInEx/ZhaoHuoSystem、BepInEx/config/local.zhaohuo.system.cfg を削除します。
+BepInEx も削除する場合（BepInEx を使う他のモッドも動かなくなります）は、BepInEx フォルダ、winhttp.dll、doorstop_config.ini、.doorstop_version、changelog.txt も削除します。セーブには影響しません。
+
+install.bat と uninstall.bat 付きのワンクリック版は https://github.com/Toufff/zhaohuo-system/releases にあります。
+
+困ったとき
+- ゲーム中に F8 を押しても何も起きない：ゲームフォルダに BepInEx/LogOutput.log があるか確認してください。なければ BepInEx が入っていないので、もう一度パッケージを展開してください。あれば、下の方法で問題を報告してください。
+- 問題の報告：https://github.com/Toufff/zhaohuo-system/issues
+  ゲームの言語、何をしていたか、パネルの「設定」タブの「診断を書き出す」で作られるフォルダ（または BepInEx/LogOutput.log）を添えてください。
+
+プロジェクトページ：https://github.com/Toufff/zhaohuo-system
+MIT (c) Toufff。ファンメイドのモッドで、『活侠伝』の開発元・販売元とは関係がなく、ゲームのファイルは一切含みません。

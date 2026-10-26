@@ -5,7 +5,7 @@
   official BepInEx build it installs when missing. Called by release.ps1; can also be run on its own.
 
   Package layout (extracting it straight into the game folder also works for a manual install):
-    install.bat, uninstall.bat, install guides in four languages (from installer/docs, {VERSION} filled in)
+    install.bat, uninstall.bat, install guides in five languages (from installer/docs, {VERSION} filled in)
     BepInEx/plugins/ZhaoHuoSystem/ZhaoHuoSystem.dll, LICENSE
     installer/ZhaoHuoSystem-Setup.ps1, BepInEx-*.zip, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt
 
@@ -60,7 +60,7 @@ if ($BepInEx5) {
         Copy-Item -LiteralPath $setup -Destination $setupDir
         $guideDir = $stage; $guideSource = 'docs/bepinex5'
     }
-    $guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt' }
+    $guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt'; 'ja.txt' = 'インストール説明.txt' }
     foreach ($guide in $guides.GetEnumerator()) {
         $text = (Get-Content -LiteralPath (Join-Path $installer "$guideSource/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
         [IO.File]::WriteAllText((Join-Path $guideDir $guide.Value), ($text -replace "`r?`n", "`r`n"), (New-Object System.Text.UTF8Encoding $true))
@@ -106,7 +106,7 @@ else {
     Copy-Item -LiteralPath $bepinex -Destination $noticeDir
 }
 # Install guides, UTF-8 with BOM and CRLF so Notepad opens them correctly.
-$guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt' }
+$guides = [ordered]@{ 'zh-Hans.txt' = '安装说明.txt'; 'zh-Hant.txt' = '安裝說明.txt'; 'en.txt' = 'INSTALL.txt'; 'ko.txt' = '설치 안내.txt'; 'ja.txt' = 'インストール説明.txt' }
 foreach ($guide in $guides.GetEnumerator()) {
     $text = (Get-Content -LiteralPath (Join-Path $installer "$guideSource/$($guide.Key)") -Raw -Encoding utf8).Replace('{VERSION}', $Version)
     $text = ($text -replace "`r?`n", "`r`n")
