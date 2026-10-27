@@ -5,7 +5,7 @@ This package is for players who already have BepInEx 5, for example from the Eng
 (BepInEx 5 + XUnity.AutoTranslator). It only adds the ZhaoHuo System plugin and never installs or changes BepInEx.
 If you have no BepInEx at all, use the regular package instead (it comes with BepInEx 6).
 
-Built for the Steam version of Legend of Mortal, build 26073097, and BepInEx 5.4.23.5.
+Built for the Steam version of Legend of Mortal, build 26237817, and BepInEx 5.4.23.5.
 The panel follows the game's language by default; English, Japanese, Korean and both Chinese scripts can be picked in the drop-down left of Refresh in its title bar.
 
 [One-click install]

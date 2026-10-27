@@ -97,7 +97,7 @@ The in-game panel is available in Simplified Chinese, Traditional Chinese, Korea
 
 - **Spoiler displays**: 剧透类显示 (spoiler displays) at the top of the 设置 (Settings) tab turns the story branch box, map event counts, hidden options and the branch lines in 回想 on or off together; it shows 部分开启 (partly on) when only some are on.
 
-- **Faster flow**: returning to the free-play map, opening the save and load pages and skipping through the story are all faster (saves are no longer read in full over and over, and skipping no longer idles between commands), and the story log is no longer rebuilt on every line. Auto mode waits until a line is fully shown, then turns the page after a time based on its length. On the 设置 (Settings) tab, 数值变化停顿 (pause after stat changes: 0.5 s original / 0.2 s / none) and 自由行动过场 (free-play transitions: original / 3× faster) speed things up further; both default to the original.
+- **Faster flow**: returning to the free-play map, opening the save and load pages and skipping through the story are all faster (saves are no longer read in full over and over, and skipping no longer idles between commands). Auto mode waits until a line is fully shown, then turns the page after a time based on its length. On the 设置 (Settings) tab, 数值变化停顿 (pause after stat changes: 0.5 s original / 0.2 s / none) and 自由行动过场 (free-play transitions: original / 3× faster) speed things up further; both default to the original.
 
 - **Global speed**: 全局加速 on the 设置 (Settings) tab runs the whole game at 1.5×/2×/3× — story, free-roam map, turn-based duels and real-time battles (in fights it multiplies the game's own speed; pausing still pauses). Music is unchanged and auto-play still leaves full reading time. A toggle hotkey (加速快捷键) can be bound in settings (unbound by default).
 
@@ -107,7 +107,7 @@ The in-game panel is available in Simplified Chinese, Traditional Chinese, Korea
 
 ## Install
 
-Built and tested on the Steam release, build 26073097.
+Built and tested on the Steam release, build 26237817.
 
 1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
 2. Close the game and double-click `install.bat`.

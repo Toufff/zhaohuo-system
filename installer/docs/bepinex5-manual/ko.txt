@@ -4,7 +4,7 @@
 이미 BepInEx 5를 설치한 플레이어용입니다. 예: 영어 번역 패치(BepInEx 5 + XUnity.AutoTranslator).
 설치 프로그램 없이 조활 시스템 플러그인만 들어 있으며 BepInEx를 설치하거나 바꾸지 않습니다. BepInEx가 전혀 없다면 일반 패키지(BepInEx 6 포함)를 사용하세요.
 
-Steam판 《활협전》 build 26073097, BepInEx 5.4.23.5 기준으로 개발했습니다.
+Steam판 《활협전》 build 26237817, BepInEx 5.4.23.5 기준으로 개발했습니다.
 
 【설치】
 1. 게임을 종료합니다.

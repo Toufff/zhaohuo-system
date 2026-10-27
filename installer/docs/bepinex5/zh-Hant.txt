@@ -4,7 +4,7 @@
 這個包給已經裝了 BepInEx 5 的玩家使用，例如裝了英文翻譯補丁（BepInEx 5 + XUnity.AutoTranslator）。
 它只放趙活系統外掛，不安裝也不改動 BepInEx。還沒裝過任何 BepInEx 的，請改用一般版安裝包（內附 BepInEx 6）。
 
-基於 Steam 版《活俠傳》build 26073097、BepInEx 5.4.23.5 開發。
+基於 Steam 版《活俠傳》build 26237817、BepInEx 5.4.23.5 開發。
 
 【一鍵安裝】
 1. 關閉遊戲。

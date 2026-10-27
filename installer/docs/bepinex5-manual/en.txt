@@ -5,7 +5,7 @@ For players who already have BepInEx 5, for example from the English translation
 (BepInEx 5 + XUnity.AutoTranslator). There is no installer: it holds only the ZhaoHuo System plugin and never
 installs or changes BepInEx. If you have no BepInEx at all, use the regular package instead (it comes with BepInEx 6).
 
-Built for the Steam version of Legend of Mortal, build 26073097, and BepInEx 5.4.23.5.
+Built for the Steam version of Legend of Mortal, build 26237817, and BepInEx 5.4.23.5.
 
 [Install]
 1. Close the game.
