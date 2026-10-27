@@ -97,16 +97,29 @@ public sealed class Plugin : BaseUnityPlugin
         Adapter.LoadLastChoices(lastChoices.Value);
         Adapter.LastChoicesChanged = saved => lastChoices.Value = saved;
         var managed = Path.Combine(Paths.GameRootPath, "Mortal_Data", "Managed");
-        var expected = new Dictionary<string, string>
+        // The builds this version was tested on, newest first: 26237817 (1.0.6001, 回想 rebuilt) and 26073097.
+        var tested = new[]
         {
-            ["Mortal.Core.dll"] = "4F0E6C53F31B786BECEAF66BF2649C0DE414E36D440113603C5196C10CB54B4F",
-            ["Mortal.Story.dll"] = "907F42E06624A2B0C603757DC22DE3A4F33C26CB3CEBE8017A24CA6FF27DCF56",
-            ["Mortal.Free.dll"] = "F82558A87E1A735E5DCA71A106B27128BE9FC376A0120CCFC8DD0D50158F54C9"
-            ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
+            new Dictionary<string, string>
+            {
+                ["Mortal.Core.dll"] = "093EF965BBCCF3C9EF543C51C1D9AF61B8B9CAE93BB8EBE8D8F58ACDAB12D922",
+                ["Mortal.Story.dll"] = "320F77D0B2CEE562420EC44FCD244E20CB7E007A6F8AFF7275567015EEC2310F",
+                ["Mortal.Free.dll"] = "BC03FA8DDB8FF92BEE2D5BF7A80E5D9AEAFB640B7DADC40B2D1ECE44180BA731"
+                ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
+            },
+            new Dictionary<string, string>
+            {
+                ["Mortal.Core.dll"] = "4F0E6C53F31B786BECEAF66BF2649C0DE414E36D440113603C5196C10CB54B4F",
+                ["Mortal.Story.dll"] = "907F42E06624A2B0C603757DC22DE3A4F33C26CB3CEBE8017A24CA6FF27DCF56",
+                ["Mortal.Free.dll"] = "F82558A87E1A735E5DCA71A106B27128BE9FC376A0120CCFC8DD0D50158F54C9"
+                ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
+            },
         };
         // Diagnostics only. Game updates are mostly small fixes that leave the mod working, so nothing is switched off here;
         // a patch that no longer fits is skipped on its own (PatchEach) and the rest keep working.
-        Adapter.TestedBuild = expected.All(entry => Hash(Path.Combine(managed, entry.Key)) == entry.Value);
+        var expected = tested.FirstOrDefault(build => build.All(entry => Hash(Path.Combine(managed, entry.Key)) == entry.Value));
+        Adapter.TestedBuild = expected != null;
+        expected ??= tested[0];
         // The mod's own session log starts before anything else is logged, so BOOT and fingerprints are in it.
         diagnostics = Path.Combine(Paths.BepInExRootPath, "ZhaoHuoSystem"); Directory.CreateDirectory(diagnostics);
         Diagnostics.Scene = SceneManager.GetActiveScene().name;
@@ -594,7 +607,7 @@ public sealed class Plugin : BaseUnityPlugin
     /// <summary>直接跳转: the game as it stands now (on the title, its 最近存档), moved to the start, date and main mission asked for.</summary>
     private static GameSave? DirectSave(JumpTarget target)
     {
-        if (AccessTools.Method(typeof(SaveSystem), "CreateSaveData")?.Invoke(SaveSystem.Instance, null) is not GameSave save || target.Script.Length == 0) return null;
+        if (R.Call(AccessTools.Method(typeof(SaveSystem), "CreateSaveData"), SaveSystem.Instance) is not GameSave save || target.Script.Length == 0) return null;
         save.StartStoryScript = target.Script; save.CurrentScene = "Story"; save.RestoreData = ""; save.TimeTick = DateTime.Now.Ticks;
         if (target.Date is { Length: 3 } d && d[0] > 0) { save.CurrentYear = d[0]; save.CurrentMonth = d[1]; save.CurrentStage = (MonthStageType)d[2]; }
         if (target.MainMission.Length > 0 && save.MainMission != null) save.MainMission.Key = target.MainMission;
@@ -688,6 +701,8 @@ public sealed class Plugin : BaseUnityPlugin
         }
         catch (Exception ex) { Logger.LogWarning("BRANCH " + name + " " + ex.GetBaseException().Message); }
     }
+    internal void StoryLogShown(Component panel) => storyLog?.Refreshed(panel);
+    internal void StoryLogShown(Component view, object entry) => storyLog?.EntryShown(view, entry);
     /// <summary>Appends a short effect line under the merchant's description; the item and shop state are untouched.</summary>
     internal void ShopItemHovered(ShopPanel panel, IGameItem item)
     {

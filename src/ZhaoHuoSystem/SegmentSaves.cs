@@ -63,7 +63,7 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
             if (StoryManager.Instance == null || SaveSystem.Instance == null || player == null || Create == null) return;
             // Only a script the story itself moved to; it is what a save starts from.
             if (!string.Equals(player.CurrentStoryScript, name, StringComparison.OrdinalIgnoreCase)) return;
-            if (Create.Invoke(SaveSystem.Instance, null) is not GameSave save) return;
+            if (R.Call(Create, SaveSystem.Instance) is not GameSave save) return;
             save.StartStoryScript = player.CurrentStoryScript;
             snapshot = save; script = player.CurrentStoryScript;
             bool loaded = justLoaded; justLoaded = false;

@@ -107,7 +107,7 @@ The in-game panel is available in Simplified Chinese, Traditional Chinese, Korea
 
 ## Install
 
-Built and tested on the Steam release, build 26073097.
+Built and tested on the Steam release, build 26237817 (1.0.6001); the previous build 26073097 is still supported.
 
 1. Download the latest `ZhaoHuoSystem-v*.zip` from [Releases](https://github.com/Toufff/zhaohuo-system/releases) and extract it to any folder.
 2. Close the game and double-click `install.bat`.

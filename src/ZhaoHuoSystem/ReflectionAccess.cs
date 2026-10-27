@@ -30,6 +30,16 @@ internal static class R
         Field(obj, name);
         Fields[obj.GetType().FullName + ":" + name].SetValue(obj, value);
     }
+    /// <summary>A method called with its optional parameters at their defaults: game updates add some (build 26237817 gave
+    /// SaveSystem.CreateSaveData its includeStoryLog), and an Invoke with fewer arguments throws.</summary>
+    public static object? Call(MethodInfo? method, object? target)
+    {
+        if (method == null) return null;
+        var parameters = method.GetParameters();
+        var args = new object?[parameters.Length];
+        for (int i = 0; i < parameters.Length; i++) args[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : Type.Missing;
+        return method.Invoke(target, args);
+    }
     public static object? Property(object? obj, string name) => obj?.GetType().GetProperty(name)?.GetValue(obj);
     public static int IntProperty(object? obj, string name) => Property(obj, name) is int value ? value : 0;
     public static string Name(object? obj) => obj is UnityEngine.Object asset ? asset.name : "";

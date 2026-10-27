@@ -123,6 +123,8 @@ internal static class NarrativeLogPatch
     private static readonly AccessTools.FieldRef<NarrativeLogMenu, ScrollRect> View = AccessTools.FieldRefAccess<NarrativeLogMenu, ScrollRect>("narrativeLogView");
     private static readonly AccessTools.FieldRef<NarrativeLog, NarrativeData> History = AccessTools.FieldRefAccess<NarrativeLog, NarrativeData>("history");
     private static readonly MethodInfo? Rebuild = AccessTools.Method(typeof(NarrativeLogMenu), "UpdateNarrativeLogText");
+    // Build 26237817 (1.0.6001) dropped this log for one that is filled only as it opens: nothing to patch there.
+    private static bool Prepare() => AccessTools.Field(typeof(StoryManager), "_narrativeLogMenu") != null;
 
     [HarmonyPrefix, HarmonyPatch(typeof(NarrativeLogMenu), "UpdateNarrativeLogText")]
     private static bool Update(NarrativeLogMenu __instance)

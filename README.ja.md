@@ -107,7 +107,7 @@
 
 ## インストール
 
-Steam 版 build 26073097 で開発・テストしています。
+Steam 版 build 26237817（1.0.6001）で開発・テストしています。前のビルド 26073097 にも対応しています。
 
 1. [Releases](https://github.com/Toufff/zhaohuo-system/releases) から最新の `ZhaoHuoSystem-v*.zip` をダウンロードし、好きなフォルダに展開します。
 2. ゲームを終了し、`install.bat` をダブルクリックします。

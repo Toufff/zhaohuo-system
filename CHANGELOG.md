@@ -2,6 +2,15 @@
 
 每个版本写明开发和测试时的游戏 build；游戏小更新一般不影响使用。
 
+## 未发布
+
+适配：Steam build 26237817（1.0.6001），兼容 build 26073097；BepInEx 6.0.0-be.788（Unity.Mono x64）。
+
+- 适配游戏 1.0.6001 重做的回想：新回想不再用 Fungus 的 NarrativeLog，改成每条一行的新面板，赵活系统之前往回想里写的剧情分支行和【回到这段开头】【决定它的选项】都不显示了（日志里 `PATCHES skipped=1 NarrativeLogPatch`）。现在写进新回想，简略、完整、不显示三种模式和悬停说明照旧。按游戏里有没有新回想自动选用，旧 build 上不变。
+- 新回想跨场景保留，也会随存档读档；赵活系统的分支行不写进存档，读档或跳转后自然消失。自由行动地图上也能打开新回想，从那里点【回到这段开头】时会先把回想关上。
+- 修复：1.0.6001 的 `SaveSystem.CreateSaveData` 多了一个可选参数，赵活系统按无参数调用失败（日志 `SEGMENT_SAVE Number of parameters specified does not match`），剧情段落的开头一直没记下，【回到这段开头】和直接跳转都受影响。现在按参数默认值调用。
+- 两个 build 的程序集指纹都算已测（`testedBuild=True`）。
+
 ## 0.3.50
 
 适配：Steam build 26073097，BepInEx 6.0.0-be.788（Unity.Mono x64）。
