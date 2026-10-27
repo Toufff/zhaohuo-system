@@ -31,6 +31,7 @@ internal static class NativeActionInputGate
             "Mortal.Story.StoryManager:SubmitActionChanged", "Mortal.Story.StoryManager:StatusActionChanged",
             "Mortal.Story.StoryManager:AutoActionChanged", "Mortal.Story.StoryManager:LogActionChanged", "Mortal.Story.StoryManager:SkipActionPerformed",
             "Mortal.Free.FreeManager:StatusActionChanged", "Mortal.Free.FreeManager:SaveActionPerformed", "Mortal.Free.FreeManager:ToggleSelectedPerformed",
+            "Mortal.Free.FreeManager:LogActionPerformed", "Mortal.Core.StoryLogPanel:CloseActionPerformed",
             "Mortal.Core.ButtonNavigationInputAction:NextActionPerformed", "Mortal.Core.ButtonNavigationInputAction:PreviousActionPerfomed",
             "Mortal.Core.CustomMenuDialog:NavigateActionChanged", "Mortal.Core.FateBonusPanel:PlusActionPerformed", "Mortal.Core.FateBonusPanel:MinusActionPerformed",
             "Mortal.Core.LoadGamePanel:DeleteActionPerformed", "Mortal.Core.LongClickButton:ActionStarted", "Mortal.Core.LongClickButton:ActionPerformed",

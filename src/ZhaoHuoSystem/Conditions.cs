@@ -94,9 +94,15 @@ internal static class Conditions
         if (values.Count == 1) return values[0];
         if (values.Count == 0) return new() { Text = "0", Value = 0, Known = false };
         var op = R.RequiredField<StatGroupType>(group, "_groupType").ToString();
-        if (op != "Sum" && op != "Max" && op != "Min" && op != "Multiply") throw new InvalidOperationException("未核验的数值组运算 " + op);
-        var total = op switch { "Max" => values.Max(x => x.Value), "Min" => values.Min(x => x.Value), "Multiply" => values.Aggregate(1, (a, b) => unchecked(a * b.Value)), _ => values.Sum(x => x.Value) };
-        return new() { Text = "(" + string.Join(op == "Sum" ? " + " : op == "Multiply" ? " × " : ", ", values.Select(x => x.Text)) + ")", Value = total, Known = values.All(x => x.Known), Parts = op == "Sum" ? values : null };
+        if (op != "Sum" && op != "Max" && op != "Min" && op != "Multiply" && op != "And" && op != "Or") throw new InvalidOperationException("未核验的数值组运算 " + op);
+        // And / Or (1.0.6001): 1 when every / any value is not 0, else 0.
+        var total = op switch
+        {
+            "Max" => values.Max(x => x.Value), "Min" => values.Min(x => x.Value), "Multiply" => values.Aggregate(1, (a, b) => unchecked(a * b.Value)),
+            "And" => values.All(x => x.Value != 0) ? 1 : 0, "Or" => values.Any(x => x.Value != 0) ? 1 : 0, _ => values.Sum(x => x.Value)
+        };
+        string join = op switch { "Sum" => " + ", "Multiply" => " × ", "And" => " " + L.Text("且") + " ", "Or" => L.Text(" 或 "), _ => ", " };
+        return new() { Text = "(" + string.Join(join, values.Select(x => x.Text)) + ")", Value = total, Known = values.All(x => x.Known), Parts = op == "Sum" ? values : null };
     }
     private static Variable Reference(object reference, int depth)
     {

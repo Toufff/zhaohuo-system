@@ -137,7 +137,7 @@ internal static partial class Program
             Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryMainUI", "Hide");
             Signature(Path.Combine(managed, "Mortal.Story.dll"), "Mortal.Story", "StoryManager", "SetHotKey", "active");
             // 剧情中随时存档: the save built and written, the load, the script a save starts from, and the story's own save button.
-            Signature(mortalCore, "Mortal.Core", "SaveSystem", "CreateSaveData");
+            Signature(mortalCore, "Mortal.Core", "SaveSystem", "CreateSaveData", "includeStoryLog");
             Signature(mortalCore, "Mortal.Core", "SaveSystem", "LoadGameData");
             Has(mortalCore, "Mortal.Core", "SaveSystem", "CurrentSlot");
             // ...and the music a story save notes and a load puts back.
@@ -204,14 +204,8 @@ internal static partial class Program
             Has(core, "Mortal.Core", "MissionManagerData", "FlagsCollection");
             Signature(story, "Mortal.Story", "StatModifyManager", "GetDisplayTime", "name");
             Signature(story, "Mortal.Story", "StoryMainUI", "DisplayStatModification", "stat", "addValue");
-            Signature(story, "Mortal.Story", "StoryMainUI", "DisplayRelationshipModification", "icon", "addValue");
-            // The story log: its rebuild, its view, the history it joins, and opening it.
-            Signature(fungus, "Fungus", "NarrativeLogMenu", "UpdateNarrativeLogText");
-            Has(fungus, "Fungus", "NarrativeLogMenu", "narrativeLogView");
-            Signature(fungus, "Fungus", "NarrativeLog", "GetPrettyHistory", "previousOnly", "maxEntry");
-            Has(fungus, "Fungus", "NarrativeLog", "history");
-            Signature(story, "Mortal.Story", "StoryManager", "Log", "enabled");
-            Has(story, "Mortal.Story", "StoryManager", "_narrativeLogMenu", "_skipDialog", "_autoDialog", "Instance");
+            Signature(story, "Mortal.Story", "StoryMainUI", "DisplayRelationshipModification", "relationship", "addValue");
+            Has(story, "Mortal.Story", "StoryManager", "_skipDialog", "_autoDialog", "Instance");
             // Slot set-up and the save reads it makes; the public slot reader beside the private generic one.
             foreach (string panel in new[] { "SaveSlotPanel", "LoadSlotPanel", "AutoSaveSlotPanel", "RecentSaveSlotPanel" }) Signature(core, "Mortal.Core", panel, "Setup");
             Require(Members(core, "Mortal.Core", "SaveSystem").Methods.TryGetValue("GetSaveData", out var reads) && reads.Count(x => x.SequenceEqual(new[] { "slot" })) == 1, "SaveSystem.GetSaveData(slot)");
@@ -225,18 +219,22 @@ internal static partial class Program
             foreach (string action in new[] { "ExecuteMainStoryAction", "ExecuteSubStoryAction", "ExecuteActivityAction" }) Signature(free, "Mortal.Free", "PositionController", action);
             Signature(free, "Mortal.Free", "FreeManager", "Start");
             Signature(fungus, "Fungus", "LuaEnvironment", "RunUnityCoroutine", "coroutine");
-            // 回想 (F101): a line for each branch, through the game's own log.
-            Signature(fungus, "Fungus", "NarrativeLog", "AddLine", "entry");
-            Has(fungus, "Fungus", "NarrativeLogEntry", "name", "text");
-            Has(fungus, "Fungus", "FungusManager", "Instance", "NarrativeLog");
-            // Its links (F101): the log menu that shows it, its one text and the entries it is written from.
-            Has(fungus, "Fungus", "NarrativeLogMenu", "instance", "narrativeLogActive", "narrativeLogView", "_maxLogEntry");
-            Has(fungus, "Fungus", "NarrativeLog", "history");
-            Has(fungus, "Fungus", "NarrativeData", "entries");
+            // 回想 (F101, 1.0.6001): a text entry for each branch in the game's log, found again by the view that shows it.
+            Signature(core, "Mortal.Core", "StoryLogData", "AddText", "text", "isSave");
+            Has(core, "Mortal.Core", "StoryLogData", "Entries");
+            Has(core, "Mortal.Core", "StoryLogEntry", "Type", "Key", "Text");
+            Has(core, "Mortal.Core", "StoryLogPanel", "IsOpen", "_scrollRect", "_entryViews");
+            foreach (string method in new[] { "Open", "Close", "Refresh" }) Signature(core, "Mortal.Core", "StoryLogPanel", method);
+            Signature(core, "Mortal.Core", "StoryLogPanel", "CloseActionPerformed", "context");
+            Signature(core, "Mortal.Core", "StoryLogEntryView", "Setup", "entry", "content", "localeResolver");
+            Has(core, "Mortal.Core", "StoryLogEntryView", "_contentText", "_normalTextColor");
+            Has(story, "Mortal.Story", "StoryManager", "_storyLogPanel");
+            Has(free, "Mortal.Free", "FreeManager", "_storyLogPanel", "Instance");
+            Signature(free, "Mortal.Free", "FreeManager", "LogActionPerformed", "context");
             // 跳转 (F98): the save it writes and the game's own load it then runs, as the load page does.
             Signature(core, "Mortal.Core", "SaveSystem", "SetSlot", "slot");
             Signature(core, "Mortal.Core", "SaveSystem", "LoadGameData");
-            Signature(core, "Mortal.Core", "SaveSystem", "CreateSaveData");
+            Signature(core, "Mortal.Core", "SaveSystem", "CreateSaveData", "includeStoryLog");
             // On the title (F100) the most recent save goes into all four stores CreateSaveData writes from.
             foreach (string store in new[] { "PlayerStatManagerData", "ItemDatabase", "ShopDatabase" }) Signature(core, "Mortal.Core", store, "Load", "gameSave");
             Signature(core, "Mortal.Core", "MissionManagerData", "Load", "save");

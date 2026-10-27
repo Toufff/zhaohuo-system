@@ -177,26 +177,6 @@ public static class NativeUiState
     }
     /// <summary><see cref="Tone"/> marks as rich-text colours, or removed when a colour is null. Always balanced, even after a cut.</summary>
     /// <summary>
-    /// 回想 (F101): where each entry's text starts in the log's one text, as Fungus' GetPrettyHistory writes it: a line break,
-    /// then for each of the last <paramref name="max"/> entries its name line (in its own size and colour) if it has a name,
-    /// its text and a blank line. -1 for an entry left out.
-    /// </summary>
-    public static int[] LogTextStarts(IReadOnlyList<KeyValuePair<string, string>> entries, int max)
-    {
-        var starts = new int[entries.Count];
-        int first = Math.Max(0, entries.Count - Math.Max(0, max)), at = 1;
-        for (int i = 0; i < entries.Count; i++)
-        {
-            if (i < first) { starts[i] = -1; continue; }
-            if (!string.IsNullOrEmpty(entries[i].Key)) at += LogNameOpen.Length + entries[i].Key.Length + LogNameClose.Length;
-            starts[i] = at;
-            at += (entries[i].Value ?? "").Length + 2;
-        }
-        return starts;
-    }
-    private const string LogNameOpen = "<size=28><color=#D9B077>", LogNameClose = "</color></size>\n";
-
-    /// <summary>
     /// Index among the characters a Unity Text lays out of the character at <paramref name="raw"/> in its rich text: tags it
     /// understands take no place. Anything else in angle brackets is drawn as written.
     /// </summary>

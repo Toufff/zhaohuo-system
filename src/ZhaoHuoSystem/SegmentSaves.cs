@@ -34,6 +34,10 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
 {
     public bool Enabled = true;
     private static readonly MethodInfo? Create = AccessTools.Method(typeof(SaveSystem), "CreateSaveData");
+    // 1.0.6001 gave it an optional argument (includeStoryLog); each argument it takes is passed as its default.
+    private static readonly object[]? CreateArgs = Create?.GetParameters().Select(parameter => parameter.DefaultValue).ToArray();
+    /// <summary>The save the game would write now, built by its own CreateSaveData.</summary>
+    internal static GameSave? Build() => Create?.Invoke(SaveSystem.Instance, CreateArgs) as GameSave;
     private static readonly Regex Volatile = new("\"(TimeTick|Version)\":(\"[^\"]*\"|-?\\d+),?|\"FreeRandomState\":\\{[^}]*\\},?");
     private GameSave? snapshot;
     private string script = "";
@@ -63,7 +67,7 @@ internal sealed class SegmentSaves(ManualLogSource log, string checkFile, string
             if (StoryManager.Instance == null || SaveSystem.Instance == null || player == null || Create == null) return;
             // Only a script the story itself moved to; it is what a save starts from.
             if (!string.Equals(player.CurrentStoryScript, name, StringComparison.OrdinalIgnoreCase)) return;
-            if (Create.Invoke(SaveSystem.Instance, null) is not GameSave save) return;
+            if (Build() is not GameSave save) return;
             save.StartStoryScript = player.CurrentStoryScript;
             snapshot = save; script = player.CurrentStoryScript;
             bool loaded = justLoaded; justLoaded = false;

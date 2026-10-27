@@ -28,7 +28,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.50")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.51")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -99,9 +99,9 @@ public sealed class Plugin : BaseUnityPlugin
         var managed = Path.Combine(Paths.GameRootPath, "Mortal_Data", "Managed");
         var expected = new Dictionary<string, string>
         {
-            ["Mortal.Core.dll"] = "4F0E6C53F31B786BECEAF66BF2649C0DE414E36D440113603C5196C10CB54B4F",
-            ["Mortal.Story.dll"] = "907F42E06624A2B0C603757DC22DE3A4F33C26CB3CEBE8017A24CA6FF27DCF56",
-            ["Mortal.Free.dll"] = "F82558A87E1A735E5DCA71A106B27128BE9FC376A0120CCFC8DD0D50158F54C9"
+            ["Mortal.Core.dll"] = "093EF965BBCCF3C9EF543C51C1D9AF61B8B9CAE93BB8EBE8D8F58ACDAB12D922",
+            ["Mortal.Story.dll"] = "320F77D0B2CEE562420EC44FCD244E20CB7E007A6F8AFF7275567015EEC2310F",
+            ["Mortal.Free.dll"] = "BC03FA8DDB8FF92BEE2D5BF7A80E5D9AEAFB640B7DADC40B2D1ECE44180BA731"
             ,["Fungus.dll"] = "16DCD300966F3CB747E693B3BD7996AD6C36303B9112B81F9696D2B4C8BC0114"
         };
         // Diagnostics only. Game updates are mostly small fixes that leave the mod working, so nothing is switched off here;
@@ -444,7 +444,8 @@ public sealed class Plugin : BaseUnityPlugin
             try { HiddenOptions.Draw(window.Hidden || !window.ShowHiddenOptions || window.Visible && window.IsPointerOver); } catch (Exception ex) { OverlayFailed("hidden-options", ex); HiddenOptions.Clear(); }
             if (!window.Visible)
             {
-                try { if (!window.Hidden && window.ShowMapCounts) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
+                // The free map's 回想 (1.0.6001) covers the map, and its numbers with it.
+                try { if (!window.Hidden && window.ShowMapCounts && !StoryLog.Open) mapIndicators.Draw(Adapter.Snapshot); } catch (Exception ex) { OverlayFailed("map", ex); }
                 if (window.DrawLauncher())
                 {
                     lastToggleFrame = Time.frameCount; lastToggleTime = Time.realtimeSinceStartup;
@@ -594,7 +595,7 @@ public sealed class Plugin : BaseUnityPlugin
     /// <summary>直接跳转: the game as it stands now (on the title, its 最近存档), moved to the start, date and main mission asked for.</summary>
     private static GameSave? DirectSave(JumpTarget target)
     {
-        if (AccessTools.Method(typeof(SaveSystem), "CreateSaveData")?.Invoke(SaveSystem.Instance, null) is not GameSave save || target.Script.Length == 0) return null;
+        if (SegmentSaves.Build() is not GameSave save || target.Script.Length == 0) return null;
         save.StartStoryScript = target.Script; save.CurrentScene = "Story"; save.RestoreData = ""; save.TimeTick = DateTime.Now.Ticks;
         if (target.Date is { Length: 3 } d && d[0] > 0) { save.CurrentYear = d[0]; save.CurrentMonth = d[1]; save.CurrentStage = (MonthStageType)d[2]; }
         if (target.MainMission.Length > 0 && save.MainMission != null) save.MainMission.Key = target.MainMission;
@@ -1039,16 +1040,6 @@ internal static class UpgradeUnlimitedPatch
 }
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Switch))]
 internal static class BranchPatch { private static void Postfix(string name, int __result) => Plugin.Instance?.BranchTaken(name, __result); }
-// F104: a story scene starting with its 回想 closed clears the game's open switch left by a scene that ended with it open.
-[HarmonyPatch(typeof(StoryManager), "Start")]
-internal static class StoryLogStatePatch
-{
-    private static void Postfix(StoryManager __instance)
-    {
-        try { if (StoryLog.Repair(__instance)) Plugin.Instance?.Log.LogInfo("STORY_LOG cleared the open switch a jump from 回想 left behind"); }
-        catch (Exception ex) { Plugin.Instance?.Log.LogWarning("STORY_LOG " + ex.GetBaseException().Message); }
-    }
-}
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Dice))]
 internal static class DicePatch
 {

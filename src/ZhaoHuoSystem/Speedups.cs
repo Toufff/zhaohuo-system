@@ -114,48 +114,6 @@ internal static class StatPausePatch
     }
 }
 
-// The story log rebuilt its whole text (up to 250 entries, joined one by one) about twice a line, closed or not. While it is
-// closed it is only marked; opening it builds it once. The history is joined in one pass, the same text as the game's.
-[HarmonyPatch]
-internal static class NarrativeLogPatch
-{
-    private static bool stale = true;
-    private static readonly AccessTools.FieldRef<NarrativeLogMenu, ScrollRect> View = AccessTools.FieldRefAccess<NarrativeLogMenu, ScrollRect>("narrativeLogView");
-    private static readonly AccessTools.FieldRef<NarrativeLog, NarrativeData> History = AccessTools.FieldRefAccess<NarrativeLog, NarrativeData>("history");
-    private static readonly MethodInfo? Rebuild = AccessTools.Method(typeof(NarrativeLogMenu), "UpdateNarrativeLogText");
-
-    [HarmonyPrefix, HarmonyPatch(typeof(NarrativeLogMenu), "UpdateNarrativeLogText")]
-    private static bool Update(NarrativeLogMenu __instance)
-    {
-        var view = View(__instance);
-        if (view == null || view.gameObject.activeInHierarchy) { stale = false; return true; }
-        stale = true;
-        return false;
-    }
-
-    [HarmonyPostfix, HarmonyPatch(typeof(StoryManager), nameof(StoryManager.Log))]
-    private static void Opened(bool enabled, NarrativeLogMenu ____narrativeLogMenu)
-    {
-        if (enabled && stale && ____narrativeLogMenu != null) Rebuild?.Invoke(____narrativeLogMenu, null);
-    }
-
-    [HarmonyPrefix, HarmonyPatch(typeof(NarrativeLog), nameof(NarrativeLog.GetPrettyHistory))]
-    private static bool Pretty(NarrativeLog __instance, bool previousOnly, int maxEntry, ref string __result)
-    {
-        var entries = History(__instance)?.entries;
-        if (entries == null) return true;
-        var text = new StringBuilder("\n");
-        int end = previousOnly ? entries.Count - 1 : entries.Count;
-        for (int i = Math.Max(0, entries.Count - maxEntry); i < end; i++)
-        {
-            if (!string.IsNullOrEmpty(entries[i].name)) text.Append("<size=28><color=#D9B077>").Append(entries[i].name).Append("</color></size>\n");
-            text.Append(entries[i].text).Append("\n\n");
-        }
-        __result = text.ToString();
-        return false;
-    }
-}
-
 // Save and load slots read their save in full to show its date, and the free map builds both pages on every visit: about
 // 290 whole-file reads at 50 slots. While a slot sets itself up it gets a copy with only what it shows, kept by file and
 // write time; loading a save, and every other read, still goes to the file.

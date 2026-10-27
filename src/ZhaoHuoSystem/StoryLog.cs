@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text.RegularExpressions;
-using Fungus;
 using HarmonyLib;
 using Mortal.Core;
+using Mortal.Free;
 using Mortal.Story;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,31 +12,35 @@ using UnityEngine.UI;
 namespace ZhaoHuoSystem;
 
 /// <summary>
-/// 回想 (F101): the game's log of the story's lines gets a line for each condition branch (the arm taken, with its
-/// condition's values), and under it up to two links: 回到这段开头 (the script the branch ran in, from its start with the
-/// values it started with, written into a slot and loaded as 跳转 does) and 决定它的选项 (the options in the scripts that set
-/// the flags the branch reads). The log is one Text in a scroll view, rebuilt from its entries; the links are found in it by
-/// character and drawn over by the mod, which takes their clicks. The log lives in memory only and is cleared as each story
-/// scene starts; the starts kept here go with it (the scene change).
-/// F106: by default each line is one small summary (no name line), its full conditions in a note under the pointer;
+/// 回想 (F101): the game's log of the story gets a line for each condition branch (the arm taken, with its condition's
+/// values), and under it up to two links: 回到这段开头 (the script the branch ran in, from its start with the values it
+/// started with, written into a slot and loaded as 跳转 does) and 决定它的选项 (the options in the scripts that set the flags
+/// the branch reads). F106: by default each line is one small summary, its full conditions in a note under the pointer;
 /// 设置/回想中的剧情分支 also offers the full lines or none.
+/// From 1.0.6001 the log is the game's StoryLogPanel over StoryLogData: each line is one of its text entries (shown, never
+/// saved, gone on a load), drawn by an entry view of its own; the links are found in that view's text by character and
+/// drawn over by the mod, which takes their clicks. The log now outlives a scene, and its lines keep their starts with it.
 /// </summary>
 internal sealed class StoryLog : IDisposable
 {
-    /// <summary>A story script's start in this scene: what 回到这段开头 writes.</summary>
+    /// <summary>A story script's start: what 回到这段开头 writes.</summary>
     internal sealed class Start { public string Script = "", Title = "", Music = "", Env = ""; public GameSave Save = null!; }
     /// <summary>A flag the branch reads, with its value then.</summary>
     internal sealed class Flag { public string Id = "", Name = ""; public int Value; }
     private sealed class Line
     {
-        public NarrativeLogEntry Entry = null!;
+        public StoryLogEntry? Entry;
         public Start? Start;
         public List<Flag> Flags = new();
         /// <summary>Each branch taken between two of the story's lines.</summary>
         public List<string> Rows = new();
-        public string Branch = "", Back = "", Source = "";
-        /// <summary>Raw length of the summary at the start of the entry's text (简略), the part the note shows under the pointer.</summary>
+        public string Text = "", Branch = "", Back = "", Source = "";
+        /// <summary>Raw length of the summary at the start of the text (简略), the part the note shows under the pointer.</summary>
         public int Summary;
+        // The links in the text as its view last laid it out.
+        public string? LaidOut;
+        public int LaidCount;
+        public List<Link> Links = new();
     }
     private enum Kind { Back, Source, Summary }
     private sealed class Link { public Line Line = null!; public Kind Kind; public List<Rect> Local = new(); }
@@ -48,17 +51,14 @@ internal sealed class StoryLog : IDisposable
     private const string LinkColor = "#D9B077", MutedColor = "#A39580";
     // A summary's first condition, cut to this many characters.
     private const int SummaryChars = 18;
-    private static readonly AccessTools.FieldRef<NarrativeLog, NarrativeData> History = AccessTools.FieldRefAccess<NarrativeLog, NarrativeData>("history");
-    private static readonly AccessTools.FieldRef<NarrativeLogMenu, ScrollRect> View = AccessTools.FieldRefAccess<NarrativeLogMenu, ScrollRect>("narrativeLogView");
-    private static readonly FieldInfo? MenuField = AccessTools.Field(typeof(NarrativeLogMenu), "instance");
-    private static readonly FieldInfo? ActiveField = AccessTools.Field(typeof(NarrativeLogMenu), "narrativeLogActive");
-    private static readonly FieldInfo? MaxField = AccessTools.Field(typeof(NarrativeLogMenu), "_maxLogEntry");
-    private static readonly MethodInfo? Rebuild = AccessTools.Method(typeof(NarrativeLogMenu), "UpdateNarrativeLogText");
+    // The lines' size against the log's own text: 简略 small, 完整 a little smaller.
+    private const float SummarySize = .75f, FullSize = .85f;
+    /// <summary>The entry each of the log's views last showed.</summary>
+    private static readonly Dictionary<StoryLogEntryView, StoryLogEntry> shown = new();
+    private static StoryLog? current;
     private readonly List<Start> starts = new();
     private readonly List<Line> lines = new();
-    private List<Link> links = new();
-    private string? laidOut;
-    private int laidCount;
+    private readonly Dictionary<StoryLogEntry, Line> byEntry = new();
     private Texture2D? glow, underline, noteFill;
     private Font? noteFont;
     private GUIStyle? noteText;
@@ -71,6 +71,8 @@ internal sealed class StoryLog : IDisposable
     /// <summary>The branch as it reads (no colours) and the flags it reads.</summary>
     public Action<string, List<Flag>, Start?>? SourceClicked;
 
+    public StoryLog() { current = this; }
+
     /// <summary>From SegmentSaves, as a story script starts with its copy at hand.</summary>
     public void Kept(string script, GameSave save, string music, string env)
     {
@@ -79,28 +81,28 @@ internal sealed class StoryLog : IDisposable
         if (starts.Count > KeptStarts) starts.RemoveAt(0);
     }
 
-    public void Clear() { starts.Clear(); lines.Clear(); links.Clear(); laidOut = null; Hover = default; }
+    /// <summary>A scene change: its starts and views go; the lines stay in the log with the starts they ran in.</summary>
+    public void Clear() { starts.Clear(); shown.Clear(); Hover = default; }
+
+    /// <summary>The scene's log panel: the story's or the free map's.</summary>
+    private static StoryLogPanel? Panel()
+    {
+        object? owner = StoryManager.Instance is StoryManager story && story != null ? story : FreeManager.Instance is FreeManager free && free != null ? free : null;
+        return R.Field(owner, "_storyLogPanel") is StoryLogPanel panel && panel != null ? panel : null;
+    }
 
     /// <summary>The game's 回想 is open (it covers the story and its menus).</summary>
-    public static bool Open => ActiveField?.GetValue(null) is true;
+    public static bool Open => Panel()?.IsOpen == true;
 
-    /// <summary>
-    /// F104: the game keeps whether 回想 is open in one static switch that each open or close flips. A scene left with 回想
-    /// open (a jump from its links) leaves the switch set, and every later 回想 then fades its text out instead of in while
-    /// the story pauses: it looks frozen until Esc. Before a jump the log is closed the game's own way; a story scene that
-    /// starts with its log closed puts a stray switch back.
-    /// </summary>
+    /// <summary>Before a jump from its links the log is closed the game's way (its close puts the story's state back).</summary>
     public static void CloseForJump()
     {
-        if (StoryManager.Instance is not StoryManager story || story == null || R.Field(story, "_logOpen") is not true) return;
-        if (R.Field(story, "_logButton") is Toggle button && button != null) button.isOn = false;
+        if (Panel() is StoryLogPanel panel && panel.IsOpen) panel.Close();
     }
-    public static bool Repair(StoryManager story)
+
+    private static void Refresh()
     {
-        if (ActiveField?.GetValue(null) is not true || R.Field(story, "_logOpen") is true) return false;
-        ActiveField.SetValue(null, false);
-        if (R.Field(story, "_narrativeLogMenu") is NarrativeLogMenu menu && menu != null && R.Field(menu, "narrativeLogMenuGroup") is CanvasGroup group && group != null) group.alpha = 0;
-        return true;
+        if (Panel() is StoryLogPanel panel && panel.IsOpen) panel.Refresh();
     }
 
     /// <summary>
@@ -109,45 +111,60 @@ internal sealed class StoryLog : IDisposable
     /// </summary>
     public void Branch(object data, int result)
     {
-        if (Mode == 2 || FungusManager.Instance?.NarrativeLog is not NarrativeLog log || log == null) return;
+        if (Mode == 2) return;
         // The branch runs in the latest script the story moved to; its start is what the story replays from.
         var start = starts.Count > 0 ? starts[starts.Count - 1] : null;
         var flags = Conditions.Flags(data).Select(flag => new Flag { Id = flag.name, Name = L.FlagName(flag), Value = flag.State }).ToList();
+        var entries = StoryLogData.Entries;
+        // Lines whose entries left the log (a load, or past its 300) go too.
+        if (lines.Count > 0)
+        {
+            var present = new HashSet<StoryLogEntry>(entries);
+            lines.RemoveAll(line => line.Entry == null || !present.Contains(line.Entry));
+            byEntry.Clear();
+            foreach (var kept in lines) byEntry[kept.Entry!] = kept;
+        }
         var last = lines.Count > 0 ? lines[lines.Count - 1] : null;
-        var history = History(log)?.entries;
-        if (last != null && last.Start == start && history is { Count: > 0 } && ReferenceEquals(history[history.Count - 1], last.Entry))
+        if (last != null && last.Start == start && entries.Count > 0 && ReferenceEquals(entries[entries.Count - 1], last.Entry))
         {
             last.Rows.Add(BranchNotice.LogBody(data, result));
             foreach (var flag in flags) if (!last.Flags.Exists(known => known.Id == flag.Id)) last.Flags.Add(flag);
             Compose(last);
-            if (MenuField?.GetValue(null) is NarrativeLogMenu menu && menu != null) Rebuild?.Invoke(menu, null);
+            Refresh();
             return;
         }
-        var line = new Line { Start = start, Flags = flags, Entry = new NarrativeLogEntry { name = L.Text("赵活系统") } };
+        var line = new Line { Start = start, Flags = flags };
         line.Rows.Add(BranchNotice.LogBody(data, result));
         Compose(line);
+        StoryLogData.AddText(line.Text, isSave: false);
+        if (entries.Count == 0 || !ReferenceEquals(entries[entries.Count - 1].Text, line.Text)) return;
+        line.Entry = entries[entries.Count - 1];
         lines.Add(line);
-        if (lines.Count > KeptLines) lines.RemoveAt(0);
-        log.AddLine(line.Entry);
+        byEntry[line.Entry] = line;
+        if (lines.Count > KeptLines) { byEntry.Remove(lines[0].Entry!); lines.RemoveAt(0); }
+        Refresh();
     }
     private void Compose(Line line)
     {
-        line.Branch = "<size=24>" + (line.Rows.Count == 1 ? L.Format("剧情分支：{0}", line.Rows[0]) : L.Format("剧情分支：{0}", "") + string.Concat(line.Rows.Select(row => "\n　· " + row))) + "</size>";
+        line.Branch = line.Rows.Count == 1 ? L.Format("剧情分支：{0}", line.Rows[0]) : L.Format("剧情分支：{0}", "") + string.Concat(line.Rows.Select(row => "\n　· " + row));
         line.Back = line.Start != null ? "【" + L.Text("回到这段开头") + "】" : "";
         line.Source = line.Flags.Count > 0 ? "【" + L.Text("决定它的选项") + "】" : "";
-        string shown = string.Join("　", new[] { line.Back, line.Source }.Where(text => text.Length > 0));
+        string links = string.Join("　", new[] { line.Back, line.Source }.Where(text => text.Length > 0));
         if (Mode == 0)
         {
-            // 简略 (F106): one small muted line, no name line; the first branch only, cut short.
-            line.Entry.name = "";
+            // 简略 (F106): one small muted line; the first branch only, cut short.
             string head = "<color=" + MutedColor + ">◇ " + (line.Rows.Count > 1 ? L.Format("分支×{0}：", line.Rows.Count) : L.Text("分支：")) + "</color>";
-            string summary = "<size=21>" + head + Short(line.Rows[0]) + (line.Rows.Count > 1 ? "<color=" + MutedColor + ">" + L.Text(" 等") + "</color>" : "") + "</size>";
+            string summary = head + Short(line.Rows[0]) + (line.Rows.Count > 1 ? "<color=" + MutedColor + ">" + L.Text(" 等") + "</color>" : "");
             line.Summary = summary.Length;
-            line.Entry.text = summary + (shown.Length > 0 ? "<size=21><color=" + LinkColor + ">　" + shown + "</color></size>" : "");
-            return;
+            line.Text = summary + (links.Length > 0 ? "<color=" + LinkColor + ">　" + links + "</color>" : "");
         }
-        line.Entry.name = L.Text("赵活系统"); line.Summary = 0;
-        line.Entry.text = line.Branch + (shown.Length > 0 ? "\n<size=24><color=" + LinkColor + ">" + shown + "</color></size>" : "");
+        else
+        {
+            line.Summary = 0;
+            line.Text = line.Branch + (links.Length > 0 ? "\n<color=" + LinkColor + ">" + links + "</color>" : "");
+        }
+        if (line.Entry != null) line.Entry.Text = line.Text;
+        line.LaidOut = null;
     }
     // A branch row cut to its first characters, in its first colour.
     private static string Short(string row)
@@ -164,38 +181,58 @@ internal sealed class StoryLog : IDisposable
     {
         if (mode == Mode) return;
         Mode = mode;
-        if (FungusManager.Instance?.NarrativeLog is not NarrativeLog log || log == null) { lines.Clear(); return; }
-        if (mode == 2) { if (History(log)?.entries is { } entries) foreach (var line in lines) entries.Remove(line.Entry); lines.Clear(); }
+        if (mode == 2)
+        {
+            // Hidden as the log hides a story line with no text, never taken out of its list, in which the game's save
+            // keeps a place by count.
+            foreach (var line in lines) if (line.Entry != null) { line.Entry.Type = StoryLogType.Story; line.Entry.Key = ""; line.Entry.Text = ""; }
+            lines.Clear(); byEntry.Clear();
+        }
         else foreach (var line in lines) Compose(line);
-        laidOut = null;
-        if (MenuField?.GetValue(null) is NarrativeLogMenu menu && menu != null) Rebuild?.Invoke(menu, null);
+        Refresh();
+    }
+
+    /// <summary>A view of the log was set up to show an entry: one of these lines takes the log's own text colour, smaller.</summary>
+    internal static void ViewSetUp(StoryLogEntryView view, StoryLogEntry entry)
+    {
+        shown[view] = entry;
+        if (current == null || !current.byEntry.TryGetValue(entry, out var line) || R.Field(view, "_contentText") is not Text text || text == null) return;
+        if (R.Field(view, "_normalTextColor") is Color normal) text.color = normal;
+        text.fontSize = Mathf.Max(1, Mathf.RoundToInt(text.fontSize * (line.Summary > 0 ? SummarySize : FullSize)));
     }
 
     /// <summary>While 回想 is open: the links under the pointer light up and take the click.</summary>
     public void Draw(bool hidden)
     {
         Hover = default;
-        if (hidden || lines.Count == 0 || Shown() is not { } open) return;
-        var (text, view, menu) = open;
-        LayOut(text, menu);
-        if (links.Count == 0) return;
-        var canvas = text.canvas != null ? text.canvas.rootCanvas : null;
-        Camera? camera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+        if (hidden || lines.Count == 0 || Panel() is not StoryLogPanel panel || !panel.IsOpen) return;
+        if (R.Field(panel, "_scrollRect") is not ScrollRect view || view == null || R.Field(panel, "_entryViews") is not List<StoryLogEntryView> views) return;
         var port = view.viewport != null ? view.viewport : (RectTransform)view.transform;
+        var canvas = port.GetComponentInParent<Canvas>();
+        if (canvas != null) canvas = canvas.rootCanvas;
+        Camera? camera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
         var clip = ToGui(port, port.rect, camera);
         var e = Event.current;
         Link? over = null;
         var lit = new List<Rect>();
-        foreach (var link in links)
+        foreach (var entryView in views)
         {
-            var rects = new List<Rect>();
-            foreach (var local in link.Local)
+            if (entryView == null || !entryView.gameObject.activeInHierarchy || !shown.TryGetValue(entryView, out var entry) || !byEntry.TryGetValue(entry, out var line)) continue;
+            if (R.Field(entryView, "_contentText") is not Text text || text == null || !text.isActiveAndEnabled) continue;
+            // Out of the view's sight it is neither laid out nor hit.
+            if (!ToGui(text.rectTransform, text.rectTransform.rect, camera).Overlaps(clip)) continue;
+            LayOut(line, text);
+            foreach (var link in line.Links)
             {
-                var r = ToGui(text.rectTransform, local, camera);
-                r = Rect.MinMaxRect(Mathf.Max(r.xMin, clip.xMin), Mathf.Max(r.yMin, clip.yMin), Mathf.Min(r.xMax, clip.xMax), Mathf.Min(r.yMax, clip.yMax));
-                if (r.width > 1 && r.height > 1) rects.Add(r);
+                var rects = new List<Rect>();
+                foreach (var local in link.Local)
+                {
+                    var r = ToGui(text.rectTransform, local, camera);
+                    r = Rect.MinMaxRect(Mathf.Max(r.xMin, clip.xMin), Mathf.Max(r.yMin, clip.yMin), Mathf.Min(r.xMax, clip.xMax), Mathf.Min(r.yMax, clip.yMax));
+                    if (r.width > 1 && r.height > 1) rects.Add(r);
+                }
+                if (over == null && rects.Exists(r => r.Contains(e.mousePosition))) { over = link; lit = rects; }
             }
-            if (over == null && rects.Exists(r => r.Contains(e.mousePosition))) { over = link; lit = rects; }
         }
         if (over == null) return;
         Hover = lit[0];
@@ -239,63 +276,43 @@ internal sealed class StoryLog : IDisposable
         finally { GUI.color = old; GUI.depth = depth; }
     }
 
-    private (Text Text, ScrollRect View, NarrativeLogMenu Menu)? Shown()
+    /// <summary>The line's links in its text's own space, worked out again only when the text is laid out anew.</summary>
+    private static void LayOut(Line line, Text text)
     {
-        if (ActiveField?.GetValue(null) is not true || MenuField?.GetValue(null) is not NarrativeLogMenu menu || menu == null) return null;
-        var view = View(menu);
-        if (view == null || !view.gameObject.activeInHierarchy || view.content == null) return null;
-        var text = view.content.GetComponent<Text>();
-        return text != null && text.isActiveAndEnabled ? (text, view, menu) : null;
-    }
-
-    /// <summary>The links' rectangles in the log text's own space, worked out again only when its text is laid out anew.</summary>
-    private void LayOut(Text text, NarrativeLogMenu menu)
-    {
-        string shown = text.text ?? "";
+        string laid = text.text ?? "";
         var generator = text.cachedTextGenerator;
-        if (ReferenceEquals(shown, laidOut) && generator.characterCount == laidCount) return;
-        links = new List<Link>(); laidOut = null;
-        if (generator.characterCount == 0 || FungusManager.Instance?.NarrativeLog is not NarrativeLog log || log == null || History(log)?.entries is not { } entries) return;
-        int max = MaxField?.GetValue(menu) is int limit ? limit : 1000;
-        var starts = NativeUiState.LogTextStarts(entries.Select(entry => new KeyValuePair<string, string>(entry?.name ?? "", entry?.text ?? "")).ToList(), max);
-        var index = new Dictionary<NarrativeLogEntry, int>();
-        for (int i = 0; i < entries.Count; i++) if (entries[i] != null) index[entries[i]] = i;
+        if (ReferenceEquals(laid, line.LaidOut) && generator.characterCount == line.LaidCount) return;
+        line.Links = new List<Link>(); line.LaidOut = null;
+        if (generator.characterCount == 0 || laid != line.Text) return;
+        var spans = new List<(int From, int To, Kind Kind)>();
+        foreach (var (label, kind) in new[] { (line.Back, Kind.Back), (line.Source, Kind.Source) })
+        {
+            int at = label.Length == 0 ? -1 : laid.IndexOf(label, StringComparison.Ordinal);
+            if (at >= 0) spans.Add((at, at + label.Length, kind));
+        }
+        // 简略's summary: the note under the pointer (F106).
+        if (line.Summary > 0 && line.Summary <= laid.Length) spans.Add((0, line.Summary, Kind.Summary));
         // Older Unity laid out a character for every tag; this one lays out only what is drawn.
-        bool tagsLaidOut = generator.characterCount >= shown.Length;
+        bool tagsLaidOut = generator.characterCount >= laid.Length;
         var chars = generator.GetCharactersArray();
         var rows = generator.GetLinesArray();
         float ppu = text.pixelsPerUnit > 0 ? text.pixelsPerUnit : 1;
-        foreach (var line in lines)
+        foreach (var (from, to, kind) in spans)
         {
-            if (!index.TryGetValue(line.Entry, out int i) || starts[i] < 0) continue;
-            var spans = new List<(int From, int To, Kind Kind)>();
-            foreach (var (label, kind) in new[] { (line.Back, Kind.Back), (line.Source, Kind.Source) })
+            int first = tagsLaidOut ? from : NativeUiState.DrawnIndex(laid, from), end = tagsLaidOut ? to : NativeUiState.DrawnIndex(laid, to);
+            var link = new Link { Line = line, Kind = kind };
+            // One rectangle for each laid-out row the span takes.
+            int row = -1; float left = 0, right = 0;
+            for (int c = first; c < end && c < chars.Length; c++)
             {
-                int at = label.Length == 0 ? -1 : line.Entry.text.IndexOf(label, StringComparison.Ordinal);
-                if (at < 0) continue;
-                int raw = starts[i] + at;
-                if (raw + label.Length > shown.Length || string.CompareOrdinal(shown, raw, label, 0, label.Length) != 0) continue;
-                spans.Add((raw, raw + label.Length, kind));
+                int r = RowOf(rows, c);
+                if (r != row) { if (row >= 0) link.Local.Add(RowRect(rows[row], left, right, ppu)); row = r; left = chars[c].cursorPos.x; }
+                right = chars[c].cursorPos.x + chars[c].charWidth;
             }
-            // 简略's summary: the note under the pointer (F106).
-            if (line.Summary > 0 && starts[i] + line.Summary <= shown.Length) spans.Add((starts[i], starts[i] + line.Summary, Kind.Summary));
-            foreach (var (from, to, kind) in spans)
-            {
-                int first = tagsLaidOut ? from : NativeUiState.DrawnIndex(shown, from), end = tagsLaidOut ? to : NativeUiState.DrawnIndex(shown, to);
-                var link = new Link { Line = line, Kind = kind };
-                // One rectangle for each laid-out row the span takes.
-                int row = -1; float left = 0, right = 0;
-                for (int c = first; c < end && c < chars.Length; c++)
-                {
-                    int r = RowOf(rows, c);
-                    if (r != row) { if (row >= 0) link.Local.Add(RowRect(rows[row], left, right, ppu)); row = r; left = chars[c].cursorPos.x; }
-                    right = chars[c].cursorPos.x + chars[c].charWidth;
-                }
-                if (row >= 0) link.Local.Add(RowRect(rows[row], left, right, ppu));
-                if (link.Local.Count > 0) links.Add(link);
-            }
+            if (row >= 0) link.Local.Add(RowRect(rows[row], left, right, ppu));
+            if (link.Local.Count > 0) line.Links.Add(link);
         }
-        laidOut = shown; laidCount = generator.characterCount;
+        line.LaidOut = laid; line.LaidCount = generator.characterCount;
     }
     private static int RowOf(UILineInfo[] rows, int character)
     {
@@ -317,7 +334,13 @@ internal sealed class StoryLog : IDisposable
     }
     public void Dispose()
     {
+        if (current == this) current = null;
+        shown.Clear();
         foreach (var texture in new[] { glow, underline, noteFill }) if (texture != null) UnityEngine.Object.Destroy(texture);
         if (noteFont != null) UnityEngine.Object.Destroy(noteFont);
     }
 }
+
+// Which entry each view of the log shows, and the look of these lines in it.
+[HarmonyPatch(typeof(StoryLogEntryView), nameof(StoryLogEntryView.Setup))]
+internal static class StoryLogViewPatch { private static void Postfix(StoryLogEntryView __instance, StoryLogEntry entry) => StoryLog.ViewSetUp(__instance, entry); }
