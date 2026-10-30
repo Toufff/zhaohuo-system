@@ -1,6 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using HarmonyLib;
 using Mortal.Core;
@@ -29,7 +32,8 @@ internal sealed class StoryLog : IDisposable
     internal sealed class Flag { public string Id = "", Name = ""; public int Value; }
     private sealed class Line
     {
-        public StoryLogEntry? Entry;
+        /// <summary>The game's StoryLogEntry (typed object: see <see cref="Available"/>).</summary>
+        public object? Entry;
         public Start? Start;
         public List<Flag> Flags = new();
         /// <summary>Each branch taken between two of the story's lines.</summary>
@@ -53,12 +57,18 @@ internal sealed class StoryLog : IDisposable
     private const int SummaryChars = 18;
     // The lines' size against the log's own text: 简略 small, 完整 a little smaller.
     private const float SummarySize = .75f, FullSize = .85f;
+    /// <summary>
+    /// The game has the 1.0.6001 log. On an older build its types are missing: nothing here may name them outside the
+    /// methods marked NoInlining (named *Now), which run only when it is there, or loading this class, and the plugin's
+    /// start with it, would fail. There the lines are simply not written.
+    /// </summary>
+    internal static readonly bool Available = AccessTools.TypeByName("Mortal.Core.StoryLogData") != null && AccessTools.TypeByName("Mortal.Core.StoryLogEntryView") != null;
     /// <summary>The entry each of the log's views last showed.</summary>
-    private static readonly Dictionary<StoryLogEntryView, StoryLogEntry> shown = new();
+    private static readonly Dictionary<object, object> shown = new();
     private static StoryLog? current;
     private readonly List<Start> starts = new();
     private readonly List<Line> lines = new();
-    private readonly Dictionary<StoryLogEntry, Line> byEntry = new();
+    private readonly Dictionary<object, Line> byEntry = new();
     private Texture2D? glow, underline, noteFill;
     private Font? noteFont;
     private GUIStyle? noteText;
@@ -92,15 +102,19 @@ internal sealed class StoryLog : IDisposable
     }
 
     /// <summary>The game's 回想 is open (it covers the story and its menus).</summary>
-    public static bool Open => Panel()?.IsOpen == true;
+    public static bool Open => Available && OpenNow();
+    [MethodImpl(MethodImplOptions.NoInlining)] private static bool OpenNow() => Panel()?.IsOpen == true;
 
     /// <summary>Before a jump from its links the log is closed the game's way (its close puts the story's state back).</summary>
-    public static void CloseForJump()
+    public static void CloseForJump() { if (Available) CloseNow(); }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CloseNow()
     {
         if (Panel() is StoryLogPanel panel && panel.IsOpen) panel.Close();
     }
 
-    private static void Refresh()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RefreshNow()
     {
         if (Panel() is StoryLogPanel panel && panel.IsOpen) panel.Refresh();
     }
@@ -109,9 +123,10 @@ internal sealed class StoryLog : IDisposable
     /// After the game's own Switch: its line in 回想, from the same reading as the branch box. Branches with no story line
     /// between them (a script checks several at once) share one entry, one row each.
     /// </summary>
-    public void Branch(object data, int result)
+    public void Branch(object data, int result) { if (Mode != 2 && Available) BranchNow(data, result); }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void BranchNow(object data, int result)
     {
-        if (Mode == 2) return;
         // The branch runs in the latest script the story moved to; its start is what the story replays from.
         var start = starts.Count > 0 ? starts[starts.Count - 1] : null;
         var flags = Conditions.Flags(data).Select(flag => new Flag { Id = flag.name, Name = L.FlagName(flag), Value = flag.State }).ToList();
@@ -119,7 +134,7 @@ internal sealed class StoryLog : IDisposable
         // Lines whose entries left the log (a load, or past its 300) go too.
         if (lines.Count > 0)
         {
-            var present = new HashSet<StoryLogEntry>(entries);
+            var present = new HashSet<object>(entries);
             lines.RemoveAll(line => line.Entry == null || !present.Contains(line.Entry));
             byEntry.Clear();
             foreach (var kept in lines) byEntry[kept.Entry!] = kept;
@@ -130,7 +145,7 @@ internal sealed class StoryLog : IDisposable
             last.Rows.Add(BranchNotice.LogBody(data, result));
             foreach (var flag in flags) if (!last.Flags.Exists(known => known.Id == flag.Id)) last.Flags.Add(flag);
             Compose(last);
-            Refresh();
+            RefreshNow();
             return;
         }
         var line = new Line { Start = start, Flags = flags };
@@ -142,7 +157,7 @@ internal sealed class StoryLog : IDisposable
         lines.Add(line);
         byEntry[line.Entry] = line;
         if (lines.Count > KeptLines) { byEntry.Remove(lines[0].Entry!); lines.RemoveAt(0); }
-        Refresh();
+        RefreshNow();
     }
     private void Compose(Line line)
     {
@@ -163,7 +178,7 @@ internal sealed class StoryLog : IDisposable
             line.Summary = 0;
             line.Text = line.Branch + (links.Length > 0 ? "\n<color=" + LinkColor + ">" + links + "</color>" : "");
         }
-        if (line.Entry != null) line.Entry.Text = line.Text;
+        if (line.Entry is StoryLogEntry entry) entry.Text = line.Text;
         line.LaidOut = null;
     }
     // A branch row cut to its first characters, in its first colour.
@@ -181,19 +196,24 @@ internal sealed class StoryLog : IDisposable
     {
         if (mode == Mode) return;
         Mode = mode;
+        if (Available) SetModeNow(mode);
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void SetModeNow(int mode)
+    {
         if (mode == 2)
         {
             // Hidden as the log hides a story line with no text, never taken out of its list, in which the game's save
             // keeps a place by count.
-            foreach (var line in lines) if (line.Entry != null) { line.Entry.Type = StoryLogType.Story; line.Entry.Key = ""; line.Entry.Text = ""; }
+            foreach (var line in lines) if (line.Entry is StoryLogEntry entry) { entry.Type = StoryLogType.Story; entry.Key = ""; entry.Text = ""; }
             lines.Clear(); byEntry.Clear();
         }
         else foreach (var line in lines) Compose(line);
-        Refresh();
+        RefreshNow();
     }
 
     /// <summary>A view of the log was set up to show an entry: one of these lines takes the log's own text colour, smaller.</summary>
-    internal static void ViewSetUp(StoryLogEntryView view, StoryLogEntry entry)
+    internal static void ViewSetUp(Component view, object entry)
     {
         shown[view] = entry;
         if (current == null || !current.byEntry.TryGetValue(entry, out var line) || R.Field(view, "_contentText") is not Text text || text == null) return;
@@ -205,8 +225,13 @@ internal sealed class StoryLog : IDisposable
     public void Draw(bool hidden)
     {
         Hover = default;
-        if (hidden || lines.Count == 0 || Panel() is not StoryLogPanel panel || !panel.IsOpen) return;
-        if (R.Field(panel, "_scrollRect") is not ScrollRect view || view == null || R.Field(panel, "_entryViews") is not List<StoryLogEntryView> views) return;
+        if (!hidden && lines.Count > 0 && Available) DrawNow();
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void DrawNow()
+    {
+        if (Panel() is not StoryLogPanel panel || !panel.IsOpen) return;
+        if (R.Field(panel, "_scrollRect") is not ScrollRect view || view == null || R.Field(panel, "_entryViews") is not IList views) return;
         var port = view.viewport != null ? view.viewport : (RectTransform)view.transform;
         var canvas = port.GetComponentInParent<Canvas>();
         if (canvas != null) canvas = canvas.rootCanvas;
@@ -215,9 +240,9 @@ internal sealed class StoryLog : IDisposable
         var e = Event.current;
         Link? over = null;
         var lit = new List<Rect>();
-        foreach (var entryView in views)
+        foreach (var item in views)
         {
-            if (entryView == null || !entryView.gameObject.activeInHierarchy || !shown.TryGetValue(entryView, out var entry) || !byEntry.TryGetValue(entry, out var line)) continue;
+            if (item is not Component entryView || entryView == null || !entryView.gameObject.activeInHierarchy || !shown.TryGetValue(entryView, out var entry) || !byEntry.TryGetValue(entry, out var line)) continue;
             if (R.Field(entryView, "_contentText") is not Text text || text == null || !text.isActiveAndEnabled) continue;
             // Out of the view's sight it is neither laid out nor hit.
             if (!ToGui(text.rectTransform, text.rectTransform.rect, camera).Overlaps(clip)) continue;
@@ -342,5 +367,11 @@ internal sealed class StoryLog : IDisposable
 }
 
 // Which entry each view of the log shows, and the look of these lines in it.
-[HarmonyPatch(typeof(StoryLogEntryView), nameof(StoryLogEntryView.Setup))]
-internal static class StoryLogViewPatch { private static void Postfix(StoryLogEntryView __instance, StoryLogEntry entry) => StoryLog.ViewSetUp(__instance, entry); }
+// Found by name, and only where the game has it (an older build has no such view).
+[HarmonyPatch]
+internal static class StoryLogViewPatch
+{
+    private static bool Prepare() => StoryLog.Available;
+    private static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("Mortal.Core.StoryLogEntryView"), "Setup");
+    private static void Postfix(Component __instance, object entry) => StoryLog.ViewSetUp(__instance, entry);
+}

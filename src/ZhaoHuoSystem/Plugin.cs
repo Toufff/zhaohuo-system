@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using BepInEx;
@@ -28,7 +29,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.51")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.52")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -90,6 +91,21 @@ public sealed class Plugin : BaseUnityPlugin
         // unless BepInEx.cfg sets HideManagerGameObject; the same flags are set here so nothing has to be edited.
         gameObject.hideFlags = HideFlags.HideAndDontSave;
 #endif
+        // A start that fails is said in LogOutput.log: BepInEx keeps Unity's own log (where an exception thrown out of Awake
+        // goes) out of that file by default. Boot is its own method so that even a type it cannot load lands here.
+        try { Boot(); }
+        catch (Exception ex)
+        {
+            failed = true;
+            Logger.LogError("BOOT_FAILED " + ex);
+            try { harmony?.UnpatchSelf(); } catch { }
+            Instance = null;
+        }
+    }
+    private bool failed;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Boot()
+    {
         var selectBeforeAction = Config.Bind("工具", "行动前选择结果", true, "到达真实地点事件判定前等待选择；收起面板或继续会放行游戏流程。");
         Adapter = new GameAdapter(Logger, selectBeforeAction.Value, enabled => selectBeforeAction.Value = enabled);
         Adapter.RuntimeVersion = ReadRuntimeVersion();
@@ -328,6 +344,7 @@ public sealed class Plugin : BaseUnityPlugin
     }
     private void Update()
     {
+        if (failed) return;
         if (Perf.Frame() is string slow) Logger.LogWarning(slow);
         using var timing = Perf.Time("update");
         try
@@ -416,7 +433,7 @@ public sealed class Plugin : BaseUnityPlugin
     }
     private void OnGUI()
     {
-        if (window == null) return;
+        if (failed || window == null) return;
         using var timing = Perf.Time("gui");
         var key = Event.current;
         if (key.type == EventType.KeyDown && key.keyCode != KeyCode.None && !window.CapturingKey && !window.HasTextFocus && !SaveNotes.Editing)
@@ -631,6 +648,7 @@ public sealed class Plugin : BaseUnityPlugin
     }
     private void OnDestroy()
     {
+        if (failed) return;
         Adapter?.ContinueAction();
         GlobalSpeed.Release();
         dicePresenter?.Dispose(); mapIndicators.Dispose(); OptionHints?.Dispose(); Branches?.Dispose(); storyLog?.Dispose(); HiddenOptions?.Dispose(); Practice?.Dispose(); roundSkip?.Dispose(); unlimited?.Dispose(); pinball?.Dispose(); SaveSort?.Dispose(); SaveNotes?.Dispose(); combatResult?.Dispose(); speedButtons?.Dispose();
