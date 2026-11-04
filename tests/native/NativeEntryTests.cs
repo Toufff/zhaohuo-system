@@ -89,6 +89,9 @@ internal static partial class Program
             Signature(story, "Mortal.Story", "CheckPointManager", "Switch", "name");
             Has(story, "Mortal.Story", "SwitchResultData", "_useCount", "_count", "_items", "_countItems");
             Has(core, "Mortal.Core", "ValueCompareItem", "_compareOp", "_value");
+            // F127: a random switch is read with one value in place of the roll, never rolled by the mod.
+            Has(core, "Mortal.Core", "StatValueReference", "_randomMin", "_randomMax");
+            Has(core, "Mortal.Core", "StatCheckType", "隨機值");
             // 修炼 / 锻造 without the count cap: the martial panel's own mode argument and the upgrade panel's count members.
             string mortalCore = Path.Combine(managed, "Mortal.Core.dll");
             Signature(mortalCore, "Mortal.Core", "MartialPanel", "Open", "mode");

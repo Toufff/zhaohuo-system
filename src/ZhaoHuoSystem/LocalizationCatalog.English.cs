@@ -385,6 +385,8 @@ internal static partial class LocalizationCatalog
         { "操作未返回结果", "The operation returned no result" },
         { "操作失败：{0}", "Operation failed: {0}" },
         { "权重 {0}", "Weight {0}" },
+        { "随机 {0}–{1}", "random {0}–{1}" },
+        { "随机值中 {0}/{1} 落在这里", "{0} of {1} random values land here" },
         { "等待读取当前行动", "Waiting to read the current action" },
         { "运行版本待核验", "Running version not yet verified" },
         { "当前没有待选择的事件", "No event to choose right now" },

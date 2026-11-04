@@ -97,10 +97,30 @@ public sealed class GameAdapter : IGameAdapter
         // Loading records a node token only. Actual checkpoint execution establishes the context.
         Invalidate("当前没有待选择的事件");
         var matches = Regex.Matches(code ?? "", "checkpointmanager\\s*[.:]\\s*Position\\s*\\(\\s*[\"']([^\"']+)[\"']\\s*\\)").Cast<Match>().Select(x => x.Groups[1].Value).Distinct().ToList();
-        activeLuaToken = revision;
+        activeLuaToken = revision; activeScript = friendlyName.Replace(".LuaScript", "");
         log.LogInfo($"LUA_NODE frame={Time.frameCount} rev={revision} name={friendlyName} candidates={matches.Count} scene={Identity()}");
         Refresh();
         return activeLuaToken;
+    }
+    private string activeScript = "";
+    /// <summary>The switch the action waits at (F127), or "" while it waits at a pool or nothing.</summary>
+    private string SwitchName => poolName.StartsWith(LuaGate.SwitchGate, StringComparison.Ordinal) ? poolName.Substring(LuaGate.SwitchGate.Length) : "";
+    private readonly Dictionary<string, bool> randomSwitches = new(StringComparer.Ordinal);
+    /// <summary>
+    /// A switch that rolls a random value (F127: 崆峒留学 修炼 「小梅约跑」 is 随机 0–100 &lt; her affection, not a pool event) is
+    /// gated like a pool. Counting switches never are: skipping their Execute would skip the count.
+    /// </summary>
+    public bool GatesSwitch(string name)
+    {
+        if (randomSwitches.TryGetValue(name, out var gated)) return gated;
+        try
+        {
+            if (CheckPointManager.Instance == null) return false;
+            var data = OptionHints.FindSwitch(name);
+            gated = data != null && R.Field(data, "_useCount") is false && Conditions.RandomRange(data) != null;
+        }
+        catch (Exception ex) { log.LogWarning("SWITCH_GATE " + name + " " + ex.GetBaseException().Message); gated = false; }
+        return randomSwitches[name] = gated;
     }
     public void EnterLocation(PositionController controller)
     {
@@ -119,7 +139,7 @@ public sealed class GameAdapter : IGameAdapter
             revision++; poolName = name; pendingEvent = ""; actionReleased = false;
             contextIdentity = Identity();
             var pool = Pool();
-            if (pool == null || pool.List.Count <= 1) { poolName = ""; return false; }
+            if (SwitchName.Length > 0 ? ReadSwitchArms(true).Count(arm => arm.Eligible) < 2 : pool == null || pool.List.Count <= 1) { poolName = ""; return false; }
             actionWaiting = true; status = "等待继续本次行动"; Refresh();
             if (!Snapshot.Ready) { actionWaiting = false; return false; }
             Plugin.Instance?.ShowForAction();
@@ -182,7 +202,7 @@ public sealed class GameAdapter : IGameAdapter
             var next = new ToolSnapshot { Ready = ready, Title = scene == "Title", Revision = revision, Version = RuntimeVersion, Location = ready ? (actualLocation.Length > 0 ? L.DisplayText(actualLocation) : L.Text(scene.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0 ? "当前地图" : "当前剧情")) : "", Action = poolName.Length > 0 ? L.Text("活动事件") : "", ContextDetail = identity + "\n" + L.Text("检查点") + " " + poolName, Status = StatusText(), PendingEventId = pendingEvent, ActionWaiting = actionWaiting, ActionSelectionEnabled = selectionEnabled };
             bool rebuildValues = freshValues || PanelOpen || !ready || valuesIdentity != identity || valuesLanguage != L.Revision || Time.unscaledTime - valuesBuiltAt > 5f;
             if (rebuildValues) { values.Clear(); ambiguousFields.Clear(); fieldIdentities.Clear(); }
-            eventObjects.Clear();
+            eventObjects.Clear(); switchArms.Clear();
             if (ready && p != null && !rebuildValues) next.Values = Snapshot.Values;
             if (ready && p != null && rebuildValues)
             {
@@ -260,6 +280,11 @@ public sealed class GameAdapter : IGameAdapter
                 {
                     next.Events = ReadPoolEvents(pool, p, true);
                     if (actionWaiting && lastChoices.TryGetValue(pool.name, out var last) && next.Events.Any(x => x.Id == last)) next.RepeatEventId = last;
+                }
+                else if (SwitchName.Length > 0)
+                {
+                    next.Events = ReadSwitchArms(true, freshValues);
+                    if (actionWaiting && lastChoices.TryGetValue(poolName, out var last) && next.Events.Any(x => x.Id == last)) next.RepeatEventId = last;
                 }
                 // Hovering a menu row previews its pool; real checkpoints always take precedence.
                 else if (previewPool.Length > 0 && FindPool(previewPool) is PositionResultData preview)
@@ -464,7 +489,7 @@ public sealed class GameAdapter : IGameAdapter
     public OperationResult SpecifyEvent(string eventId)
     {
         Refresh();
-        if (!Snapshot.Ready || !actionWaiting || Pool() == null || !eventObjects.ContainsKey(eventId)) return Feedback(false, "事件不在当前行动");
+        if (!Snapshot.Ready || !actionWaiting || (Pool() == null || !eventObjects.ContainsKey(eventId)) && !switchArms.ContainsKey(eventId)) return Feedback(false, "事件不在当前行动");
         var item = Snapshot.Events.FirstOrDefault(x => x.Id == eventId);
         if (item == null || !item.Eligible) return Feedback(false, "条件未满足或权重为零");
         pendingEvent = eventId; pendingRevision = revision;
@@ -498,6 +523,109 @@ public sealed class GameAdapter : IGameAdapter
         log.LogInfo($"EVENT_CONSUMED rev={revision} id={id} result={result}"); SetStatus("已执行指定：{0}", item.ResultType); Refresh(); return true;
     }
     public void ObservePosition(string name) { log.LogInfo($"POSITION_EXECUTE name={name} context={poolName} rev={revision} pending={pendingEvent}"); }
+    /// <summary>The arm picked for the switch the action waits at; false leaves the roll to the game.</summary>
+    public bool TrySwitch(string name, out int arm)
+    {
+        arm = 0;
+        if (pendingEvent.Length == 0 || SwitchName != name) return false;
+        Refresh();
+        var id = pendingEvent; pendingEvent = "";
+        var chosen = Snapshot.Events.FirstOrDefault(x => x.Id == id);
+        if (!Snapshot.Ready || pendingRevision != revision || !switchArms.TryGetValue(id, out arm) || chosen == null || !chosen.Eligible)
+        { arm = 0; Feedback(false, "本次指定失效，使用游戏随机"); return false; }
+        if (!lastChoices.TryGetValue(poolName, out var previous) || previous != id)
+        {
+            lastChoices[poolName] = id;
+            LastChoicesChanged?.Invoke(string.Join("|", lastChoices.Select(pair => pair.Key + "=" + pair.Value)));
+        }
+        log.LogInfo($"EVENT_CONSUMED rev={revision} id={id} arm={arm}"); SetStatus("已执行指定：{0}", chosen.Title); return true;
+    }
+    /// <summary>After the game's Switch: only the switch the action waited at ends the wait (others run all the time).</summary>
+    public void CompleteSwitch(string name, int result)
+    {
+        if (SwitchName != name) return;
+        log.LogInfo($"SWITCH_RESULT frame={Time.frameCount} name={name} result={result}");
+        poolName = ""; pendingEvent = ""; actionWaiting = actionReleased = false; revision++; Refresh();
+    }
+    private readonly Dictionary<string, int> switchArms = new(StringComparer.Ordinal);
+    private List<EventSnapshot> cachedArms = new();
+    private long armsRevision = -1;
+    /// <summary>
+    /// The arms of the waiting switch, with how many of the random values lead to each (one value read for every random
+    /// operand), named by the first line of the story the current script jumps to there. Counted again when the action
+    /// changes or a value is written.
+    /// </summary>
+    private List<EventSnapshot> ReadSwitchArms(bool actual, bool recount = false)
+    {
+        string name = SwitchName;
+        if (recount || armsRevision != revision)
+        {
+            armsRevision = revision; cachedArms = new List<EventSnapshot>();
+            var data = OptionHints.FindSwitch(name);
+            var range = Conditions.RandomRange(data);
+            if (data == null || range == null) return cachedArms;
+            var items = R.Items(R.Field(data, "_items")).ToList();
+            var counts = new int[items.Count + 1];
+            bool known = true;
+            try
+            {
+                for (int roll = range.Value.Min; roll <= range.Value.Max && known; roll++)
+                {
+                    Conditions.RandomValue = roll;
+                    int taken = items.Count;
+                    for (int k = 0; k < items.Count; k++)
+                    {
+                        var condition = Conditions.Read(items[k]);
+                        if (!condition.Known) { known = false; break; }
+                        if (condition.Satisfied) { taken = k; break; }
+                    }
+                    counts[taken]++;
+                }
+            }
+            finally { Conditions.RandomValue = null; }
+            var stories = SwitchStories(name);
+            int total = range.Value.Max - range.Value.Min + 1;
+            for (int k = 0; k <= items.Count; k++)
+            {
+                int arm = k + 1;
+                // The last arm is the game's "none matched"; a script may test it as its number or leave it to else (0).
+                string story = stories.TryGetValue(arm, out var own) ? own : arm == items.Count + 1 && stories.TryGetValue(0, out var otherwise) ? otherwise : "";
+                string line = story.Length > 0 ? FirstLine(story) : "";
+                string armText = OptionHints.ArmText(name, arm);
+                cachedArms.Add(new EventSnapshot
+                {
+                    Id = LuaGate.SwitchGate + name + "/" + arm, Title = line.Length > 0 ? line : armText,
+                    Detail = name + " · " + L.Format("分支 {0}", arm) + (story.Length > 0 ? "\n" + L.Text("结果") + " " + story : "") + "\n" + armText
+                        + "\n" + (known ? L.Format("随机值中 {0}/{1} 落在这里", counts[k], total) : L.Text("条件未核验")),
+                    Eligible = known && counts[k] > 0, Weight = known ? counts[k] : 0,
+                    Conditions = k < items.Count ? new List<ConditionSnapshot> { Conditions.Read(items[k]) } : new List<ConditionSnapshot>()
+                });
+            }
+        }
+        if (actual) foreach (var item in cachedArms) switchArms[item.Id] = int.Parse(item.Id.Substring(item.Id.LastIndexOf('/') + 1), CultureInfo.InvariantCulture);
+        return cachedArms;
+    }
+    /// <summary>Arm → the script the current script jumps to on it (arm 0: its else).</summary>
+    private Dictionary<int, string> SwitchStories(string name)
+    {
+        var stories = new Dictionary<int, string>();
+        if (activeScript.Length == 0 || Plugin.Instance?.OptionHints.Map(activeScript) is not { } map) return stories;
+        foreach (var preview in map.Values)
+            foreach (var group in preview.Cases)
+            {
+                if (group.Story.Length == 0 || group.When.Count == 0) continue;
+                var last = group.When[group.When.Count - 1];
+                if (last.Key == name && !stories.ContainsKey(last.Value)) stories[last.Value] = group.Story;
+            }
+        return stories;
+    }
+    /// <summary>A story's first line, plain and short: a jump is named by what the player would see.</summary>
+    private static string FirstLine(string story)
+    {
+        if (Plugin.Instance?.OptionHints.Map(story) is not { } map || !map.TryGetValue(LuaOptions.ScriptLevel, out var top) || top.TextKeys.Count == 0) return "";
+        string text = Regex.Replace(L.GameText("Story/" + top.TextKeys[0], ""), "<[^>]+>", "").Replace("\r", "").Replace('\n', ' ').Trim();
+        return text.Length > 30 ? text.Substring(0, 29) + "…" : text;
+    }
     public void CompletePosition(string name, string result)
     {
         log.LogInfo($"POSITION_RESULT frame={Time.frameCount} name={name} result={result}");

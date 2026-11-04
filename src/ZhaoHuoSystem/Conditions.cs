@@ -24,6 +24,33 @@ internal static class Conditions
         public string Operand() => NativeUiState.ConditionOperand(Literal && TimeText.Length > 0 ? TimeText : Text,
             Nested ? null : !Known ? "" : TimeText.Length > 0 ? TimeText : (Value * Sign).ToString(CultureInfo.InvariantCulture), Literal);
     }
+    /// <summary>While set, every random value reads as this number (clamped to its range); the game's own roll is untouched.</summary>
+    internal static int? RandomValue;
+    /// <summary>The range of the first random value a switch's conditions read (F127), or null when they read none.</summary>
+    public static (int Min, int Max)? RandomRange(object? data)
+    {
+        (int, int)? found = null;
+        void Condition(object? node, int depth)
+        {
+            if (node == null || depth > 12 || found != null) return;
+            foreach (var item in R.Items(R.Field(node, "_items")))
+                if (item is StatCompareItem) { Group(R.Field(item, "_value1"), depth + 1); Group(R.Field(item, "_value2"), depth + 1); }
+                else Condition(item, depth + 1);
+        }
+        void Group(object? group, int depth)
+        {
+            if (group == null || depth > 12) return;
+            foreach (var reference in R.Items(R.Field(group, "_value")))
+                switch (R.Property(reference, "CheckType")?.ToString())
+                {
+                    case "隨機值": found ??= (R.RequiredField<int>(reference, "_randomMin"), R.RequiredField<int>(reference, "_randomMax")); break;
+                    case "數值群組": Group(R.Field(reference, "_statGroup"), depth + 1); break;
+                    case "條件設定": Condition(R.Field(reference, "_condition"), depth + 1); break;
+                }
+        }
+        try { Condition(data, 0); } catch { return null; }
+        return found;
+    }
     public static ConditionSnapshot Read(object? condition, int depth = 0)
     {
         try
@@ -123,6 +150,10 @@ internal static class Conditions
             case "常數":
                 var constant = R.RequiredField<int>(reference, "_constant");
                 v = new() { Value = constant, Text = constant.ToString(), Literal = true }; break;
+            case "隨機值":
+                // Never rolled here: unknown, unless a caller asks how the condition reads for one value (F127).
+                int low = R.RequiredField<int>(reference, "_randomMin"), high = R.RequiredField<int>(reference, "_randomMax");
+                v = new() { Text = L.Format("随机 {0}–{1}", low, high), Value = RandomValue is int roll ? Math.Max(low, Math.Min(high, roll)) : 0, Known = RandomValue.HasValue }; break;
             case "數值群組": v = Group(R.Field(reference, "_statGroup"), depth + 1); break;
             case "條件設定":
                 var nested = Read(R.Field(reference, "_condition"), depth + 1);

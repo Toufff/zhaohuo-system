@@ -10,6 +10,9 @@ internal static class LuaGate
 {
     private const string Marker = "--[=[__zhaohuo_instrumented]=]\n";
     private static readonly Regex Call = new(@"\Gcheckpointmanager\s*\.\s*Position\s*\(\s*([""'])([A-Za-z0-9_]+)\1\s*\)");
+    private static readonly Regex SwitchCall = new(@"\Gcheckpointmanager\s*\.\s*Switch\s*\(\s*([""'])([A-Za-z0-9_]+)\1\s*\)");
+    /// <summary>A gated switch waits under this name; position names never contain the colon.</summary>
+    public const string SwitchGate = "switch:";
     private static readonly Regex FixedPlayer = new(@"\Gstatmodifymanager\s*\.\s*Player\s*\(\s*([""'])([A-Za-z0-9_-]+)\1\s*,\s*([+-]?\d+)\s*,\s*([""'])\4\s*,\s*\d+\s*\)");
     private static readonly Regex Branch = new(@"\G(?:if|for|while|repeat|function|return|goto|break|and|or)\b");
     internal static List<KeyValuePair<string, int>> FixedEffects(string source)
@@ -38,7 +41,8 @@ internal static class LuaGate
         }
         return result;
     }
-    public static string Instrument(string source, long token)
+    /// <summary>Waits before each Position call, and before a Switch call the gate accepts (a random switch, F127).</summary>
+    public static string Instrument(string source, long token, Func<string, bool>? gateSwitch = null)
     {
         if (source.StartsWith(Marker, StringComparison.Ordinal)) return source;
         var output = new StringBuilder(source.Length + 256);
@@ -62,11 +66,18 @@ internal static class LuaGate
             if (source[i] == '[' && SkipLong(source, ref i)) { output.Append(source, start, i - start); previousSignificant = 'v'; continue; }
             var boundary = previousSignificant != '.' && previousSignificant != ':' && (i == 0 || !(char.IsLetterOrDigit(source[i - 1]) || source[i - 1] == '_'));
             var match = boundary ? Call.Match(source, i) : Match.Empty;
+            string gate = match.Success ? match.Groups[2].Value : "";
+            if (!match.Success && boundary && gateSwitch != null)
+            {
+                match = SwitchCall.Match(source, i);
+                if (match.Success && gateSwitch(match.Groups[2].Value)) gate = SwitchGate + match.Groups[2].Value;
+                else match = Match.Empty;
+            }
             if (match.Success)
             {
                 // The original call is retained exactly once. Main-thread/non-coroutine execution never yields.
                 output.Append("(function() local _,__zh_main=coroutine.running(); if not __zh_main and __zhaohuo_wait_position then while __zhaohuo_wait_position(\"")
-                    .Append(match.Groups[2].Value).Append("\",").Append(token)
+                    .Append(gate).Append("\",").Append(token)
                     .Append(") do coroutine.yield() end end return ").Append(match.Value).Append(" end)()");
                 i += match.Length; changed = true; previousSignificant = ')'; continue;
             }

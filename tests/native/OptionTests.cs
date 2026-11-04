@@ -208,6 +208,18 @@ internal static partial class Program
                 _ => new KeyValuePair<string, int>("", 1), (template, args) => args.Length == 0 ? template : string.Format(template.Replace("{0}", "{0}"), args));
             Require(segments.Count == 1 && segments[0].Full.Contains("触发剧情") && segments[0].Head.Contains("拜码头") && segments[0].State == 1, "story arm shown once, with its condition");
         });
+        Test("a nested random switch's arm keeps its own story; a jump to a variable is no story (F127)", () =>
+        {
+            // Shape of 崆峒留学 修炼: 拜码头 first, then 随机 < 小梅好感 leads to 小梅约跑, otherwise var1 (the training).
+            const string script = "local t = {}\nt[1] = \"training2+free+training2\"\nlocal c = choose(t)\nif c == 1 then\n"
+                + "local s = checkpointmanager.Switch(\"Gate\")\nif s == 1 then\nluamanager.SetNextScript(\"S2600_01\")\nelseif s == 2 then\nvar1 = \"training_02\"\n"
+                + "local r = checkpointmanager.Switch(\"Rolled\")\nif r == 1 then\nluamanager.SetNextScript(\"run_01\")\nelseif r == 2 then\nluamanager.SetNextScript(var1)\nend\nend\nend\n";
+            var cases = LuaOptions.Analyze(script)["training2+free+training2"].Cases;
+            var run = cases.Find(c => c.When.Count == 2 && c.When[1].Key == "Rolled" && c.When[1].Value == 1);
+            Equal("run_01", run?.Story);
+            Equal("Gate", run!.When[0].Key);
+            Require(!cases.Exists(c => c.When.Count == 2 && c.When[1].Key == "Rolled" && c.When[1].Value == 2 && c.Story.Length > 0), "variable jump taken as a story");
+        });
         Test("a locked row is matched by its place in the option table, its locked text and the rows already shown", () =>
         {
             const string script = "local Ch_1 = checkpointmanager.Condition(\"Ch_1\")\nlocal Ch_2 = checkpointmanager.Condition(\"Ch_2\")\nlocal t = {}\nt[1] = \"O_A\"\nt[2] = Ch_1 and \"O_B\" or \"~x\"\nt[3] = Ch_2 and \"O_C\" or \"~O_C_Locked\"\nlocal c = choose(t)\nif c == 1 then\nelseif c == 2 then\nstatmodifymanager.Player(\"fame\", 2, \"\", 1)\nend\n"

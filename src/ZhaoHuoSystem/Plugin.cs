@@ -29,7 +29,7 @@ using UnityEngine.SceneManagement;
 namespace ZhaoHuoSystem;
 
 [DefaultExecutionOrder(-32000)]
-[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.52")]
+[BepInPlugin("local.zhaohuo.system", "赵活系统", "0.3.53")]
 public sealed class Plugin : BaseUnityPlugin
 {
     internal static Plugin? Instance;
@@ -826,7 +826,7 @@ internal static class LuaContextPatch
         plugin.OptionHints.Load(luaString, friendlyName);
         plugin.Segments?.ScriptLoaded(friendlyName);
         var token = plugin.Adapter.LuaLoaded(luaString, friendlyName);
-        var instrumented = LuaGate.Instrument(luaString, token);
+        var instrumented = LuaGate.Instrument(luaString, token, plugin.Adapter.GatesSwitch);
         if (instrumented != luaString) __state = token;
         luaString = instrumented;
     }
@@ -1057,7 +1057,16 @@ internal static class UpgradeUnlimitedPatch
     { if (PracticeLimits.Lifted(__instance) && R.Field<Text>(__instance, "_maxCountText") is Text text && text != null) text.text = L.GameText("System/Infinity", "∞"); }
 }
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Switch))]
-internal static class BranchPatch { private static void Postfix(string name, int __result) => Plugin.Instance?.BranchTaken(name, __result); }
+internal static class BranchPatch
+{
+    // A random switch the player picked an arm for (F127) returns that arm without rolling.
+    private static bool Prefix(string name, ref int __result)
+    {
+        if (Plugin.Instance?.Adapter.TrySwitch(name, out var arm) == true) { __result = arm; return false; }
+        return true;
+    }
+    private static void Postfix(string name, int __result) { Plugin.Instance?.BranchTaken(name, __result); Plugin.Instance?.Adapter.CompleteSwitch(name, __result); }
+}
 [HarmonyPatch(typeof(CheckPointManager), nameof(CheckPointManager.Dice))]
 internal static class DicePatch
 {

@@ -114,6 +114,17 @@ internal static partial class Program
                 Require(result.Contains(",37)", StringComparison.Ordinal), "Token missing");
             }
         });
+        Test("a random switch waits under its own name; other switches stay as they are (F127)", () =>
+        {
+            string source = "local a = checkpointmanager.Switch(\"Rolled\")\nlocal b = checkpointmanager.Switch(\"Plain\")\nvar1 = checkpointmanager.Position(\"Pool\")";
+            string result = LuaGate.Instrument(source, 5, name => name == "Rolled");
+            Equal(2, Count(result, Marker));
+            Require(result.Contains("__zhaohuo_wait_position(\"switch:Rolled\",5)", StringComparison.Ordinal), "random switch not gated");
+            Require(!result.Contains("switch:Plain", StringComparison.Ordinal) && result.Contains("local b = checkpointmanager.Switch(\"Plain\")", StringComparison.Ordinal), "plain switch changed");
+            Require(result.Contains("__zhaohuo_wait_position(\"Pool\",5)", StringComparison.Ordinal), "position no longer gated");
+            string plain = source.Replace("checkpointmanager.Position(\"Pool\")", "x");
+            Equal(plain, LuaGate.Instrument(plain, 5, _ => false));
+        });
         Test("short strings and escaped quotes remain exact", () =>
         {
             string[] sources =
