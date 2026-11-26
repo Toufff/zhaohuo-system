@@ -3,10 +3,11 @@ name: CI
 # The plugin itself compiles against the installed game's assemblies, which are never stored
 # in this repository, so CI runs the tests that need no game files. Releases are built and
 # published from a maintainer machine with scripts/release.ps1.
+# touf 2026-11-26: no CI on pull requests or other branches; only this check after merging to main.
 on:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
